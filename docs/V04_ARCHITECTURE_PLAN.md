@@ -164,7 +164,9 @@ Follows the brief; each commit builds.
 | D-5 (C-8) | **Remove** `DEVELOPER` role | One seeded demo user per real role |
 | D-11 (K1) | **Keep** the Ada'a KPI page | Thresholds marked "source not in repository — verify against MoH Ada'a card" in WORKFORCE.md and on the page |
 | D-16 (C-5) | **Remove** staffing formula | `CoverageTarget` configured by HR; unset = "unspecified" |
-| All others | Recommendations in §9 adopted (D-6…D-10, D-12…D-15, D-17…D-20) | Can be revisited at any commit |
+| D-18 (C-7) | **Corrected during implementation:** requirement `unit` is **required**, `position` null = every position in the unit | Spec §5.1.4 states "a unit (required)"; the earlier recommendation (null unit = all units) came from the V03 NestJS schema and contradicted the spec. Matches V03 app behaviour |
+| C-17 (new) | Accepted upload types | Contract copy: PDF only (V03 decision, commit `1508316`). Credential evidence: PDF, JPEG, PNG, WebP (spec §5.3.2 allowlist) |
+| All others | Recommendations in §9 adopted (D-6…D-10, D-12…D-15, D-17, D-19, D-20) | Can be revisited at any commit |
 
 ## 9. Decisions required before stage 2
 

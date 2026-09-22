@@ -7,6 +7,7 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3001),
   CORS_ORIGIN: z.string().url().default('http://localhost:5173'),
+  DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\//, 'must be a postgresql:// URL'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

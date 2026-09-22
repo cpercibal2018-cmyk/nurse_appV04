@@ -5,7 +5,7 @@ import { loadEnv } from './config/env.js';
 
 describe('app skeleton', () => {
   it('answers the health check', async () => {
-    const app = createApp(loadEnv({ NODE_ENV: 'test' }));
+    const app = createApp(loadEnv({ NODE_ENV: 'test', DATABASE_URL: 'postgresql://localhost/test' }));
     const res = await request(app).get('/api/v1/health');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: 'ok', environment: 'test' });

@@ -1,0 +1,731 @@
+// AIGH Nursing Workforce Management System — V04 authoritative schema.
+//
+// One schema, one migration chain (prisma migrate). Constraints Prisma cannot
+// express (exclusion constraint, partial unique indexes, CHECKs, the full-name
+// trigger, fn_append_audit_entry) live in hand-written SQL inside the same
+// migrations — see prisma/migrations/*/migration.sql.
+//
+// Conventions: models PascalCase, fields camelCase, tables/columns snake_case.
+// Calendar dates use @db.Date; instants use timestamptz.
+// The connection URL lives in prisma.config.ts (Prisma 7).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Identity & access  (spec §3.3, §3.6, §8)
+// ════════════════════════════════════════════════════════════════════════════
+
+enum AppRole {
+  SYSTEM_ADMIN
+  HR_ADMIN
+  SUPERVISOR
+  // EMPLOYEE is implicit for every active user and is never stored (rule R1).
+}
+
+enum ScopeType {
+  SYSTEM
+  DEPARTMENT
+  UNIT
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXECUTED
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  displayName  String    @map("display_name")
+  passwordHash String    @map("password_hash")
+  isActive     Boolean   @default(true) @map("is_active")
+  /// The break-glass root account (spec §3.6): bypasses PAM and four-eyes, triggers the siren.
+  isBreakGlass Boolean   @default(false) @map("is_break_glass")
+  /// Links a login to the nurse record it may see as "own" (spec §8.1 Employee column).
+  employeeId   Int?      @unique @map("employee_id")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  employee           Employee?          @relation(fields: [employeeId], references: [id])
+  sessions           RefreshSession[]
+  roleAssignments    RoleAssignment[]   @relation("assignee")
+  grantedAssignments RoleAssignment[]   @relation("granter")
+  revokedAssignments RoleAssignment[]   @relation("revoker")
+  approvalsInitiated ApprovalRequest[]  @relation("initiator")
+  approvalsDecided   ApprovalRequest[]  @relation("approver")
+  privilegedSession  PrivilegedSession?
+  notifications      Notification[]
+
+  @@map("users")
+}
+
+model RefreshSession {
+  id                String    @id // opaque id carried in the cookie
+  userId            Int       @map("user_id")
+  tokenHash         String    @map("token_hash") // sha256 of the secret; raw value never stored
+  familyId          String    @map("family_id") // reuse of a rotated token revokes the family
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz // idle limit, renewed on rotation
+  /// Absolute session boundary, copied unchanged through every rotation (spec §3.3).
+  absoluteExpiresAt DateTime  @map("absolute_expires_at") @db.Timestamptz
+  revokedAt         DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_sessions")
+}
+
+/// Scoped, time-boxed grant of an application role (spec §8, rules R1–R12).
+/// SQL: partial unique (user_id, role, scope_type) WHERE revoked_at IS NULL;
+///      CHECK scope_type = 'SYSTEM' <=> cardinality(scope_ids) = 0.
+model RoleAssignment {
+  id                Int       @id @default(autoincrement())
+  userId            Int       @map("user_id")
+  role              AppRole
+  scopeType         ScopeType @map("scope_type")
+  /// Department ids (DEPARTMENT) or unit ids (UNIT); empty for SYSTEM.
+  scopeIds          Int[]     @map("scope_ids")
+  reason            String
+  grantedById       Int       @map("granted_by_id")
+  grantedAt         DateTime  @default(now()) @map("granted_at") @db.Timestamptz
+  expiresAt         DateTime? @map("expires_at") @db.Timestamptz
+  revokedById       Int?      @map("revoked_by_id")
+  revokedAt         DateTime? @map("revoked_at") @db.Timestamptz
+  revokeReason      String?   @map("revoke_reason")
+  approvalRequestId Int?      @map("approval_request_id")
+
+  user            User             @relation("assignee", fields: [userId], references: [id])
+  grantedBy       User             @relation("granter", fields: [grantedById], references: [id])
+  revokedBy       User?            @relation("revoker", fields: [revokedById], references: [id])
+  approvalRequest ApprovalRequest? @relation(fields: [approvalRequestId], references: [id])
+
+  @@index([userId, revokedAt])
+  @@index([role, scopeType])
+  @@map("role_assignments")
+}
+
+/// Four-eyes request (spec §8.1, rules R10–R12).
+/// SQL: partial unique (initiator_id, action_type) WHERE status = 'PENDING'.
+model ApprovalRequest {
+  id          Int            @id @default(autoincrement())
+  initiatorId Int            @map("initiator_id")
+  approverId  Int?           @map("approver_id")
+  actionType  String         @map("action_type")
+  payload     Json
+  status      ApprovalStatus @default(PENDING)
+  reason      String?
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  decidedAt   DateTime?      @map("decided_at") @db.Timestamptz
+  executedAt  DateTime?      @map("executed_at") @db.Timestamptz
+
+  initiator   User             @relation("initiator", fields: [initiatorId], references: [id])
+  approver    User?            @relation("approver", fields: [approverId], references: [id])
+  assignments RoleAssignment[]
+
+  @@index([status])
+  @@map("approval_requests")
+}
+
+/// PAM just-in-time elevation (spec §8.1, rule R13).
+model PrivilegedSession {
+  userId       Int      @id @map("user_id")
+  reason       String
+  elevatedAt   DateTime @default(now()) @map("elevated_at") @db.Timestamptz
+  expiresAt    DateTime @map("expires_at") @db.Timestamptz
+  authorizedBy Int?     @map("authorized_by")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("privileged_sessions")
+}
+
+/// Break-glass siren (spec §3.6, rule R18). Runtime role: INSERT/SELECT only.
+model BreakGlassEvent {
+  id          Int       @id @default(autoincrement())
+  actorUserId Int       @map("actor_user_id")
+  reason      String
+  ipAddress   String    @map("ip_address")
+  activatedAt DateTime  @default(now()) @map("activated_at") @db.Timestamptz
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz // activated_at + 4 h
+  endedAt     DateTime? @map("ended_at") @db.Timestamptz
+
+  @@map("break_glass_events")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Organisation & workforce  (spec §2.9, §3.1.1, §6.3)
+// ════════════════════════════════════════════════════════════════════════════
+
+model Department {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique
+  name        String
+  nameAr      String?  @map("name_ar")
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  units Unit[]
+
+  @@map("departments")
+}
+
+/// SQL: CHECK (bed_count BETWEEN 0 AND 500)  (rule W4)
+model Unit {
+  id           Int      @id @default(autoincrement())
+  code         String   @unique
+  name         String
+  nameAr       String?  @map("name_ar")
+  description  String?
+  departmentId Int      @map("department_id")
+  bedCount     Int      @default(0) @map("bed_count")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  department             Department              @relation(fields: [departmentId], references: [id])
+  employees              Employee[]
+  bedCapacityLogs        BedCapacityLog[]
+  coverageTargets        CoverageTarget[]
+  credentialRequirements CredentialRequirement[]
+  shiftAssignments       ShiftAssignment[]
+
+  @@index([departmentId])
+  @@map("units")
+}
+
+model BedCapacityLog {
+  id            Int      @id @default(autoincrement())
+  unitId        Int      @map("unit_id")
+  previousCount Int      @map("previous_count")
+  newCount      Int      @map("new_count")
+  reason        String
+  changedById   Int?     @map("changed_by_id") // null = seed / system
+  changedAt     DateTime @default(now()) @map("changed_at") @db.Timestamptz
+
+  unit Unit @relation(fields: [unitId], references: [id])
+
+  @@index([unitId, changedAt])
+  @@map("bed_capacity_logs")
+}
+
+/// Position directory (spec §3.1.1). Never confers an authorization role (R14).
+model Position {
+  code          String   @id
+  title         String
+  titleAr       String?  @map("title_ar")
+  tier          String
+  description   String?
+  isSchedulable Boolean  @map("is_schedulable")
+  isActive      Boolean  @default(true) @map("is_active")
+  displayOrder  Int      @default(0) @map("display_order")
+  replacedBy    String?  @map("replaced_by") // deprecated codes: AHN -> ACTING_HEAD, CI -> NURSE_EDUCATOR
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  employees              Employee[]
+  credentialRequirements CredentialRequirement[]
+
+  @@map("positions")
+}
+
+enum ShiftType {
+  Morning
+  Evening
+  Night
+}
+
+/// Configured minimum staff per unit per shift (spec L813, §6.3, rule W8).
+/// No row = target "unspecified" — never treated as zero. No values are seeded:
+/// staffing minimums are REQUIREMENT NOT ESTABLISHED until the hospital supplies them.
+model CoverageTarget {
+  id           Int       @id @default(autoincrement())
+  unitId       Int       @map("unit_id")
+  shiftType    ShiftType @map("shift_type")
+  minimumStaff Int       @map("minimum_staff")
+  updatedById  Int?      @map("updated_by_id")
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  unit Unit @relation(fields: [unitId], references: [id])
+
+  @@unique([unitId, shiftType])
+  @@map("coverage_targets")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Nurse master  (spec §3.1)
+// ════════════════════════════════════════════════════════════════════════════
+
+enum MaritalStatus {
+  Single
+  Married
+  Others
+}
+
+/// SQL: trigger trg_employees_compose_full_name (rule E3); CHECK salary >= 0.
+model Employee {
+  id              Int            @id @default(autoincrement())
+  jobNumber       String         @unique @map("job_number") // no format rule (E1)
+  firstName       String         @map("first_name")
+  middleName      String?        @map("middle_name")
+  lastName        String         @map("last_name")
+  fullName        String         @map("full_name") // derived by trigger — never supplied
+  jobTitle        String?        @map("job_title")
+  fileNo          String?        @map("file_no") // not unique (E8)
+  rankGrade       String?        @map("rank_grade")
+  nationality     String?
+  jobPostLocation String?        @map("job_post_location")
+  actualWorkPlace String?        @map("actual_work_place")
+  specialty       String?
+  maritalStatus   MaritalStatus? @map("marital_status")
+  salary          Decimal?       @db.Decimal(12, 2) // SAR
+  contactEmail    String         @map("contact_email")
+  /// null = Unassigned (replaces the V03 sentinel unit id 0).
+  unitId          Int?           @map("unit_id")
+  positionCode    String         @map("position_code")
+  /// Employment status values beyond "Active" are REQUIREMENT NOT ESTABLISHED.
+  status          String         @default("Active")
+  hireDate        DateTime?      @map("hire_date") @db.Date
+  deletedAt       DateTime?      @map("deleted_at") @db.Timestamptz
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  unit             Unit?              @relation(fields: [unitId], references: [id])
+  position         Position           @relation(fields: [positionCode], references: [code])
+  user             User?
+  contracts        Contract[]
+  credentials      Credential[]
+  waivers          CredentialWaiver[]
+  eligibilityState EligibilityState?
+  shiftAssignments ShiftAssignment[]
+  attendanceEvents AttendanceEvent[]
+
+  @@index([unitId])
+  @@index([positionCode])
+  @@index([nationality])
+  @@index([specialty])
+  @@index([fileNo])
+  @@map("employees")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Contracts  (spec §4)
+// ════════════════════════════════════════════════════════════════════════════
+
+enum ContractStatus {
+  Draft
+  PendingApproval
+  Approved
+  Active
+  Expired
+  Suspended
+  Terminated
+  Superseded
+}
+
+/// SQL: EXCLUDE USING gist (employee_id WITH =, daterange(start_date, end_date, '[]') WITH &&)
+///      WHERE (status IN ('Approved','Active'))  (rule C4);
+///      CHECK end_date > start_date; CHECK Hijri shape.
+model Contract {
+  id             Int            @id @default(autoincrement())
+  employeeId     Int            @map("employee_id")
+  jobNumber      String         @map("job_number") // denormalised for traceability (spec §3.1)
+  startDate      DateTime       @map("start_date") @db.Date // Gregorian — authoritative
+  endDate        DateTime       @map("end_date") @db.Date
+  startDateHijri String?        @map("start_date_hijri") @db.VarChar(10)
+  endDateHijri   String?        @map("end_date_hijri") @db.VarChar(10)
+  status         ContractStatus @default(Draft)
+  approvedById   Int?           @map("approved_by_id")
+  approvedAt     DateTime?      @map("approved_at") @db.Timestamptz
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  employee  Employee          @relation(fields: [employeeId], references: [id])
+  documents DocumentVersion[]
+
+  @@index([employeeId, status])
+  @@index([endDate])
+  @@map("contracts")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Credentials  (spec §5)
+// ════════════════════════════════════════════════════════════════════════════
+
+enum CredentialStatus {
+  PendingVerification
+  Valid
+  ExpiringSoon
+  Expired
+  Suspended
+  Revoked
+}
+
+enum PolicyStatus {
+  MANDATORY
+  TRANSITION
+  OPTIONAL
+}
+
+enum SyncStatus {
+  SYNCED
+  STALE
+  FAILED
+  PENDING
+}
+
+model CredentialCategory {
+  code         String  @id // IDENTITY | LICENSURE | LIABILITY | COMPETENCY | LIFE_SUPPORT
+  name         String
+  description  String?
+  displayOrder Int     @default(0) @map("display_order")
+
+  templates CredentialTemplate[]
+
+  @@map("credential_categories")
+}
+
+/// SQL: CHECK (grace_period_days BETWEEN 0 AND 90)  (rule L8)
+model CredentialTemplate {
+  id              Int      @id @default(autoincrement())
+  code            String   @unique
+  name            String
+  categoryCode    String   @map("category_code")
+  description     String?
+  hasExpiry       Boolean  @default(true) @map("has_expiry")
+  requiresUpload  Boolean  @default(true) @map("requires_upload")
+  /// [{key,label,type,required,isIssueDate?,isExpiryDate?}] — spec §5.1
+  fieldDefs       Json     @default("[]") @map("field_defs")
+  gracePeriodDays Int      @default(0) @map("grace_period_days")
+  displayOrder    Int      @default(0) @map("display_order")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  category     CredentialCategory      @relation(fields: [categoryCode], references: [code])
+  requirements CredentialRequirement[]
+  credentials  Credential[]
+  waivers      CredentialWaiver[]
+
+  @@map("credential_templates")
+}
+
+/// A credential rule for a unit (spec §5.1.4: unit required); positionCode null =
+/// every position in that unit. SQL: unique NULLS NOT DISTINCT.
+model CredentialRequirement {
+  id                 Int          @id @default(autoincrement())
+  templateId         Int          @map("template_id")
+  unitId             Int          @map("unit_id")
+  positionCode       String?      @map("position_code")
+  policyStatus       PolicyStatus @default(MANDATORY) @map("policy_status")
+  transitionDeadline DateTime?    @map("transition_deadline") @db.Date
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  template CredentialTemplate @relation(fields: [templateId], references: [id])
+  unit     Unit               @relation(fields: [unitId], references: [id])
+  position Position?          @relation(fields: [positionCode], references: [code])
+
+  @@unique([templateId, unitId, positionCode])
+  @@map("credential_requirements")
+}
+
+model Credential {
+  id               Int              @id @default(autoincrement())
+  employeeId       Int              @map("employee_id")
+  templateId       Int              @map("template_id")
+  status           CredentialStatus @default(PendingVerification)
+  issueDate        DateTime?        @map("issue_date") @db.Date
+  expiryDate       DateTime?        @map("expiry_date") @db.Date
+  expiryDateHijri  String?          @map("expiry_date_hijri") @db.VarChar(10)
+  /// Template-defined tracked fields (e.g. scfhs_number). PII fields are candidates for §8.3 encryption.
+  trackingData     Json             @default("{}") @map("tracking_data")
+  /// Renewal staging (spec §5.2): replacement values awaiting HR review.
+  pendingData      Json?            @map("pending_data")
+  verifiedById     Int?             @map("verified_by_id")
+  verifiedAt       DateTime?        @map("verified_at") @db.Timestamptz
+  statusReason     String?          @map("status_reason")
+  graceActivatedAt DateTime?        @map("grace_activated_at") @db.Timestamptz
+  graceExpiryDate  DateTime?        @map("grace_expiry_date") @db.Date
+  graceCycleId     String?          @map("grace_cycle_id") // prevents stacking (L8)
+  syncStatus       SyncStatus?      @map("sync_status")
+  lastSyncAt       DateTime?        @map("last_sync_at") @db.Timestamptz
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+
+  employee  Employee           @relation(fields: [employeeId], references: [id])
+  template  CredentialTemplate @relation(fields: [templateId], references: [id])
+  documents DocumentVersion[]
+
+  @@index([employeeId, status])
+  @@index([expiryDate])
+  @@map("credentials")
+}
+
+enum ScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+}
+
+/// Append-only versioned evidence for contracts and credentials (rules D1–D4).
+/// SQL: CHECK exactly one of contract_id / credential_id is set.
+model DocumentVersion {
+  id           Int        @id @default(autoincrement())
+  contractId   Int?       @map("contract_id")
+  credentialId Int?       @map("credential_id")
+  version      Int
+  fileName     String     @map("file_name")
+  mimeType     String     @map("mime_type")
+  sizeBytes    Int        @map("size_bytes")
+  sha256       String
+  storageKey   String     @unique @map("storage_key") // never exposed as a URL
+  scanStatus   ScanStatus @default(PENDING) @map("scan_status")
+  uploadedById Int?       @map("uploaded_by_id")
+  uploadedAt   DateTime   @default(now()) @map("uploaded_at") @db.Timestamptz
+
+  contract   Contract?   @relation(fields: [contractId], references: [id])
+  credential Credential? @relation(fields: [credentialId], references: [id])
+
+  @@unique([contractId, version])
+  @@unique([credentialId, version])
+  @@map("document_versions")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Eligibility  (spec §6.1)
+// ════════════════════════════════════════════════════════════════════════════
+
+enum EligibilityStatus {
+  ELIGIBLE
+  ELIGIBLE_WITH_GRACE
+  INELIGIBLE
+}
+
+/// Materialized state, one row per employee (spec §6.1 / V39).
+model EligibilityState {
+  employeeId     Int               @id @map("employee_id")
+  status         EligibilityStatus
+  reasons        Json              @default("[]") // [{code, message, templateId?}]
+  calculatedAt   DateTime          @default(now()) @map("calculated_at") @db.Timestamptz
+  updatedByEvent String?           @map("updated_by_event")
+  logicVersion   Int               @default(1) @map("logic_version")
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([status])
+  @@map("eligibility_states")
+}
+
+/// Emergency waiver (spec §6.1.2, rule L9).
+/// SQL: CHECK expires_at <= created_at + interval '72 hours';
+///      CHECK expires_at > created_at.
+model CredentialWaiver {
+  id         Int      @id @default(autoincrement())
+  employeeId Int      @map("employee_id")
+  templateId Int      @map("template_id")
+  waivedById Int      @map("waived_by_id")
+  reason     String
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz
+
+  employee Employee           @relation(fields: [employeeId], references: [id])
+  template CredentialTemplate @relation(fields: [templateId], references: [id])
+
+  @@index([employeeId, expiresAt])
+  @@map("credential_waivers")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Scheduling  (spec §6.2–6.3)
+// ════════════════════════════════════════════════════════════════════════════
+
+enum AssignmentStatus {
+  Draft
+  Published
+  Cancelled
+}
+
+/// SQL: partial unique (employee_id, shift_date, shift_type) WHERE status <> 'Cancelled'
+///      — one shift slot per nurse per day regardless of unit (rule S1).
+model ShiftAssignment {
+  id                   Int                @id @default(autoincrement())
+  employeeId           Int                @map("employee_id")
+  unitId               Int                @map("unit_id")
+  shiftDate            DateTime           @map("shift_date") @db.Date
+  shiftType            ShiftType          @map("shift_type")
+  status               AssignmentStatus   @default(Draft)
+  notes                String?
+  /// Set when the assignment relied on a grace period or waiver (never silent — L8).
+  eligibilityAtPublish EligibilityStatus? @map("eligibility_at_publish")
+  createdById          Int?               @map("created_by_id")
+  publishedById        Int?               @map("published_by_id")
+  publishedAt          DateTime?          @map("published_at") @db.Timestamptz
+  createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+  unit     Unit     @relation(fields: [unitId], references: [id])
+
+  @@index([unitId, shiftDate])
+  @@index([shiftDate])
+  @@map("shift_assignments")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Attendance  (spec §14.2 — clock events only; states/leave NOT ESTABLISHED)
+// ════════════════════════════════════════════════════════════════════════════
+
+enum AttendanceEventType {
+  CLOCK_IN
+  CLOCK_OUT
+  BREAK_START
+  BREAK_END
+}
+
+model AttendanceEvent {
+  id             Int                 @id @default(autoincrement())
+  employeeId     Int                 @map("employee_id")
+  eventType      AttendanceEventType @map("event_type")
+  eventTimestamp DateTime            @map("event_timestamp") @db.Timestamptz
+  source         String? // badge / PACS feed identifier
+  deviceId       String?             @map("device_id")
+  locationCode   String?             @map("location_code")
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, eventTimestamp, eventType])
+  @@map("attendance_events")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Notifications  (spec §7)
+// ════════════════════════════════════════════════════════════════════════════
+
+enum NotificationType {
+  CONTRACT
+  CREDENTIAL
+  COVERAGE
+  ELIGIBILITY
+  APPROVAL
+  SECURITY
+  SYSTEM
+}
+
+enum NotificationPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+/// One row per recipient (spec §7.1, rule N2). eventKey dedups rescans (N3).
+model Notification {
+  id            Int                  @id @default(autoincrement())
+  recipientId   Int                  @map("recipient_id")
+  employeeId    Int?                 @map("employee_id") // subject of the event, if any
+  type          NotificationType
+  priority      NotificationPriority @default(MEDIUM)
+  title         String
+  message       String
+  titleAr       String?              @map("title_ar")
+  messageAr     String?              @map("message_ar")
+  eventKey      String?              @map("event_key")
+  readAt        DateTime?            @map("read_at") @db.Timestamptz
+  emailStatus   DeliveryStatus       @default(SKIPPED) @map("email_status")
+  emailAttempts Int                  @default(0) @map("email_attempts")
+  emailLastAt   DateTime?            @map("email_last_at") @db.Timestamptz
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz
+
+  recipient User @relation(fields: [recipientId], references: [id])
+
+  @@unique([recipientId, eventKey])
+  @@index([recipientId, readAt])
+  @@map("notifications")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Audit  (spec §9.1) — written ONLY through fn_append_audit_entry()
+// ════════════════════════════════════════════════════════════════════════════
+
+model AuditEntry {
+  id           BigInt   @id @default(autoincrement())
+  actorUserId  Int?     @map("actor_user_id") // null = system job
+  action       String
+  resource     String
+  resourceId   String?  @map("resource_id")
+  changes      Json     @default("{}")
+  requestId    String?  @map("request_id")
+  priority     String   @default("NORMAL") // NORMAL | HIGH (waivers, break-glass, role changes)
+  previousHash String?  @map("previous_hash")
+  hash         String
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([resource, resourceId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_entries")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Platform  (spec §9.5 idempotency, §10.3 worker leases)
+// ════════════════════════════════════════════════════════════════════════════
+
+enum IdempotencyStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model IdempotencyKey {
+  id                       Int               @id @default(autoincrement())
+  key                      String
+  actorUserId              Int               @map("actor_user_id")
+  operation                String
+  requestPath              String            @map("request_path")
+  requestHash              String            @map("request_hash")
+  status                   IdempotencyStatus
+  processingLeaseExpiresAt DateTime?         @map("processing_lease_expires_at") @db.Timestamptz
+  responseCode             Int?              @map("response_code")
+  responseBody             Json?             @map("response_body") // identifiers only — no PII
+  responseHash             String?           @map("response_hash")
+  createdAt                DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  completedAt              DateTime?         @map("completed_at") @db.Timestamptz
+  expiresAt                DateTime          @map("expires_at") @db.Timestamptz
+
+  @@unique([key, actorUserId])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}
+
+/// SQL: CHECK lease_seconds BETWEEN 30 AND 3600; CHECK expires_at > acquired_at (V49).
+model WorkerLease {
+  jobName      String   @id @map("job_name")
+  holderId     String   @map("holder_id") @db.Uuid
+  acquiredAt   DateTime @default(now()) @map("acquired_at") @db.Timestamptz
+  heartbeatAt  DateTime @default(now()) @map("heartbeat_at") @db.Timestamptz
+  expiresAt    DateTime @map("expires_at") @db.Timestamptz
+  leaseSeconds Int      @default(300) @map("lease_seconds")
+
+  @@index([expiresAt])
+  @@map("worker_leases")
+}
