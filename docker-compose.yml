@@ -1,0 +1,25 @@
+# Development database for AIGH Nursing Workforce V04.
+#   docker compose up -d db
+# PostgreSQL 15 is the production target (spec §0.2, backup drill verified on 15.19).
+# The api and web services are added once their Dockerfiles exist.
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aigh
+      POSTGRES_PASSWORD: aigh_dev_only
+      POSTGRES_DB: nurseapp
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aigh -d nurseapp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

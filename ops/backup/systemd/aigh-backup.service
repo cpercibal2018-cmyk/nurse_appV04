@@ -1,0 +1,16 @@
+[Unit]
+Description=AIGH Nursing Workforce PostgreSQL Nightly Backup & WAL Prune
+Documentation=ops/backup/README.md (nurse_appV04)
+After=postgresql.service network.target
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+EnvironmentFile=-/etc/default/aigh-backup
+ExecStart=/bin/bash /opt/nurse_appV04/ops/backup/scripts/nightly-backup.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

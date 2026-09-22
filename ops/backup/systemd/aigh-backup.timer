@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AIGH Nightly Backup daily at 02:00 (Asia/Riyadh / KSA)
+Documentation=ops/backup/README.md (nurse_appV04)
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

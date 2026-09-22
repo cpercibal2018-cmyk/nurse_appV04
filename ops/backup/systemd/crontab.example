@@ -1,0 +1,4 @@
+# AIGH Nursing Workforce Management System — Scheduled Nightly Backup
+# Edit with: crontab -u postgres -e
+# Runs daily at 02:00 AM (KSA / Asia/Riyadh)
+0 2 * * * /bin/bash /opt/nurse_appV04/ops/backup/scripts/nightly-backup.sh >> /var/log/aigh-backup.log 2>&1

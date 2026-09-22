@@ -1,0 +1,31 @@
+# --- secrets: never commit keyrings, private keys or env files -------------
+.env
+.env.*
+!.env.example
+.gnupg/
+**/gpg-backup/
+**/gpg-restore/
+**/private-keys-v1.d/
+*.key
+*.rev
+*.kbx
+*.kbx~
+trustdb.gpg
+random_seed
+
+# --- backup drill output (large opaque binaries; keep in backup storage) ----
+*.tar.gz.gpg
+*.gpg
+
+# --- runtime document storage (local development) ---------------------------
+backend/storage/
+
+# --- generated --------------------------------------------------------------
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+backend/src/generated/
+
+# --- logs -------------------------------------------------------------------
+*.log
