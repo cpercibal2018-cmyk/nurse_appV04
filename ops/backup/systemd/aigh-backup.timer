@@ -1,9 +1,11 @@
 [Unit]
-Description=Run AIGH Nightly Backup daily at 02:00 (Asia/Riyadh / KSA)
+Description=Run AIGH Nightly Backup daily at 01:00 Asia/Riyadh (22:00 UTC)
 Documentation=ops/backup/README.md (nurse_appV04)
 
 [Timer]
-OnCalendar=*-*-* 02:00:00
+# Spec §10.6 and owner decision D-40: 01:00 Asia/Riyadh. The time zone is named
+# explicitly so the schedule does not depend on the host clock (systemd >= 235).
+OnCalendar=*-*-* 01:00:00 Asia/Riyadh
 RandomizedDelaySec=300
 Persistent=true
 

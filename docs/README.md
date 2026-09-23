@@ -13,7 +13,7 @@
 | [DATABASE.md](DATABASE.md) | Tables, database-enforced rules, the audit chain, migrations, seed |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Configuration, processes and jobs, release steps, backups, **known gaps before production**, monitoring |
 | [MIGRATION.md](MIGRATION.md) | Moving from V03: data, user-visible changes, V03 programme items |
-| [V04_ARCHITECTURE_PLAN.md](V04_ARCHITECTURE_PLAN.md) | The plan, the **owner decision record** (§9a, D-1 … D-39) and implementation notes per commit |
+| [V04_ARCHITECTURE_PLAN.md](V04_ARCHITECTURE_PLAN.md) | The plan, the **owner decision record** (§9a, D-1 … D-41) and implementation notes per commit |
 | [reference/AIGH_Nursing_Workforce_Management_System_v2_8_7.md](reference/AIGH_Nursing_Workforce_Management_System_v2_8_7.md) | The original specification, verbatim (never edited) |
 
 ## Stage-1 analysis (V03)

@@ -48,7 +48,7 @@ Sources: reference spec §2.9 (organisation), §3.1 and §3.1.1 (onboarding, pos
 | No overlap (C4) | Two Approved/Active periods of one employee may not overlap (inclusive dates) — checked by the service, enforced by a database exclusion constraint |
 | Dates (C5, C9) | End after start; Gregorian authoritative, Umm al-Qura stored beside it |
 | One contract at a time (C6, C10) | "Create" offers only employees with no Approved/Active contract; otherwise renew |
-| Renewal (C8) | Prefill starts the day after the previous end with the same length (editable). Allowed while the current contract still covers — **see the open conflict** in [SYSTEM_SPECIFICATION.md §3](SYSTEM_SPECIFICATION.md#3-open-conflicts) |
+| Renewal (C8) | Prefill starts the day after the previous end with the same length (editable). Allowed while the current contract still covers, so the next period can start the day after it ends (D-41) |
 | Copy (C11) | A clean PDF copy is required before submit |
 | Separation of duties (D-30, D-37) | The creator and the submitter cannot approve; nobody acts on their own contract |
 | By date (daily job) | Approved → Active on the start date; Approved/Active → Expired after the end date |

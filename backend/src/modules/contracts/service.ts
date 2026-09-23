@@ -10,9 +10,9 @@
 // The creator and the submitter may not approve (D-30), and nobody acts on
 // their own contract. Every change re-evaluates eligibility in its transaction (L6).
 //
-// Renewal timing: the spec allows an Approved future period next to the current
-// one (§4.2, C12); V03's C7 allowed renewal only after coverage had lapsed. The
-// spec is followed here — see the conflict note in V04_ARCHITECTURE_PLAN.md.
+// Renewal timing (owner decision D-41): a renewal may be created and approved
+// while the current contract still covers — the next period sits next to it
+// (§4.2, C12). V03's C7 (renew only after coverage lapsed) is not used.
 
 import { z } from 'zod';
 import type { Contract, ContractStatus } from '../../generated/prisma/client.js';

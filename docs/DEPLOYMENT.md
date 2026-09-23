@@ -70,7 +70,7 @@ After a release, a System Admin should open **Audit → Verify chain** (expected
 
 The scripts, their environment contract and the verified drill are in [`ops/backup/README.md`](../ops/backup/README.md): WAL archiving, an encrypted nightly base backup, point-in-time restore and a restore drill.
 
-**Schedule conflict — owner to confirm.** Reference spec §10.6 runs the nightly backup at **22:00 UTC (01:00 Asia/Riyadh)**. The kit's `crontab.example` and `aigh-backup.timer` say **02:00 Asia/Riyadh**, and both use the host's clock, so on a UTC host they would run at 02:00 UTC (05:00 Riyadh). Until decided: set the backup host's time zone explicitly, and choose one of the two times. Neither collides with the application jobs (00:05 and 06:00 Riyadh).
+**Schedule (D-40):** nightly at **01:00 Asia/Riyadh (22:00 UTC)**, as spec §10.6 says. `aigh-backup.timer` names the `Asia/Riyadh` time zone, so it is right whatever the host clock; `crontab.example` has one line for a UTC host and one for a Riyadh host — use exactly one. It does not collide with the application jobs (00:05 and 06:00 Riyadh).
 
 ## 6. Known gaps before production
 
@@ -84,7 +84,6 @@ The scripts, their environment contract and the verified drill are in [`ops/back
 | **No badge feed** (D-33) | Attendance gaps and alerts only work once events are loaded into `attendance_events` | The PACS interface contract |
 | **Renewal picker capped at 500** | `GET /contracts/renewable` lists at most 500 in-scope employees, ordered by job number, without search | Add search / pagination before a hospital-wide HR Admin has more than 500 employees in scope |
 | **No container images or blue/green** (spec §10.4) | Deployment is manual (§4) | Dockerfiles and a pipeline, when the hosting decision is made |
-| **Backup time** | See §5 | Owner decision |
 
 ## 7. Monitoring
 

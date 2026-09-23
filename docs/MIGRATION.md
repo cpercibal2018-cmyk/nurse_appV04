@@ -55,7 +55,7 @@ The V03 remediation tracker (`AIGH_v2_8_7_remediation_tracker.md` in the V03 rep
 | B-18 | Key management, pepper rotation, DPO sign-off | **Open** |
 | B-19 | Bundle gate in CI; entry < 200 KB gz | **Done** — about 173 KB gz |
 | B-20 | Reverse proxy configuration, TLS, HTTPS-only exposure | **Open** (not in the repository) |
-| B-21 | Backup scripts on real PostgreSQL 15 with a timed restore drill | Verified by the backup kit ([ops/backup/README.md](../ops/backup/README.md) §5); the backup time conflict is open ([DEPLOYMENT.md §5](DEPLOYMENT.md#5-backups-and-restore)) |
+| B-21 | Backup scripts on real PostgreSQL 15 with a timed restore drill | Verified by the backup kit ([ops/backup/README.md](../ops/backup/README.md) §5); the schedule is 01:00 Riyadh (D-40, [DEPLOYMENT.md §5](DEPLOYMENT.md#5-backups-and-restore)) |
 | B-22 | Decide `archive_timeout` (RPO) | **Open** — owner decision; the kit uses 300 s |
 | B-23 | Positions route `/api/v1/positions` | **Done** |
 | B-24 | Bulk bed capacity, CSV import, configuration grid | **Done** |

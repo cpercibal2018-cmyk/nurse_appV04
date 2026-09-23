@@ -34,7 +34,8 @@ The reference is silent or open on these; the owner settled them. They add detai
 | §3.3 | Own sign-in history: one entry per session with sign-in and last IP and browser | D-22 |
 | §3.2 | Accounts are provisioned by HR with an initial password until the invitation flow exists (it needs SMTP) | D-23 |
 | §4.2 | Contract status transitions: Draft → PendingApproval → Approved/Active, return to Draft; suspend, reinstate, terminate (final); Expired only by the daily job; Superseded never set by hand | D-29 |
-| §4.2 | Renewal may be created while the current contract is still covering; the overlap rule (C4) prevents two covering periods. V03 (rule C7) allowed renewal only after coverage lapsed — **the owner has not yet confirmed which applies**; V04 follows the reference | Open — see §3 |
+| §4.2 | A contract may be renewed while the current one still covers; the next period follows it directly and the overlap rule (C4) keeps them apart. V03's rule C7 (renew only after coverage lapsed) is not used | D-41 |
+| §10.6 | Nightly backup at 01:00 Asia/Riyadh (22:00 UTC), scheduled independently of the host clock | D-40 |
 | §5.1, §8.1 R10 | "Modifying global eligibility rules" = the hospital-wide credential catalog: every credential type change needs a second, system-wide administrator. Unit requirements apply at once | D-24, D-25 |
 | §5.2 | "Subject to Renew" window stays 60 days | D-39 |
 | §6.1 | An employee without a unit is ineligible (`UNIT_NOT_ASSIGNED`) | D-27 |
@@ -55,7 +56,7 @@ The reference is silent or open on these; the owner settled them. They add detai
 
 | Item | Status |
 | :--- | :--- |
-| Contract renewal timing (reference §4.2 vs V03 rule C7) | V04 follows the reference. **Awaiting owner confirmation** |
+| — | None open. (Renewal timing was settled by D-41, the backup time by D-40.) |
 
 ## 4. REQUIREMENT NOT ESTABLISHED
 

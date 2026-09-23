@@ -320,10 +320,11 @@ long as the cluster runs. To see what a given run would prune without pruning it
 
 ---
 
-## 8. Automated Scheduling (systemd timer / cron)
+## 11. Automated Scheduling (systemd timer / cron)
 
-To run `nightly-backup.sh` automatically every night at 02:00 (Asia/Riyadh time),
-systemd unit files are provided in `ops/backup/systemd/`:
+To run `nightly-backup.sh` automatically every night at **01:00 Asia/Riyadh (22:00 UTC)** —
+spec §10.6, owner decision D-40 — systemd unit files are provided in `ops/backup/systemd/`.
+The timer names the time zone explicitly, so it does not depend on the host clock:
 
 ```bash
 # Install and enable the systemd timer:
@@ -336,4 +337,5 @@ sudo systemctl enable --now aigh-backup.timer
 systemctl list-timers aigh-backup.timer
 ```
 
-For environments using traditional cron, see `ops/backup/systemd/crontab.example`.
+For environments using traditional cron, see `ops/backup/systemd/crontab.example`. Cron uses the host clock, so
+the example has one line for a UTC host (`0 22`) and one for an Asia/Riyadh host (`0 1`); use exactly one.
