@@ -6,8 +6,10 @@ export type CredentialStatus = 'PendingVerification' | 'Valid' | 'ExpiringSoon' 
 export type Lifecycle = 'Active' | 'SubjectToRenew' | 'OnProcess' | 'Expired';
 export type EligibilityStatus = 'ELIGIBLE' | 'ELIGIBLE_WITH_GRACE' | 'ELIGIBLE_WITH_POLICY_WARNING' | 'INELIGIBLE';
 
-export interface FieldDef { key: string; label: string; type: string; required: boolean; displayOrder: number; isIssueDate?: boolean; isExpiryDate?: boolean }
-export interface Template { id: number; code: string; name: string; categoryCode: string; hasExpiry: boolean; requiresUpload: boolean; gracePeriodDays: number; isActive: boolean; fieldDefs: FieldDef[] }
+export interface FieldDef { key: string; label: string; type: (typeof FIELD_TYPES)[number]; required: boolean; displayOrder: number; isIssueDate?: boolean; isExpiryDate?: boolean }
+export interface Template { id: number; code: string; name: string; categoryCode: string; description: string | null; hasExpiry: boolean; requiresUpload: boolean; gracePeriodDays: number; displayOrder: number; isActive: boolean; fieldDefs: FieldDef[] }
+/** The field types the server accepts (catalog.ts `FieldType`). */
+export const FIELD_TYPES = ['text', 'date', 'date_hijri', 'select', 'number', 'country', 'reference'] as const;
 export interface Requirement {
   id: number; templateId: number; unitId: number; positionCode: string | null;
   policyStatus: 'MANDATORY' | 'TRANSITION' | 'OPTIONAL'; transitionDeadline: string | null;
@@ -64,6 +66,7 @@ export function useCredentialAction() {
       | { kind: 'requirementUpdate'; id: number; body: object }
       | { kind: 'requirementDelete'; id: number }
       | { kind: 'template'; id: number; body: object }
+      | { kind: 'templateCreate'; body: object }
       | { kind: 'categoryCreate'; body: object }
       | { kind: 'categoryUpdate'; code: string; body: object }
       | { kind: 'waiver'; body: object }) => {
@@ -80,6 +83,7 @@ export function useCredentialAction() {
         case 'requirementUpdate': return http.put(`/credential-requirements/${a.id}`, a.body);
         case 'requirementDelete': return http.delete(`/credential-requirements/${a.id}`);
         case 'template': return http.patch(`/credential-templates/${a.id}`, a.body);
+        case 'templateCreate': return http.post('/credential-templates', a.body);
         case 'categoryCreate': return http.post('/credential-categories', a.body);
         case 'categoryUpdate': return http.patch(`/credential-categories/${a.code}`, a.body);
         case 'waiver': return http.post('/waivers', a.body);

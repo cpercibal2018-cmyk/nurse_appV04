@@ -9,8 +9,9 @@ import { usePermissions } from '../../hooks/usePermissions';
 import { describeApiError } from '../../lib/errors';
 import { useUnits } from '../administration/api';
 import { usePositions } from '../workforce/api';
-import { useCategories, useCredentialAction, useCredentials, useRequirements, useTemplates, type Category, type CredentialRow, type Requirement, type Template } from './api';
+import { FIELD_TYPES, useCategories, useCredentialAction, useCredentials, useRequirements, useTemplates, type Category, type CredentialRow, type Requirement, type Template } from './api';
 import { CredentialStatusTag, DocumentsDrawer, LifecycleTag } from './components';
+import { changeBody, createBody, isDateType, toFormValues, type FieldRowValue, type TemplateFormValues } from './catalogForm';
 
 type Decision = { kind: 'suspend' | 'revoke' | 'reject'; row: CredentialRow };
 
@@ -195,22 +196,38 @@ function CategoriesTab() {
   );
 }
 
-/** Catalog edits go to a second system-wide administrator before they apply (D-24). */
+/**
+ * Catalog changes — new credential types included — go to a second
+ * system-wide administrator before they apply (D-24). An edit sends only what
+ * changed, so the approver sees exactly the change.
+ */
 function CatalogTab() {
   const { t } = useTranslation();
   const { message } = App.useApp();
   const { hasRole } = usePermissions();
   const hr = hasRole('HR_ADMIN', 'SYSTEM_ADMIN');
   const templates = useTemplates();
+  const categories = useCategories();
   const action = useCredentialAction();
-  const [editing, setEditing] = useState<Template | null>(null);
-  const [form] = Form.useForm<{ gracePeriodDays: number; isActive: boolean; reason: string }>();
+  const [editing, setEditing] = useState<Template | 'new' | null>(null);
+  const [form] = Form.useForm<TemplateFormValues>();
+  const rows = Form.useWatch('fields', form);
 
-  async function submit(v: { gracePeriodDays: number; isActive: boolean; reason: string }) {
+  function open(x: Template | 'new') {
+    form.resetFields();
+    if (x !== 'new') form.setFieldsValue(toFormValues(x));
+    setEditing(x);
+  }
+
+  async function submit(v: TemplateFormValues) {
     if (!editing) return;
+    const body = editing === 'new' ? createBody(v) : changeBody(editing, v);
     try {
-      const out = await action.mutateAsync({ kind: 'template', id: editing.id, body: v }) as { status: string; requestId?: number };
-      if (out.status === 'PENDING_APPROVAL') message.info(t('submittedForApproval', { id: out.requestId }), 6);
+      const out = editing === 'new'
+        ? await action.mutateAsync({ kind: 'templateCreate', body })
+        : await action.mutateAsync({ kind: 'template', id: editing.id, body });
+      const o = out as { status: string; requestId?: number };
+      if (o.status === 'PENDING_APPROVAL') message.info(t('submittedForApproval', { id: o.requestId }), 6);
       else message.success(t('saved'));
       setEditing(null);
     } catch (e) { message.error(describeApiError(e)); }
@@ -218,7 +235,10 @@ function CatalogTab() {
 
   return (
     <>
-      <Alert type="info" showIcon title={t('catalogFourEyes')} style={{ marginBottom: 12 }} />
+      <Flex justify="space-between" align="center" gap={8} wrap style={{ marginBottom: 12 }}>
+        <Alert type="info" showIcon title={t('catalogFourEyes')} style={{ flex: 1 }} />
+        {hr && <Button type="primary" onClick={() => open('new')}>{t('addCredentialType')}</Button>}
+      </Flex>
       <Table<Template>
         rowKey="id" size="middle" loading={templates.isLoading} dataSource={templates.data?.items} pagination={false} scroll={{ x: true }}
         columns={[
@@ -228,14 +248,70 @@ function CatalogTab() {
           { title: t('fields'), render: (_, x) => x.fieldDefs.map((f) => f.label).join(', ') || '—', ellipsis: true },
           { title: t('graceDays'), dataIndex: 'gracePeriodDays' },
           { title: t('status'), render: (_, x) => <Tag color={x.isActive ? 'green' : 'default'}>{x.isActive ? t('active') : t('inactive')}</Tag> },
-          ...(hr ? [{ title: '', render: (_: unknown, x: Template) => <Button size="small" onClick={() => { setEditing(x); form.setFieldsValue({ gracePeriodDays: x.gracePeriodDays, isActive: x.isActive, reason: '' }); }}>{t('edit')}</Button> }] : []),
+          ...(hr ? [{ title: '', render: (_: unknown, x: Template) => <Button size="small" onClick={() => open(x)}>{t('edit')}</Button> }] : []),
         ]}
       />
-      <Modal title={editing ? `${t('edit')}: ${editing.code}` : ''} open={editing !== null} onCancel={() => setEditing(null)}
-        onOk={() => form.submit()} okText={t('submit')} cancelText={t('cancel')} confirmLoading={action.isPending} forceRender>
-        <Form form={form} layout="vertical" onFinish={submit}>
-          <Form.Item name="gracePeriodDays" label={t('graceDays')} rules={[{ required: true }]}><InputNumber min={0} max={90} style={{ width: '100%' }} /></Form.Item>
-          <Form.Item name="isActive" label={t('status')} valuePropName="checked"><Switch checkedChildren={t('active')} unCheckedChildren={t('inactive')} /></Form.Item>
+      <Modal title={editing === 'new' ? t('addCredentialType') : editing ? `${t('edit')}: ${editing.code}` : ''} open={editing !== null} onCancel={() => setEditing(null)}
+        onOk={() => form.submit()} okText={t('submit')} cancelText={t('cancel')} confirmLoading={action.isPending} width={900} forceRender>
+        <Form form={form} layout="vertical" onFinish={submit}
+          initialValues={{ hasExpiry: true, requiresUpload: true, gracePeriodDays: 0, displayOrder: 0, isActive: true, fields: [] }}>
+          <Flex gap={12} wrap>
+            {editing === 'new' && <Form.Item name="code" label={t('code')} style={{ minWidth: 180 }} rules={[{ required: true, pattern: /^[A-Z][A-Z0-9_]{1,39}$/ }]}><Input maxLength={40} /></Form.Item>}
+            <Form.Item name="name" label={t('name')} style={{ flex: 1, minWidth: 220 }} rules={[{ required: true, whitespace: true }]}><Input maxLength={120} /></Form.Item>
+            <Form.Item name="categoryCode" label={t('category')} style={{ minWidth: 220 }} rules={[{ required: true }]}>
+              <Select showSearch optionFilterProp="label" options={categories.data?.items.map((c) => ({ value: c.code, label: `${c.code} — ${c.name}` }))} />
+            </Form.Item>
+          </Flex>
+          <Form.Item name="description" label={t('description')}><Input.TextArea rows={2} maxLength={500} /></Form.Item>
+          <Flex gap={16} wrap>
+            <Form.Item name="hasExpiry" label={t('hasExpiry')} valuePropName="checked"><Switch /></Form.Item>
+            <Form.Item name="requiresUpload" label={t('requiresUpload')} valuePropName="checked"><Switch /></Form.Item>
+            <Form.Item name="gracePeriodDays" label={t('graceDays')} rules={[{ required: true }]}><InputNumber min={0} max={90} precision={0} /></Form.Item>
+            <Form.Item name="displayOrder" label={t('displayOrder')}><InputNumber min={0} precision={0} /></Form.Item>
+            {editing !== 'new' && <Form.Item name="isActive" label={t('status')} valuePropName="checked"><Switch checkedChildren={t('active')} unCheckedChildren={t('inactive')} /></Form.Item>}
+          </Flex>
+          <Form.List
+            name="fields"
+            rules={[{
+              validator: async (_, list?: FieldRowValue[]) => {
+                const l = list ?? [];
+                const keys = l.map((f) => f?.key).filter(Boolean);
+                if (new Set(keys).size !== keys.length) throw new Error(t('fieldKeyDuplicate'));
+                const dated = (flag: 'isIssueDate' | 'isExpiryDate') => l.filter((f) => f?.[flag] && isDateType(f.type)).length;
+                if (dated('isIssueDate') > 1 || dated('isExpiryDate') > 1) throw new Error(t('fieldDatesOnce'));
+              },
+            }]}
+          >
+            {(items, { add, remove, move }, { errors }) => (
+              <Card size="small" title={t('fields')} style={{ marginBottom: 16 }}
+                extra={<Button size="small" disabled={items.length >= 30} onClick={() => add({ key: '', label: '', type: 'text', required: false })}>{t('addField')}</Button>}>
+                <Alert type="info" showIcon title={t('fieldsChangeHint')} style={{ marginBottom: 8 }} />
+                {items.map((item, i) => {
+                  const dateField = isDateType(rows?.[item.name]?.type);
+                  return (
+                    <Flex key={item.key} gap={8} wrap align="start">
+                      <Form.Item name={[item.name, 'key']} label={i === 0 ? t('fieldKey') : undefined} style={{ width: 150 }}
+                        rules={[{ required: true, pattern: /^[a-z][a-z0-9_]{0,49}$/, message: t('fieldKeyInvalid') }]}><Input maxLength={50} /></Form.Item>
+                      <Form.Item name={[item.name, 'label']} label={i === 0 ? t('fieldLabel') : undefined} style={{ flex: 1, minWidth: 160 }}
+                        rules={[{ required: true, whitespace: true }]}><Input maxLength={100} /></Form.Item>
+                      <Form.Item name={[item.name, 'type']} label={i === 0 ? t('fieldType') : undefined} style={{ width: 170 }}>
+                        <Select options={FIELD_TYPES.map((x) => ({ value: x, label: t(`fieldType_${x}`) }))} />
+                      </Form.Item>
+                      <Form.Item name={[item.name, 'required']} label={i === 0 ? t('fieldRequired') : undefined} valuePropName="checked"><Switch size="small" /></Form.Item>
+                      <Form.Item name={[item.name, 'isIssueDate']} label={i === 0 ? t('fieldIssueDate') : undefined} valuePropName="checked"><Switch size="small" disabled={!dateField} /></Form.Item>
+                      <Form.Item name={[item.name, 'isExpiryDate']} label={i === 0 ? t('fieldExpiryDate') : undefined} valuePropName="checked"><Switch size="small" disabled={!dateField} /></Form.Item>
+                      <Space size={4} style={{ marginTop: i === 0 ? 30 : 0 }}>
+                        <Button size="small" disabled={i === 0} onClick={() => move(i, i - 1)} aria-label={t('moveUp')}>↑</Button>
+                        <Button size="small" disabled={i === items.length - 1} onClick={() => move(i, i + 1)} aria-label={t('moveDown')}>↓</Button>
+                        <Button size="small" danger onClick={() => remove(item.name)}>{t('removeField')}</Button>
+                      </Space>
+                    </Flex>
+                  );
+                })}
+                <Form.ErrorList errors={errors} />
+              </Card>
+            )}
+          </Form.List>
           <Form.Item name="reason" label={t('reason')} rules={[{ required: true, min: 10, whitespace: true }]}><Input.TextArea rows={3} maxLength={1000} /></Form.Item>
         </Form>
       </Modal>

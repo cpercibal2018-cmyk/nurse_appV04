@@ -93,3 +93,13 @@ Final search for `SEED_DEMO`, `DEMO_*`, `DEPARTMENTS`, `UNITS`, `POSITIONS`, `CR
 | Application code (`backend/src`, `frontend/src`) | — | **No occurrence.** `demo1234` occurs nowhere except V03 history. Nothing must be removed |
 
 The JSON column `credential_templates.field_defs_legacy` is deliberately **kept** (unread) as a rollback reference; dropping it is a separate, owner-approved migration once the database-first setup has been accepted in the hospital environment.
+
+## 8. Follow-up (after the final report)
+
+| Item | Outcome |
+| :--- | :--- |
+| No screen to create a credential type with its fields | **Done.** Credentials → Catalog: *Add credential type*, and *Edit* now covers name, category, description, expiry, upload, grace, display order, status and the tracked fields (add, remove, reorder, issue/expiry flags). Both go to a second system-wide administrator (D-24); an edit sends only what changed (`frontend/src/modules/credentials/catalogForm.ts`, unit-tested). |
+| Defect found while testing it | A change to a type's **fields** could never be approved: the re-check compared the stored request (jsonb, keys re-sorted by PostgreSQL) with the live value by `JSON.stringify`, so it always reported `TEMPLATE_CHANGED_SINCE_REQUEST`. Fixed with a key-order-insensitive comparison (`backend/src/lib/same.ts`), also used by the baseline import; covered by an API test through the approval. |
+| GitHub CI | Green on every migration commit up to `8474a54`. |
+| `field_defs_legacy` | Still kept — dropping the column is irreversible and waits for the owner's explicit approval. |
+| First accounts on the development database | Waits for the owner to run `npm run bootstrap -w backend` (passwords are typed by the owner, never by the assistant). |

@@ -45,6 +45,7 @@ const FAMILIES: Record<string, string[]> = {
   priority_: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'],
   baselineSection_: ['departments', 'units', 'positions', 'credentialCategories', 'credentialTemplates'],
   baselineStatus_: ['CREATE', 'UNCHANGED', 'CONFLICT', 'REJECTED'],
+  fieldType_: ['text', 'date', 'date_hijri', 'select', 'number', 'country', 'reference'],
 };
 
 describe('translations', () => {
