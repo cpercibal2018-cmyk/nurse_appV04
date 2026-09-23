@@ -20,7 +20,7 @@ nurse_appV04/
 │  ├─ src/
 │  │  ├─ config/                 env.ts (zod-validated), residency.ts
 │  │  ├─ middleware/             authenticate.ts · authorize.ts · validate.ts · idempotency.ts · errors.ts · request-id.ts
-│  │  ├─ lib/                    prisma.ts · audit.ts (fn_append_audit_entry wrapper) · dates.ts · hijri.ts · storage.ts · worker-lease.ts · http-errors.ts
+│  │  ├─ lib/                    prisma.ts · audit.ts (fn_append_audit_entry wrapper) · dates.ts · hijri.ts · storage.ts · worker-lease.ts · http-errors.ts · logger.ts (JSON, no PII)
 │  │  ├─ modules/
 │  │  │  ├─ auth/                routes · service · tokens · schemas
 │  │  │  ├─ users/               accounts + role assignments (RBAC data)
