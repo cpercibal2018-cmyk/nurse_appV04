@@ -4,7 +4,7 @@
 
 import 'dotenv/config';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createPrisma, type Db, Prisma } from '../src/lib/prisma.js';
+import { createPrisma, type Db, Prisma, withUtcSession } from '../src/lib/prisma.js';
 import { appendAudit, findChainBreaks } from '../src/lib/audit.js';
 
 const url = process.env.TEST_DATABASE_URL;
@@ -145,6 +145,35 @@ describeDb('database constraints', () => {
       await tx.$executeRaw`ROLLBACK TO SAVEPOINT s1`;
       await expect(tx.$executeRaw`DELETE FROM audit_entries WHERE id = ${a}`).rejects.toThrow(/append-only/);
     });
+  });
+
+  it('stores the exact instant Prisma writes, even when the connection asks for Asia/Riyadh', async () => {
+    // Regression: Prisma 7.10's pg adapter sends Dates without an offset, so a
+    // non-UTC session stored every timestamp 3 hours early (see lib/prisma.ts).
+    const riyadh = createPrisma(`${url!}${url!.includes('?') ? '&' : '?'}options=-c%20TimeZone%3DAsia%2FRiyadh`);
+    try {
+      expect(await riyadh.$queryRaw`SHOW timezone`).toEqual([{ TimeZone: 'UTC' }]);
+      await riyadh.$transaction(async (tx) => {
+        const written = new Date('2026-01-01T12:00:00.000Z');
+        const u = await tx.user.create({ data: { email: `tz${Date.now()}@x.sa`, displayName: 'tz', passwordHash: 'x', lastLoginAt: written } });
+        const [row] = await tx.$queryRaw<Array<{ epoch: string; drift: string }>>`
+          SELECT extract(epoch FROM last_login_at)::text AS epoch,
+                 abs(extract(epoch FROM (created_at - now())))::text AS drift
+          FROM users WHERE id = ${u.id}`;
+        expect(Number(row!.epoch) * 1000).toBe(written.getTime());
+        // A Prisma-generated default and the database clock agree (was 10800 s apart).
+        expect(Number(row!.drift)).toBeLessThan(60);
+        throw new Rollback();
+      }).catch((e: unknown) => { if (!(e instanceof Rollback)) throw e; });
+    } finally {
+      await riyadh.$disconnect();
+    }
+  });
+
+  it('keeps operator connection options when pinning UTC', () => {
+    const u = new URL(withUtcSession('postgresql://a@h:5432/db?options=-c%20search_path%3Dx&sslmode=require'));
+    expect(u.searchParams.get('options')).toBe('-c search_path=x -c TimeZone=UTC');
+    expect(u.searchParams.get('sslmode')).toBe('require');
   });
 
   it('A3: the verification view detects a tampered row', async () => {
