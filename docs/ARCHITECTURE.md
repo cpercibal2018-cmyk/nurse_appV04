@@ -108,7 +108,7 @@ The scheduler ticks every minute. Each period has a unique run key in `job_runs`
 ## 9. Frontend
 
 - **Page registry** (`app/modules.tsx`): each page's path, menu label, icon, required roles and lazy import. The menu shows only permitted pages; the server still enforces everything.
-- **HTTP client** (`services/http.ts`): keeps the access token in memory, sends the CSRF header, refreshes once for all concurrent requests, and attaches idempotency keys.
+- **HTTP client and session cache** (`services/http.ts`, `services/queryClient.ts`, `hooks/useAuth.ts`): keep the access token in memory, send the CSRF header, refresh once for concurrent requests, and attach idempotency keys. Protected React Query results are discarded on expiry, logout, login, restore and privilege reload.
 - **Language**: every label is a key in `lib/i18n.ts` with English and Arabic text; Arabic switches the layout to right-to-left. `i18n.test.ts` fails on a missing or empty translation.
 - **Dates**: Gregorian dates are authoritative; the Umm al-Qura Hijri date is shown beside them (`lib/hijri.ts`, display only — the server converts and stores Hijri dates itself).
 - **Bundle budget**: the build fails if the initial download exceeds 200 KB gzipped or any chunk exceeds 150 KB.
@@ -125,4 +125,4 @@ The scheduler ticks every minute. Each period has a unique run key in `job_runs`
 | Documentation | `backend/test/docs.test.ts`, `scripts/check-docs.mjs` | RBAC.md matches the permission table; every documentation link resolves |
 | Frontend | `frontend/src/**/*.test.ts(x)` | Translations complete, every page loads, Hijri and phone helpers |
 
-Run everything with `npm test` from the repository root; CI (`.github/workflows/ci.yml`) also migrates twice (drift check), seeds twice (idempotency) and builds.
+Run everything with `npm test` from the repository root; CI (`.github/workflows/ci.yml`) generates the Prisma client before the seed, deploys migrations twice (idempotent deployment, **not** a drift check), seeds twice (reference-data idempotency) and builds.

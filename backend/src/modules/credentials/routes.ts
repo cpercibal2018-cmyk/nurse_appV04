@@ -29,7 +29,7 @@ export function createCredentialsRouter(catalog: CatalogService, records: Record
   });
 
   // ── Requirements (§5.1.4) ─────────────────────────────────────────────────
-  r.get('/credential-requirements', authorize('requirements.read'), async (req, res) => { res.json(await catalog.listRequirements(RequirementQuery.parse(req.query))); });
+  r.get('/credential-requirements', authorize('requirements.read'), async (req, res) => { res.json(await catalog.listRequirements(authOf(res), RequirementQuery.parse(req.query))); });
   r.post('/credential-requirements', authorize('requirements.write'), async (req, res) => {
     res.status(201).json(await catalog.createRequirement(authOf(res), RequirementBody.parse(req.body), rid(res)));
   });

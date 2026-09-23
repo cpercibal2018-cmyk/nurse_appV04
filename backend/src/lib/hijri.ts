@@ -23,3 +23,41 @@ export function toHijriIso(value: Date | string): string {
   const day = get('day').padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Hijri → Gregorian under the SAME ICU Umm al-Qura calendar as toHijriIso.
+ * Intl formats but cannot parse that calendar; search calendar days and only
+ * accept an exact round-trip. In particular, a Hijri year must never be stored
+ * as a Gregorian year in the clinical expiryDate column.
+ */
+export function fromHijriIso(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) throw new RangeError(`Invalid Umm al-Qura date: ${value}`);
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > 30) {
+    throw new RangeError(`Invalid Umm al-Qura date: ${value}`);
+  }
+
+  // Approximate solar year (only a search bound, never the converted result).
+  // A five-year window covers the accumulated leap-month/day variation.
+  const solarYear = Math.floor(621.58 + 0.970224 * year);
+  let lo = Date.UTC(solarYear - 2, 0, 1) / DAY_MS;
+  let hi = Date.UTC(solarYear + 2, 11, 31) / DAY_MS;
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    const gregorian = new Date(mid * DAY_MS);
+    const formatted = toHijriIso(gregorian);
+    if (formatted === value) {
+      const iso = gregorian.toISOString().slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) break; // database dates use four-digit Gregorian years
+      return iso;
+    }
+    if (formatted < value) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  throw new RangeError(`Invalid Umm al-Qura date: ${value}`);
+}

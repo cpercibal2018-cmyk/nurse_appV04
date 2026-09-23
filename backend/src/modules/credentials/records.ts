@@ -12,7 +12,7 @@ import { z } from 'zod';
 import type { Credential, CredentialTemplate } from '../../generated/prisma/client.js';
 import { appendAudit } from '../../lib/audit.js';
 import { daysBetween, dbDate, isIsoDate, riyadhDate, toDbDate, type IsoDate } from '../../lib/dates.js';
-import { toHijriIso } from '../../lib/hijri.js';
+import { fromHijriIso, toHijriIso } from '../../lib/hijri.js';
 import { HttpError, notFound } from '../../lib/http-errors.js';
 import { Prisma, type Db, type DbClient } from '../../lib/prisma.js';
 import { checkUpload, type Storage } from '../../lib/uploads.js';
@@ -67,22 +67,37 @@ export function readTrackingData(tpl: Pick<CredentialTemplate, 'fieldDefs' | 'ha
   const defs = (tpl.fieldDefs ?? []) as unknown as FieldDef[];
   const known = new Set(defs.map((d) => d.key));
   const problems: string[] = [];
+  const hijriDates = new Map<string, string>();
   for (const key of Object.keys(data)) if (!known.has(key)) problems.push(`${key}: not a field of this template`);
   for (const d of defs) {
     const v = data[d.key];
     const empty = v === undefined || v === '';
     if (empty) { if (d.required) problems.push(`${d.key}: required`); continue; }
     if (d.type === 'date' && !(typeof v === 'string' && isIsoDate(v))) problems.push(`${d.key}: must be YYYY-MM-DD`);
-    if (d.type === 'date_hijri' && !(typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v))) problems.push(`${d.key}: must be a Hijri date YYYY-MM-DD`);
+    if (d.type === 'date_hijri') {
+      try {
+        if (typeof v !== 'string') throw new RangeError('not a Hijri date');
+        hijriDates.set(d.key, fromHijriIso(v));
+      } catch {
+        problems.push(`${d.key}: must be a valid Umm al-Qura date YYYY-MM-DD`);
+      }
+    }
     if (d.type === 'number' && !(typeof v === 'number' || /^-?\d+(\.\d+)?$/.test(String(v)))) problems.push(`${d.key}: must be a number`);
   }
-  const issueField = defs.find((d) => d.isIssueDate);
-  const expiryField = defs.find((d) => d.isExpiryDate);
-  const issueDate = explicit.issueDate ?? (issueField ? (data[issueField.key] as string | undefined) : undefined);
-  const expiryDate = explicit.expiryDate ?? (expiryField ? (data[expiryField.key] as string | undefined) : undefined);
+  const readDate = (field: FieldDef | undefined, given: string | undefined, label: string): string | null => {
+    if (given && !isIsoDate(given)) problems.push(`${label}: must be a Gregorian YYYY-MM-DD date`);
+    if (field && field.type !== 'date' && field.type !== 'date_hijri') problems.push(`${field.key}: not a date field`);
+    const fromField = field && (field.type === 'date_hijri' ? hijriDates.get(field.key) : data[field.key]);
+    // An explicit Gregorian date may accompany a Hijri value, but it must
+    // represent the SAME day. Never let it silently override the evidence.
+    if (given && fromField && given !== fromField) problems.push(`${label}: disagrees with ${field!.key}`);
+    return given ?? (typeof fromField === 'string' ? fromField : null);
+  };
+  const issueDate = readDate(defs.find((d) => d.isIssueDate), explicit.issueDate, 'issueDate');
+  const expiryDate = readDate(defs.find((d) => d.isExpiryDate), explicit.expiryDate, 'expiryDate');
   if (issueDate && expiryDate && expiryDate < issueDate) problems.push('expiry date is before issue date');
   if (problems.length > 0) throw new HttpError(400, 'TRACKING_DATA_INVALID', 'The credential details are invalid', problems);
-  return { issueDate: issueDate ?? null, expiryDate: expiryDate ?? null };
+  return { issueDate, expiryDate };
 }
 
 type WithRelations = Credential & {

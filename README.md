@@ -19,8 +19,13 @@ Node.js 22 LTS or newer, PostgreSQL 15 (or `docker compose up -d db`).
 ```bash
 npm install
 cp .env.example backend/.env
-npm run dev:backend      # http://localhost:3001/api/v1/health
-npm run dev:frontend     # http://localhost:5173
+# Set JWT_SECRET in backend/.env and check DATABASE_URL points to a V04-only database.
+docker compose up -d db                     # or start a separate PostgreSQL 15 database
+npm run db:generate -w backend              # required before seed or first dev start
+npm run db:deploy -w backend                # apply the V04 migrations
+npm run db:seed -w backend                  # reference data only
+npm run dev:backend                         # http://localhost:3001/api/v1/health
+npm run dev:frontend                        # http://localhost:5173
 ```
 
 ## Checks

@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { appendAudit } from '../../lib/audit.js';
 import { HttpError, notFound } from '../../lib/http-errors.js';
 import type { Db } from '../../lib/prisma.js';
-import { scopeCovers, unitScope, unitsOfScope, type AuthContext } from '../users/access.js';
+import { scopeCovers, unitScope, type AuthContext, type UnitScope } from '../users/access.js';
 import type { CatalogApprovalPayload, CatalogService } from '../credentials/catalog.js';
 import type { ApprovalPayload as RolePayload, RoleAssignmentService } from '../users/role-assignments.js';
 
@@ -25,7 +25,28 @@ const ADMIN_ROLES = ['HR_ADMIN', 'SYSTEM_ADMIN'] as const;
 
 interface LockedRow { id: number; initiator_id: number; status: string; action_type: string; payload: ApprovalPayload }
 
+/** The same scope rule guards both the queue and decisions (including rejection).
+ * A UNIT grant cannot cover a DEPARTMENT grant: future units would expand it. */
+function canDecide(auth: AuthContext, scope: UnitScope, p: ApprovalPayload): boolean {
+  if (isCatalog(p)) return scope.all; // the catalog is hospital-wide (D-25)
+  const type = p.kind === 'GRANT' ? p.grant.scopeType : p.update.scopeType ?? 'SYSTEM';
+  const ids = p.kind === 'GRANT' ? p.grant.scopeIds : p.update.scopeIds ?? [];
+  if (type === 'SYSTEM') return scope.all && ids.length === 0;
+  if (ids.length === 0) return false;
+  if (type === 'DEPARTMENT') {
+    return scope.all || ids.every((id) => auth.effective.some((g) =>
+      (ADMIN_ROLES as readonly string[]).includes(g.role) && g.scopeType === 'DEPARTMENT' && g.scopeIds.includes(id)));
+  }
+  return scopeCovers(scope, ids);
+}
+
 export function createApprovalService(db: Db, roles: RoleAssignmentService, catalog: CatalogService) {
+  async function assertDecisionScope(tx: Parameters<Parameters<Db['$transaction']>[0]>[0], auth: AuthContext, p: ApprovalPayload) {
+    if (!canDecide(auth, await unitScope(tx, auth, ADMIN_ROLES), p)) {
+      throw new HttpError(403, 'SCOPE_NOT_COVERED', 'This approval request is outside your assigned scope');
+    }
+  }
+
   async function list(auth: AuthContext, q: z.infer<typeof ListApprovalsQuery>) {
     const rows = await db.approvalRequest.findMany({
       where: { status: q.status },
@@ -33,19 +54,9 @@ export function createApprovalService(db: Db, roles: RoleAssignmentService, cata
       orderBy: { createdAt: 'desc' },
       take: 200,
     });
-    // Show only requests whose scope the caller covers (they could not approve the rest).
+    // The scope used for visibility is also enforced before either decision.
     const scope = await unitScope(db, auth, ADMIN_ROLES);
-    const visible = [];
-    for (const r of rows) {
-      const p = r.payload as unknown as ApprovalPayload;
-      // The credential catalog is hospital-wide (D-25): only system-wide admins see its requests.
-      if (isCatalog(p)) { if (scope.all) visible.push(r); continue; }
-      const target = p.kind === 'GRANT'
-        ? { scopeType: p.grant.scopeType, scopeIds: p.grant.scopeIds }
-        : { scopeType: p.update.scopeType ?? 'SYSTEM', scopeIds: p.update.scopeIds ?? [] };
-      const units = await unitsOfScope(db, target.scopeType, target.scopeIds);
-      if (units === 'ALL' ? scope.all : scopeCovers(scope, units)) visible.push(r);
-    }
+    const visible = rows.filter((r) => canDecide(auth, scope, r.payload as unknown as ApprovalPayload));
     return { items: visible, total: visible.length };
   }
 
@@ -62,6 +73,7 @@ export function createApprovalService(db: Db, roles: RoleAssignmentService, cata
   async function approve(auth: AuthContext, id: number, reason: string, requestId?: string) {
     return db.$transaction(async (tx) => {
       const req = await lockPending(tx, id, auth.user.id);
+      await assertDecisionScope(tx, auth, req.payload);
       // The action runs as the approver: every rule is checked again for them.
       const resultId = isCatalog(req.payload)
         ? await catalog.executeApproved(tx, auth, req.payload, id, requestId)
@@ -79,6 +91,7 @@ export function createApprovalService(db: Db, roles: RoleAssignmentService, cata
   async function reject(auth: AuthContext, id: number, reason: string, requestId?: string) {
     return db.$transaction(async (tx) => {
       const req = await lockPending(tx, id, auth.user.id);
+      await assertDecisionScope(tx, auth, req.payload);
       await tx.approvalRequest.update({ where: { id }, data: { status: 'REJECTED', approverId: auth.user.id, reason, decidedAt: new Date() } });
       await appendAudit(tx, {
         actorUserId: auth.user.id, action: 'APPROVAL_REJECTED', resource: 'approval_request', resourceId: id,
