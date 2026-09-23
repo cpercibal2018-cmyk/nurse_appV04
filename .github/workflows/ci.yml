@@ -47,20 +47,11 @@ jobs:
       - run: npm run typecheck
       - run: npm test    # backend, frontend, documentation links
       - name: Build backend
-        run: |
-          if npm run build -w backend > backend-build.log 2>&1; then
-            cat backend-build.log
-          else
-            tail -n 35 backend-build.log
-            printf '::error::Backend build: %s\n' "$(tail -n 18 backend-build.log | tr '\n' ' ' | cut -c 1-3500)"
-            exit 1
-          fi
+        run: npm run build -w backend
       - name: Build frontend (includes the gzipped bundle budget gate)
-        run: |
-          if npm run build -w frontend > frontend-build.log 2>&1; then
-            cat frontend-build.log
-          else
-            tail -n 35 frontend-build.log
-            printf '::error::Frontend build: %s\n' "$(tail -n 18 frontend-build.log | tr '\n' ' ' | cut -c 1-3500)"
-            exit 1
-          fi
+        # The job's NODE_ENV=test is needed for DB integration tests. A Vite
+        # build with NODE_ENV=test bundles development dependencies and exceeds
+        # the production budget even though its production build passes.
+        env:
+          NODE_ENV: production
+        run: npm run build -w frontend
