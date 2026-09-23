@@ -10,7 +10,11 @@ import { appendAudit } from '../../lib/audit.js';
 import { HttpError, notFound } from '../../lib/http-errors.js';
 import type { Db } from '../../lib/prisma.js';
 import { scopeCovers, unitScope, unitsOfScope, type AuthContext } from '../users/access.js';
-import type { ApprovalPayload, RoleAssignmentService } from '../users/role-assignments.js';
+import type { CatalogApprovalPayload, CatalogService } from '../credentials/catalog.js';
+import type { ApprovalPayload as RolePayload, RoleAssignmentService } from '../users/role-assignments.js';
+
+type ApprovalPayload = RolePayload | CatalogApprovalPayload;
+const isCatalog = (p: ApprovalPayload): p is CatalogApprovalPayload => p.kind === 'TEMPLATE_CREATE' || p.kind === 'TEMPLATE_UPDATE';
 
 export const DecideBody = z.strictObject({
   reason: z.string().trim().min(5, 'A decision needs a reason of at least 5 characters (R4)').max(1000),
@@ -21,7 +25,7 @@ const ADMIN_ROLES = ['HR_ADMIN', 'SYSTEM_ADMIN'] as const;
 
 interface LockedRow { id: number; initiator_id: number; status: string; action_type: string; payload: ApprovalPayload }
 
-export function createApprovalService(db: Db, roles: RoleAssignmentService) {
+export function createApprovalService(db: Db, roles: RoleAssignmentService, catalog: CatalogService) {
   async function list(auth: AuthContext, q: z.infer<typeof ListApprovalsQuery>) {
     const rows = await db.approvalRequest.findMany({
       where: { status: q.status },
@@ -34,6 +38,8 @@ export function createApprovalService(db: Db, roles: RoleAssignmentService) {
     const visible = [];
     for (const r of rows) {
       const p = r.payload as unknown as ApprovalPayload;
+      // The credential catalog is hospital-wide (D-25): only system-wide admins see its requests.
+      if (isCatalog(p)) { if (scope.all) visible.push(r); continue; }
       const target = p.kind === 'GRANT'
         ? { scopeType: p.grant.scopeType, scopeIds: p.grant.scopeIds }
         : { scopeType: p.update.scopeType ?? 'SYSTEM', scopeIds: p.update.scopeIds ?? [] };
@@ -56,8 +62,10 @@ export function createApprovalService(db: Db, roles: RoleAssignmentService) {
   async function approve(auth: AuthContext, id: number, reason: string, requestId?: string) {
     return db.$transaction(async (tx) => {
       const req = await lockPending(tx, id, auth.user.id);
-      // The action runs as the approver: every grant rule is checked again for them.
-      const resultId = await roles.executeApproved(tx, auth, req.payload, id, requestId);
+      // The action runs as the approver: every rule is checked again for them.
+      const resultId = isCatalog(req.payload)
+        ? await catalog.executeApproved(tx, auth, req.payload, id, requestId)
+        : await roles.executeApproved(tx, auth, req.payload, id, requestId);
       const now = new Date();
       await tx.approvalRequest.update({ where: { id }, data: { status: 'EXECUTED', approverId: auth.user.id, reason, decidedAt: now, executedAt: now } });
       await appendAudit(tx, {

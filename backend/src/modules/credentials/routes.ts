@@ -20,10 +20,12 @@ export function createCredentialsRouter(catalog: CatalogService, records: Record
     res.json({ items: await catalog.listTemplates(req.query.includeInactive === 'true') });
   });
   r.post('/credential-templates', authorize('credentials.catalog.write'), async (req, res) => {
-    res.status(201).json(await catalog.createTemplate(authOf(res), TemplateCreateBody.parse(req.body), rid(res)));
+    const out = await catalog.createTemplate(authOf(res), TemplateCreateBody.parse(req.body), rid(res));
+    res.status(out.status === 'PENDING_APPROVAL' ? 202 : 201).json(out);
   });
   r.patch('/credential-templates/:id', authorize('credentials.catalog.write'), async (req, res) => {
-    res.json(await catalog.updateTemplate(authOf(res), IdParam.parse(req.params).id, TemplateUpdateBody.parse(req.body), rid(res)));
+    const out = await catalog.updateTemplate(authOf(res), IdParam.parse(req.params).id, TemplateUpdateBody.parse(req.body), rid(res));
+    res.status(out.status === 'PENDING_APPROVAL' ? 202 : 200).json(out);
   });
 
   // ── Requirements (§5.1.4) ─────────────────────────────────────────────────

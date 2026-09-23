@@ -172,6 +172,11 @@ Follows the brief; each commit builds.
 | D-21 (2026-09-23) | **Login by email only** | **Spec §3.3 amended:** "Login accepts username or email" becomes "Login accepts the account email". No username field is added. Recorded in SYSTEM_SPECIFICATION as a deliberate amendment |
 | D-22 (2026-09-23) | **Build own login/session history** (spec §3.3) | Added to V04 scope for commit 9: IP address and user-agent columns on `refresh_sessions` (migration), `GET /api/v1/auth/sessions` (own sessions only), and a self-service page. Moves from "not in scope" to "In V04" |
 | D-23 (2026-09-23) | **Confirmed** the commit 5 implementation choices | Login attempt limits (5 per account / 20 per client per 15 min, configurable); account scope = linked employee's unit, unlinked accounts need system-wide scope; R5 windows 90/365 days (source: V03 reference, accepted by the owner); HR provisions accounts with an initial password until email invitations exist |
+| D-24 (2026-09-23) | **Two-person approval for credential catalog changes only** (R10 "modifying global eligibility rules" = the hospital-wide catalog) | Creating or changing a credential type (grace days, expiry handling, tracked fields, activity, name, category) is queued; a **different system-wide** HR/System Admin approves and it executes as the approver. The request needs a reason (≥ 10 chars) and shows before → after; an approval is refused (`TEMPLATE_CHANGED_SINCE_REQUEST`) if the type changed after the request. Unit requirements apply immediately (existing audit + affected-employee count). The break-glass account applies catalog changes at once, as spec §3.6 exempts it from four-eyes |
+| D-25 (2026-09-23) | **Credential catalog is hospital-wide only** | Only system-wide HR Admins / System Admins create or change credential types, and only they see catalog approval requests; unit-scoped HR manages requirements for their own units |
+| D-26 (2026-09-23) | **No action on one's own credential** — all five blocked | Verify, approve renewal, reject renewal, suspend/revoke, and waive are refused when the credential belongs to the acting person, whatever their role |
+| D-27 (2026-09-23) | **A nurse with no unit is blocked** (`UNIT_NOT_ASSIGNED`) | Spec §6.1 is silent; confirmed as the V04 rule |
+| D-28 (2026-09-23) | **System Admins cannot issue waivers** (spec §6.1.2 literal) | Supervisor or HR Admin only. The break-glass account acts as System Admin, so it cannot issue waivers either |
 
 ### Implementation notes — commit 5 (authentication and RBAC)
 
@@ -194,18 +199,32 @@ Follows the brief; each commit builds.
 
 | Topic | What was built | Status |
 | :--- | :--- | :--- |
+| Template PATCH defect | A partial update filled omitted fields with their create defaults (`.partial()` keeps zod defaults), so changing grace days also cleared the tracked fields | Found while building D-24; fixed and covered by a test |
 | Engine | `modules/eligibility/engine.ts`, pure: spec §6.1 order; D-4 (no rules → ELIGIBLE + `NO_REQUIREMENTS_CONFIGURED`); D-15 (dates checked against the evaluated day; waiver per template); §5.1.4 position-specific rule overrides unit-wide; grace §6.1.1; transitions §6.1.1.1; 33 unit tests from the acceptance tables, mutation-checked | As specified |
 | New status | `ELIGIBLE_WITH_POLICY_WARNING` added (spec §6.1.1.1 names it; the consolidated schema lacked it). Migration `20260923060000_credential_review_and_policy_warning` also adds `document_versions.review_status` and `credentials.latest_evidence_id` (spec §5.1.5) | Schema gap closed |
 | Materialized state | Refreshed inside the transaction of every credential, requirement, template and waiver change (L6); status changes audited | Date passage (expiries, waiver ends, deadlines) and stored-status transitions (Valid → ExpiringSoon → Expired) need the daily job — **commit 9**. The engine checks dates itself, so eligibility is never wrong in the meantime; only the stored snapshot and the stored credential status can lag |
 | Grace log | Grace activation/completion/closure are HIGH audit events, as DATABASE_CONSOLIDATION decided — no separate `grace_period_log` table (the spec's acceptance wording names one) | Deviation, documented |
 | Grace no-stacking | A grace window is tied to one expiry cycle (`graceCycleId`); approval clears it; rejection or suspension/revocation closes it so re-submitting cannot reopen it | Conservative reading of "no stacking" |
 | Uploads (D-10) | Magic-byte + size checks; development marks CLEAN; downloads CLEAN-only and audited. **Production refuses to start** (`UPLOAD_SCANNER`) until a ClamAV adapter exists | As decided in D-10 — production is blocked until a scanner is built |
-| **REQUIREMENT NOT ESTABLISHED** — Unassigned employee | No unit → no rule can apply → **blocked** (`UNIT_NOT_ASSIGNED`) rather than cleared without any credential check | **Owner to confirm** |
-| Separation of duties | Nobody verifies, suspends, revokes or decides the renewal of their own credential, or waives their own credential | Implementation safeguard (R2/R11 principle) — **owner to confirm** |
-| Catalog scope | Only system-wide HR/System Admins change templates (one hospital catalog); scoped HR manages rules for their units | Interpretation — **owner to confirm** |
-| Waiver authority | Spec §6.1.2 read literally: Supervisor or HR Admin only; **System Admin receives 403** | **Owner to confirm** |
+| Unassigned employee | No unit → no rule can apply → **blocked** (`UNIT_NOT_ASSIGNED`) rather than cleared without any credential check | **Confirmed (D-27)** |
+| Separation of duties | Nobody verifies, suspends, revokes or decides the renewal of their own credential, or waives their own credential | **Confirmed (D-26)** |
+| Catalog scope | Only system-wide HR/System Admins change templates (one hospital catalog); scoped HR manages rules for their units | **Confirmed (D-25)** |
+| Waiver authority | Spec §6.1.2 read literally: Supervisor or HR Admin only; **System Admin receives 403** | **Confirmed (D-28)** |
 | Transition deadline | Judged against today (spec: `CURRENT_DATE`), not the shift date | Spec literal |
-| R10 "modifying global eligibility rules" | No four-eyes on requirement or template changes: the spec does not say which changes are "global" | **REQUIREMENT NOT ESTABLISHED** |
+| R10 "modifying global eligibility rules" | Four-eyes on every credential-type (catalog) change; unit requirements apply immediately | **Decided (D-24)** — built as a follow-up to commit 6 |
+
+### Proposals received with the D-24…D-28 decisions — not adopted yet
+
+The owner's notes for D-24…D-28 also suggested features beyond those decisions. None is specified, so each is **REQUIREMENT NOT ESTABLISHED** until the owner schedules it:
+
+| Proposal | Note |
+| :--- | :--- |
+| Route a lone HR Admin's own credential to hospital-wide HR automatically | Today any other in-scope HR Admin or a System Admin can act; there is no routing engine |
+| Employee "report status change" button (self-report → under review, pause shifts, HR ticket) | New workflow; needs definition of the "under review" effect on eligibility |
+| In-app "request a new credential type" form for unit HR | New workflow; D-25 currently means asking hospital-wide HR outside the app |
+| Primary-source verification APIs, HRIS sync | The examples given (Nursys, US state boards, AHA, Workday) are US systems; the Saudi equivalent would be SCFHS. No integration is specified |
+| SMS / e-mail expiry reminders at 90/60/30/14 days | Spec §9 defines in-app notifications; SMTP/SMS are deferred (§6). Reminder schedule not specified |
+| E-mail alerts to CNO / HR Director / IT Security on break-glass use | Break-glass already sounds an in-app CRITICAL alert to System Admins (R18); named recipients and e-mail are not specified |
 
 ## 9. Decisions required before stage 2
 

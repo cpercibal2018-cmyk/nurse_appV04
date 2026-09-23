@@ -99,7 +99,7 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | POST | `/api/v1/role-assignments` **[I]** | Grant → 201, or 202 `{status:'PENDING_APPROVAL', requestId}` | HR, SA (R2–R7, R10) | backend |
 | PATCH | `/api/v1/role-assignments/:id` | Scope/reason/expiry | HR, SA | backend |
 | POST | `/api/v1/role-assignments/:id/revoke` | Revoke `{reason}` (POST, not DELETE-with-body) | HR, SA (R2, R8) | backend |
-| GET | `/api/v1/approvals?status=PENDING` | Four-eyes queue | HR, SA | backend |
+| GET | `/api/v1/approvals?status=PENDING` | Four-eyes queue (role grants/updates; credential-type changes — visible to system-wide admins only) | HR, SA | backend |
 | POST | `/api/v1/approvals/:id/approve` · `/reject` | Decide `{reason}` | HR, SA; approver ≠ initiator (R11) | backend |
 | POST | `/api/v1/pam/elevate` · GET `/api/v1/pam/status` · POST `/api/v1/pam/end` | JIT elevation | users holding SA | backend |
 | POST | `/api/v1/break-glass/activate` | Siren (R18) | break-glass account only | spec §3.6 — **scope decision D-9** |
@@ -157,7 +157,7 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | Method | Endpoint | Purpose | Permission / scope | Source |
 | :--- | :--- | :--- | :--- | :--- |
 | GET | `/api/v1/credential-categories` · `/api/v1/credential-templates?includeInactive` | Catalog | EMP | spec §5.1 |
-| POST · PATCH | `/api/v1/credential-templates`, `/:id` | Template admin (fields, `gracePeriodDays` 0–90, activity); grace/expiry/activity changes re-evaluate holders | HR, SA — **system-wide scope only** (one hospital catalog) | spec §5.1, §6.1.1 |
+| POST · PATCH | `/api/v1/credential-templates`, `/:id` | Template admin (fields, `gracePeriodDays` 0–90, activity) with `reason` (≥ 10). **202** `{status: PENDING_APPROVAL, requestId}` — applied only when a second system-wide admin approves via `/approvals/:id/approve` (D-24); break-glass → 201/200 `{status: APPLIED, template}`. Grace/expiry/activity changes re-evaluate holders | HR, SA — **system-wide scope only** (D-25) | spec §5.1, §6.1.1, R10 |
 | GET | `/api/v1/credential-requirements?unitId&position&templateId` | Rules | HR, SA, SUP | spec §5.1.4 |
 | POST · PUT · DELETE | `/api/v1/credential-requirements`, `/:id` | Rule CRUD; re-evaluates the unit in the same transaction; `{affectedEmployees}` | HR (unit in scope), SA | spec §5.1.4 |
 | POST | `/api/v1/credential-requirements/bulk` | `{items[]}` in one transaction → `{created, updated, affectedEmployees}` | HR (scoped), SA | spec §5.1.4 |

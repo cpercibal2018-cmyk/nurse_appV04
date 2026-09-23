@@ -3,7 +3,7 @@
 // shows data and sends the user's decisions.
 
 import { useState } from 'react';
-import { App, Button, Card, DatePicker, Flex, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tabs, Tag } from 'antd';
+import { Alert, App, Button, Card, DatePicker, Flex, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tabs, Tag } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { usePermissions } from '../../hooks/usePermissions';
 import { describeApiError } from '../../lib/errors';
@@ -138,6 +138,7 @@ function RequirementsTab() {
   );
 }
 
+/** Catalog edits go to a second system-wide administrator before they apply (D-24). */
 function CatalogTab() {
   const { t } = useTranslation();
   const { message } = App.useApp();
@@ -145,28 +146,43 @@ function CatalogTab() {
   const hr = hasRole('HR_ADMIN', 'SYSTEM_ADMIN');
   const templates = useTemplates();
   const action = useCredentialAction();
+  const [editing, setEditing] = useState<Template | null>(null);
+  const [form] = Form.useForm<{ gracePeriodDays: number; isActive: boolean; reason: string }>();
+
+  async function submit(v: { gracePeriodDays: number; isActive: boolean; reason: string }) {
+    if (!editing) return;
+    try {
+      const out = await action.mutateAsync({ kind: 'template', id: editing.id, body: v }) as { status: string; requestId?: number };
+      if (out.status === 'PENDING_APPROVAL') message.info(t('submittedForApproval', { id: out.requestId }), 6);
+      else message.success(t('saved'));
+      setEditing(null);
+    } catch (e) { message.error(describeApiError(e)); }
+  }
 
   return (
-    <Table<Template>
-      rowKey="id" size="middle" loading={templates.isLoading} dataSource={templates.data?.items} pagination={false} scroll={{ x: true }}
-      columns={[
-        { title: t('code'), dataIndex: 'code' },
-        { title: t('credential'), dataIndex: 'name' },
-        { title: t('category'), dataIndex: 'categoryCode' },
-        { title: t('fields'), render: (_, x) => x.fieldDefs.map((f) => f.label).join(', ') || '—', ellipsis: true },
-        {
-          title: t('graceDays'),
-          render: (_, x) => hr
-            ? <InputNumber size="small" min={0} max={90} defaultValue={x.gracePeriodDays} onBlur={async (e) => {
-                const v = Number(e.target.value);
-                if (Number.isNaN(v) || v === x.gracePeriodDays) return;
-                try { await action.mutateAsync({ kind: 'template', id: x.id, body: { gracePeriodDays: v } }); message.success(t('saved')); } catch (err) { message.error(describeApiError(err)); }
-              }} />
-            : x.gracePeriodDays,
-        },
-        { title: t('status'), render: (_, x) => <Tag color={x.isActive ? 'green' : 'default'}>{x.isActive ? t('active') : t('inactive')}</Tag> },
-      ]}
-    />
+    <>
+      <Alert type="info" showIcon title={t('catalogFourEyes')} style={{ marginBottom: 12 }} />
+      <Table<Template>
+        rowKey="id" size="middle" loading={templates.isLoading} dataSource={templates.data?.items} pagination={false} scroll={{ x: true }}
+        columns={[
+          { title: t('code'), dataIndex: 'code' },
+          { title: t('credential'), dataIndex: 'name' },
+          { title: t('category'), dataIndex: 'categoryCode' },
+          { title: t('fields'), render: (_, x) => x.fieldDefs.map((f) => f.label).join(', ') || '—', ellipsis: true },
+          { title: t('graceDays'), dataIndex: 'gracePeriodDays' },
+          { title: t('status'), render: (_, x) => <Tag color={x.isActive ? 'green' : 'default'}>{x.isActive ? t('active') : t('inactive')}</Tag> },
+          ...(hr ? [{ title: '', render: (_: unknown, x: Template) => <Button size="small" onClick={() => { setEditing(x); form.setFieldsValue({ gracePeriodDays: x.gracePeriodDays, isActive: x.isActive, reason: '' }); }}>{t('edit')}</Button> }] : []),
+        ]}
+      />
+      <Modal title={editing ? `${t('edit')}: ${editing.code}` : ''} open={editing !== null} onCancel={() => setEditing(null)}
+        onOk={() => form.submit()} okText={t('submit')} cancelText={t('cancel')} confirmLoading={action.isPending} forceRender>
+        <Form form={form} layout="vertical" onFinish={submit}>
+          <Form.Item name="gracePeriodDays" label={t('graceDays')} rules={[{ required: true }]}><InputNumber min={0} max={90} style={{ width: '100%' }} /></Form.Item>
+          <Form.Item name="isActive" label={t('status')} valuePropName="checked"><Switch checkedChildren={t('active')} unCheckedChildren={t('inactive')} /></Form.Item>
+          <Form.Item name="reason" label={t('reason')} rules={[{ required: true, min: 10, whitespace: true }]}><Input.TextArea rows={3} maxLength={1000} /></Form.Item>
+        </Form>
+      </Modal>
+    </>
   );
 }
 

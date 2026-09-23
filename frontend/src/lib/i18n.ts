@@ -163,6 +163,8 @@ const en = {
   elig_ELIGIBLE_WITH_GRACE: 'Eligible (grace)',
   elig_ELIGIBLE_WITH_POLICY_WARNING: 'Eligible (policy warning)',
   elig_INELIGIBLE: 'Ineligible',
+  catalogFourEyes: 'Changes to the hospital credential catalog apply only after a second system-wide administrator approves them.',
+  edit: 'Edit',
 };
 
 const ar: Record<keyof typeof en, string> = {
@@ -323,6 +325,8 @@ const ar: Record<keyof typeof en, string> = {
   elig_ELIGIBLE_WITH_GRACE: 'مؤهل (فترة سماح)',
   elig_ELIGIBLE_WITH_POLICY_WARNING: 'مؤهل (تنبيه سياسة)',
   elig_INELIGIBLE: 'غير مؤهل',
+  catalogFourEyes: 'لا تُطبق التغييرات على دليل الشهادات إلا بعد موافقة مسؤول ثانٍ على مستوى المستشفى.',
+  edit: 'تعديل',
 };
 
 export type TranslationKey = keyof typeof en;

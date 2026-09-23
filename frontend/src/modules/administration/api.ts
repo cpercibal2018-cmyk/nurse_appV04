@@ -34,7 +34,11 @@ export interface Assignment {
 export interface ApprovalRequest {
   id: number;
   actionType: string;
-  payload: { kind: 'GRANT'; grant: GrantInput } | { kind: 'UPDATE'; assignmentId: number; update: { scopeType?: ScopeType; scopeIds?: number[]; reason: string } };
+  payload:
+    | { kind: 'GRANT'; grant: GrantInput }
+    | { kind: 'UPDATE'; assignmentId: number; update: { scopeType?: ScopeType; scopeIds?: number[]; reason: string } }
+    | { kind: 'TEMPLATE_CREATE'; template: { code: string; name: string }; reason: string }
+    | { kind: 'TEMPLATE_UPDATE'; templateId: number; code: string; change: Record<string, unknown>; before: Record<string, unknown>; reason: string };
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXECUTED';
   createdAt: string;
   initiator: { displayName: string; email: string };
@@ -114,7 +118,7 @@ export function useDecide() {
   return useMutation({
     mutationFn: ({ id, decision, reason }: { id: number; decision: 'approve' | 'reject'; reason: string }) =>
       http.post<{ id: number; status: string }>(`/approvals/${id}/${decision}`, { reason }),
-    onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: keys.approvals }), qc.invalidateQueries({ queryKey: keys.assignments })]),
+    onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: keys.approvals }), qc.invalidateQueries({ queryKey: keys.assignments }), qc.invalidateQueries({ queryKey: ['templates'] })]),
   });
 }
 

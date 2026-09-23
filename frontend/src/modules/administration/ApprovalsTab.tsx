@@ -4,12 +4,20 @@ import { useTranslation } from 'react-i18next';
 import { describeApiError } from '../../lib/errors';
 import { useApprovals, useDecide, type ApprovalRequest } from './api';
 
+const show = (v: unknown) => (typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v));
+
 function describe(r: ApprovalRequest): string {
-  if (r.payload.kind === 'GRANT') {
-    const g = r.payload.grant;
+  const p = r.payload;
+  if (p.kind === 'TEMPLATE_CREATE') return `New credential type ${p.template.code} — ${p.template.name} — “${p.reason}”`;
+  if (p.kind === 'TEMPLATE_UPDATE') {
+    const diff = Object.keys(p.change).map((k) => `${k}: ${show(p.before[k])} → ${show(p.change[k])}`).join('; ');
+    return `Change credential type ${p.code}: ${diff} — “${p.reason}”`;
+  }
+  if (p.kind === 'GRANT') {
+    const g = p.grant;
     return `Grant ${g.role} (${g.scopeType}${g.scopeIds.length ? ` ${g.scopeIds.join(', ')}` : ''}) to account #${g.userId} — “${g.reason}”`;
   }
-  return `Change assignment #${r.payload.assignmentId} to ${r.payload.update.scopeType ?? 'same scope'} — “${r.payload.update.reason}”`;
+  return `Change assignment #${p.assignmentId} to ${p.update.scopeType ?? 'same scope'} — “${p.update.reason}”`;
 }
 
 export function ApprovalsTab() {

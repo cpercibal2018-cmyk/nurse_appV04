@@ -4,10 +4,11 @@
 // eligibility for employees who lack that credential."
 
 import { z } from 'zod';
+import type { CredentialTemplate } from '../../generated/prisma/client.js';
 import { appendAudit } from '../../lib/audit.js';
 import { isIsoDate, toDbDate } from '../../lib/dates.js';
 import { HttpError, notFound } from '../../lib/http-errors.js';
-import type { Db, DbClient } from '../../lib/prisma.js';
+import { Prisma, type Db, type DbClient } from '../../lib/prisma.js';
 import { refreshEligibility, refreshUnit } from '../eligibility/state.service.js';
 import { unitScope, type AuthContext } from '../users/access.js';
 import { HR_ROLES } from './access.js';
@@ -35,19 +36,54 @@ const FieldDefs = z.array(FieldDefSchema).max(30).superRefine((defs, ctx) => {
   if (defs.filter((d) => d.isExpiryDate).length > 1) ctx.addIssue({ code: 'custom', message: 'At most one expiry-date field' });
 });
 
+/** Every catalog change goes to a second administrator (D-24), who needs to know why. */
+const ChangeReason = z.string().trim().min(10, 'A catalog change needs a reason of at least 10 characters').max(1000);
+const Name = z.string().trim().min(1).max(120);
+const Description = z.string().trim().max(500);
+/** Spec §6.1.1: 0–90 days, default 0; set by HR per hospital policy. */
+const GraceDays = z.number().int().min(0).max(90);
+const DisplayOrder = z.number().int().min(0);
+
 export const TemplateCreateBody = z.strictObject({
   code: z.string().regex(/^[A-Z][A-Z0-9_]{1,39}$/),
-  name: z.string().trim().min(1).max(120),
+  name: Name,
   categoryCode: z.string().min(1),
-  description: z.string().trim().max(500).optional(),
+  description: Description.optional(),
   hasExpiry: z.boolean().default(true),
   requiresUpload: z.boolean().default(true),
   fieldDefs: FieldDefs.default([]),
-  /** Spec §6.1.1: 0–90 days, default 0; set by HR per hospital policy. */
-  gracePeriodDays: z.number().int().min(0).max(90).default(0),
-  displayOrder: z.number().int().min(0).default(0),
+  gracePeriodDays: GraceDays.default(0),
+  displayOrder: DisplayOrder.default(0),
+  reason: ChangeReason,
 });
-export const TemplateUpdateBody = TemplateCreateBody.omit({ code: true }).partial().extend({ isActive: z.boolean().optional() }).strict();
+// Written out without defaults: `.partial()` of a schema with defaults would
+// fill every omitted field with its default and overwrite the stored value.
+export const TemplateUpdateBody = z.strictObject({
+  name: Name.optional(),
+  categoryCode: z.string().min(1).optional(),
+  description: Description.optional(),
+  hasExpiry: z.boolean().optional(),
+  requiresUpload: z.boolean().optional(),
+  fieldDefs: FieldDefs.optional(),
+  gracePeriodDays: GraceDays.optional(),
+  displayOrder: DisplayOrder.optional(),
+  isActive: z.boolean().optional(),
+  reason: ChangeReason,
+});
+
+type TemplateData = Omit<z.infer<typeof TemplateCreateBody>, 'reason'>;
+type TemplateChange = Omit<z.infer<typeof TemplateUpdateBody>, 'reason'>;
+type ChangedValues = Partial<Record<keyof TemplateChange, unknown>>;
+
+/** Stored in approval_requests.payload for catalog changes (R10, D-24). */
+export type CatalogApprovalPayload =
+  | { kind: 'TEMPLATE_CREATE'; template: TemplateData; reason: string }
+  /** `before` holds the stored values of the changed fields, to refuse a stale approval. */
+  | { kind: 'TEMPLATE_UPDATE'; templateId: number; code: string; change: TemplateChange; before: ChangedValues; reason: string };
+
+export type CatalogOutcome = { status: 'APPLIED'; template: CredentialTemplate } | { status: 'PENDING_APPROVAL'; requestId: number };
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 const Policy = z.enum(['MANDATORY', 'TRANSITION', 'OPTIONAL']);
 const RequirementFields = {
@@ -77,9 +113,64 @@ export const RequirementQuery = z.object({
 type RequirementInput = z.infer<typeof RequirementBody>;
 
 export function createCatalogService(db: Db) {
-  /** Templates are one hospital-wide catalog: only system-wide HR/System Admins may change them. */
-  async function assertSystemWide(auth: AuthContext) {
-    if (!(await unitScope(db, auth, HR_ROLES)).all) throw new HttpError(403, 'SCOPE_NOT_COVERED', 'Only system-wide administrators can change the hospital credential catalog');
+  /** Templates are one hospital-wide catalog: only system-wide HR/System Admins may change them (D-25). */
+  async function assertSystemWide(tx: DbClient, auth: AuthContext) {
+    if (!(await unitScope(tx, auth, HR_ROLES)).all) throw new HttpError(403, 'SCOPE_NOT_COVERED', 'Only system-wide administrators can change the hospital credential catalog');
+  }
+
+  async function validateCreate(tx: DbClient, t: TemplateData) {
+    if (!(await tx.credentialCategory.findUnique({ where: { code: t.categoryCode } }))) throw new HttpError(422, 'CATEGORY_NOT_FOUND', 'The category does not exist');
+    if (await tx.credentialTemplate.findUnique({ where: { code: t.code }, select: { id: true } })) throw new HttpError(409, 'TEMPLATE_EXISTS', `A credential type with code ${t.code} already exists`);
+  }
+
+  /** The fields the change really alters, with their stored values. */
+  async function changedFields(tx: DbClient, id: number, change: TemplateChange) {
+    const current = await tx.credentialTemplate.findUnique({ where: { id } });
+    if (!current) throw notFound('Template not found');
+    const before: ChangedValues = {};
+    for (const [k, v] of Object.entries(change) as Array<[keyof TemplateChange, unknown]>) {
+      if (v !== undefined && !same(current[k], v)) before[k] = current[k];
+    }
+    if (Object.keys(before).length === 0) throw new HttpError(400, 'NO_CHANGES', 'The request does not change the credential type');
+    if (change.categoryCode && before.categoryCode !== undefined && !(await tx.credentialCategory.findUnique({ where: { code: change.categoryCode } }))) {
+      throw new HttpError(422, 'CATEGORY_NOT_FOUND', 'The category does not exist');
+    }
+    return { current, before };
+  }
+
+  async function createNow(tx: DbClient, auth: AuthContext, t: TemplateData, reason: string, approvalRequestId: number | null, requestId?: string) {
+    await assertSystemWide(tx, auth);
+    await validateCreate(tx, t);
+    const row = await tx.credentialTemplate.create({ data: t });
+    await appendAudit(tx, { actorUserId: auth.user.id, action: 'TEMPLATE_CREATED', resource: 'credential_template', resourceId: row.id, changes: { template: t, reason, approvalRequestId }, requestId, priority: 'HIGH' });
+    return row;
+  }
+
+  /** `expected` (from the approval request) must still match, or the approver would sign off on values nobody saw. */
+  async function updateNow(tx: DbClient, auth: AuthContext, id: number, change: TemplateChange, reason: string, expected: ChangedValues | null, approvalRequestId: number | null, requestId?: string) {
+    await assertSystemWide(tx, auth);
+    const { current, before } = await changedFields(tx, id, change);
+    if (expected) {
+      for (const [k, v] of Object.entries(expected) as Array<[keyof TemplateChange, unknown]>) {
+        if (!same(current[k], v)) throw new HttpError(409, 'TEMPLATE_CHANGED_SINCE_REQUEST', 'The credential type has changed since this request was made — reject it and submit a new one');
+      }
+    }
+    const row = await tx.credentialTemplate.update({ where: { id }, data: change });
+    await appendAudit(tx, { actorUserId: auth.user.id, action: 'TEMPLATE_UPDATED', resource: 'credential_template', resourceId: id, changes: { before, after: change, reason, approvalRequestId }, requestId, priority: 'HIGH' });
+    // Grace, expiry handling or activity changed: re-evaluate everyone who holds it.
+    if (change.gracePeriodDays !== undefined || change.hasExpiry !== undefined || change.isActive !== undefined) {
+      const holders = await tx.credential.findMany({ where: { templateId: id }, select: { employeeId: true }, distinct: ['employeeId'] });
+      for (const h of holders) await refreshEligibility(tx, h.employeeId, 'TEMPLATE_UPDATED', { actorUserId: auth.user.id, requestId });
+    }
+    return row;
+  }
+
+  async function initiateApproval(auth: AuthContext, actionType: string, payload: CatalogApprovalPayload, requestId?: string) {
+    return db.$transaction(async (tx) => {
+      const req = await tx.approvalRequest.create({ data: { initiatorId: auth.user.id, actionType, payload: payload as Prisma.InputJsonObject } });
+      await appendAudit(tx, { actorUserId: auth.user.id, action: 'APPROVAL_INITIATED', resource: 'approval_request', resourceId: req.id, changes: { actionType, payload }, requestId, priority: 'HIGH' });
+      return req.id;
+    });
   }
 
   async function assertUnitInScope(tx: DbClient, auth: AuthContext, unitId: number) {
@@ -109,30 +200,30 @@ export function createCatalogService(db: Db) {
     listCategories: () => db.credentialCategory.findMany({ orderBy: { displayOrder: 'asc' } }),
     listTemplates: (includeInactive: boolean) => db.credentialTemplate.findMany({ where: includeInactive ? {} : { isActive: true }, orderBy: [{ categoryCode: 'asc' }, { displayOrder: 'asc' }] }),
 
-    async createTemplate(auth: AuthContext, body: z.infer<typeof TemplateCreateBody>, requestId?: string) {
-      await assertSystemWide(auth);
-      if (!(await db.credentialCategory.findUnique({ where: { code: body.categoryCode } }))) throw new HttpError(422, 'CATEGORY_NOT_FOUND', 'The category does not exist');
-      return db.$transaction(async (tx) => {
-        const t = await tx.credentialTemplate.create({ data: body });
-        await appendAudit(tx, { actorUserId: auth.user.id, action: 'TEMPLATE_CREATED', resource: 'credential_template', resourceId: t.id, changes: body, requestId });
-        return t;
-      });
+    // R10 as decided in D-24: every catalog change needs a second system-wide
+    // administrator. Break-glass bypasses four-eyes (spec §3.6), as for roles.
+    async createTemplate(auth: AuthContext, body: z.infer<typeof TemplateCreateBody>, requestId?: string): Promise<CatalogOutcome> {
+      const { reason, ...template } = body;
+      if (auth.breakGlass) return { status: 'APPLIED', template: await db.$transaction((tx) => createNow(tx, auth, template, reason, null, requestId)) };
+      // Validate now so an impossible request never reaches the approval queue.
+      await assertSystemWide(db, auth);
+      await validateCreate(db, template);
+      return { status: 'PENDING_APPROVAL', requestId: await initiateApproval(auth, `TEMPLATE_CREATE:${template.code}`, { kind: 'TEMPLATE_CREATE', template, reason }, requestId) };
     },
 
-    async updateTemplate(auth: AuthContext, id: number, body: z.infer<typeof TemplateUpdateBody>, requestId?: string) {
-      await assertSystemWide(auth);
-      const before = await db.credentialTemplate.findUnique({ where: { id } });
-      if (!before) throw notFound('Template not found');
-      return db.$transaction(async (tx) => {
-        const t = await tx.credentialTemplate.update({ where: { id }, data: body });
-        await appendAudit(tx, { actorUserId: auth.user.id, action: 'TEMPLATE_UPDATED', resource: 'credential_template', resourceId: id, changes: { before, after: body }, requestId });
-        // Grace, expiry handling or activity changed: re-evaluate everyone who holds or needs it.
-        if (body.gracePeriodDays !== undefined || body.hasExpiry !== undefined || body.isActive !== undefined) {
-          const holders = await tx.credential.findMany({ where: { templateId: id }, select: { employeeId: true }, distinct: ['employeeId'] });
-          for (const h of holders) await refreshEligibility(tx, h.employeeId, 'TEMPLATE_UPDATED', { actorUserId: auth.user.id, requestId });
-        }
-        return t;
-      });
+    async updateTemplate(auth: AuthContext, id: number, body: z.infer<typeof TemplateUpdateBody>, requestId?: string): Promise<CatalogOutcome> {
+      const { reason, ...change } = body;
+      if (auth.breakGlass) return { status: 'APPLIED', template: await db.$transaction((tx) => updateNow(tx, auth, id, change, reason, null, null, requestId)) };
+      await assertSystemWide(db, auth);
+      const { current, before } = await changedFields(db, id, change);
+      const only = Object.fromEntries(Object.keys(before).map((k) => [k, change[k as keyof TemplateChange]])) as TemplateChange;
+      return { status: 'PENDING_APPROVAL', requestId: await initiateApproval(auth, `TEMPLATE_UPDATE:${id}`, { kind: 'TEMPLATE_UPDATE', templateId: id, code: current.code, change: only, before, reason }, requestId) };
+    },
+
+    /** Executes an approved catalog request as the approver, inside the approval's transaction (R11). */
+    async executeApproved(tx: DbClient, approver: AuthContext, payload: CatalogApprovalPayload, approvalRequestId: number, requestId?: string) {
+      if (payload.kind === 'TEMPLATE_CREATE') return (await createNow(tx, approver, payload.template, payload.reason, approvalRequestId, requestId)).id;
+      return (await updateNow(tx, approver, payload.templateId, payload.change, payload.reason, payload.before, approvalRequestId, requestId)).id;
     },
 
     async listRequirements(q: z.infer<typeof RequirementQuery>) {

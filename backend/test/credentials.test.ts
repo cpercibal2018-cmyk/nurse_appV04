@@ -359,15 +359,70 @@ describeDb('credentials and eligibility', () => {
   });
 
   describe('catalog', () => {
-    it('only system-wide administrators change templates; grace is limited to 0–90 days', async () => {
+    const reason = 'Hospital policy memo 2026-14';
+    const approve = async (client: typeof hr, requestId: number) => client.post(`/approvals/${requestId}/approve`, { reason: 'Checked against the memo' });
+
+    it('only system-wide administrators change templates; every change waits for a second one (D-24, D-25)', async () => {
       const scoped = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
-      const body = { code: `TPL_${Date.now()}`, name: 'New template', categoryCode: 'LICENSURE' };
+      const hr2 = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] })).email);
+      const body = { code: `TPL_${Date.now()}`, name: 'New template', categoryCode: 'LICENSURE', reason };
       expect((await scoped.post('/credential-templates', body)).body.error.code).toBe('SCOPE_NOT_COVERED');
-      const made = await hr.post('/credential-templates', body);
-      expect(made.status).toBe(201);
-      expect((await hr.patch(`/credential-templates/${made.body.id}`, { gracePeriodDays: 91 })).body.error.code).toBe('VALIDATION_FAILED');
-      expect((await hr.patch(`/credential-templates/${made.body.id}`, { gracePeriodDays: 14 })).body.gracePeriodDays).toBe(14);
+      expect((await hr.post('/credential-templates', { ...body, reason: 'short' })).body.error.code).toBe('VALIDATION_FAILED');
+
+      const asked = await hr.post('/credential-templates', body);
+      expect(asked.status).toBe(202);
+      expect(asked.body.status).toBe('PENDING_APPROVAL');
+      expect(await db.credentialTemplate.findUnique({ where: { code: body.code } })).toBeNull();
+      // A scoped HR Admin neither sees nor decides catalog requests.
+      expect((await scoped.get('/approvals')).body.items.some((r: { id: number }) => r.id === asked.body.requestId)).toBe(false);
+      expect((await approve(hr, asked.body.requestId)).body.error.code).toBe('SELF_APPROVAL_FORBIDDEN');
+      expect((await approve(scoped, asked.body.requestId)).status).toBe(403);
+      const done = await approve(hr2, asked.body.requestId);
+      expect(done.body.status).toBe('EXECUTED');
+      const tpl = await db.credentialTemplate.findUniqueOrThrow({ where: { code: body.code } });
+      expect(await db.auditEntry.count({ where: { action: 'TEMPLATE_CREATED', resourceId: String(tpl.id), actorUserId: { not: null }, priority: 'HIGH' } })).toBe(1);
+
+      expect((await hr.patch(`/credential-templates/${tpl.id}`, { gracePeriodDays: 91, reason })).body.error.code).toBe('VALIDATION_FAILED');
+      expect((await hr.patch(`/credential-templates/${tpl.id}`, { gracePeriodDays: 0, reason })).body.error.code).toBe('NO_CHANGES');
+      const change = await hr.patch(`/credential-templates/${tpl.id}`, { gracePeriodDays: 14, reason });
+      expect(change.status).toBe(202);
+      expect((await db.credentialTemplate.findUniqueOrThrow({ where: { id: tpl.id } })).gracePeriodDays).toBe(0);
+      await approve(hr2, change.body.requestId);
+      expect((await db.credentialTemplate.findUniqueOrThrow({ where: { id: tpl.id } })).gracePeriodDays).toBe(14);
       expect((await (await signIn(app, (await makeUser(db)).email)).get('/credential-templates')).status).toBe(200);
+    });
+
+    it('a partial change leaves the other fields as stored', async () => {
+      const tpl = await makeTemplate(db);
+      const hr2 = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] })).email);
+      const change = await hr.patch(`/credential-templates/${tpl.id}`, { gracePeriodDays: 30, reason });
+      expect(change.body.status).toBe('PENDING_APPROVAL');
+      await approve(hr2, change.body.requestId);
+      const after = await db.credentialTemplate.findUniqueOrThrow({ where: { id: tpl.id } });
+      expect(after.gracePeriodDays).toBe(30);
+      expect(after.fieldDefs).toEqual(tpl.fieldDefs);
+      expect([after.hasExpiry, after.requiresUpload, after.displayOrder]).toEqual([tpl.hasExpiry, tpl.requiresUpload, tpl.displayOrder]);
+    });
+
+    it('an approval is refused when the credential type changed after the request', async () => {
+      const tpl = await makeTemplate(db);
+      const hr2 = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] })).email);
+      const first = await hr.patch(`/credential-templates/${tpl.id}`, { gracePeriodDays: 30, reason });
+      const second = await hr2.patch(`/credential-templates/${tpl.id}`, { gracePeriodDays: 60, reason });
+      await approve(hr2, first.body.requestId);
+      const stale = await approve(hr, second.body.requestId);
+      expect(stale.body.error.code).toBe('TEMPLATE_CHANGED_SINCE_REQUEST');
+      expect((await db.approvalRequest.findUniqueOrThrow({ where: { id: second.body.requestId } })).status).toBe('PENDING');
+      expect((await db.credentialTemplate.findUniqueOrThrow({ where: { id: tpl.id } })).gracePeriodDays).toBe(30);
+    });
+
+    it('break-glass applies a catalog change at once (spec §3.6)', async () => {
+      const tpl = await makeTemplate(db);
+      const bg = await signIn(app, (await makeUser(db, { isBreakGlass: true })).email);
+      const out = await bg.patch(`/credential-templates/${tpl.id}`, { gracePeriodDays: 7, reason });
+      expect(out.status).toBe(200);
+      expect(out.body.status).toBe('APPLIED');
+      expect(out.body.template.gracePeriodDays).toBe(7);
     });
   });
 

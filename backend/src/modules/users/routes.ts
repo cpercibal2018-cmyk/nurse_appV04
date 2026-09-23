@@ -7,6 +7,7 @@ import { createApprovalService, DecideBody, ListApprovalsQuery } from '../admini
 import { createPamService, ElevateBody } from '../administration/pam.js';
 import { CreateAccountBody, ListAccountsQuery, UpdateAccountBody, type createAccountService } from './accounts.js';
 import { ACCESS_MATRIX, PERMISSIONS } from './permissions.js';
+import type { CatalogService } from '../credentials/catalog.js';
 import { GrantBody, ListQuery, RevokeBody, UpdateBody, type RoleAssignmentService } from './role-assignments.js';
 
 const IdParam = z.object({ id: z.coerce.number().int().positive() });
@@ -16,9 +17,10 @@ export function createUsersRouter(
   db: Db,
   accounts: ReturnType<typeof createAccountService>,
   roles: RoleAssignmentService,
+  catalog: CatalogService,
 ) {
   const router = Router();
-  const approvals = createApprovalService(db, roles);
+  const approvals = createApprovalService(db, roles, catalog);
   const pam = createPamService(db);
 
   // ── Accounts ──────────────────────────────────────────────────────────────

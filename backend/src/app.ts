@@ -64,10 +64,11 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   // its router here. Anonymous callers get 401 for any path, known or not.
   const api = Router();
   api.use(authenticate);
-  api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db)));
+  const catalog = createCatalogService(db);
+  api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db), catalog));
   api.use(createWorkforceRouter(db));
   api.use(createCredentialsRouter(
-    createCatalogService(db),
+    catalog,
     createRecordService(db, createStorage(env.STORAGE_DIR), env.UPLOAD_MAX_SIZE_BYTES),
     createEligibilityService(db),
     env.UPLOAD_MAX_SIZE_BYTES,
