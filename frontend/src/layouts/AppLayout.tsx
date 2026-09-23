@@ -5,16 +5,18 @@
 // DEVELOPER role display (decision D-5).
 
 import { useState, type ReactNode } from 'react';
-import { Avatar, Button, Dropdown, Flex, Layout, Menu, Tooltip } from 'antd';
+import { App as AntApp, Avatar, Button, Dropdown, Flex, Layout, Menu, Tag, Tooltip } from 'antd';
 import {
-  BulbOutlined, GlobalOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MoonOutlined,
+  BulbOutlined, GlobalOutlined, KeyOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MoonOutlined,
 } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { MODULES } from '../app/modules';
 import { useAuth } from '../hooks/useAuth';
+import { usePermissions } from '../hooks/usePermissions';
 import { usePreferences } from '../hooks/usePreferences';
+import { ChangePasswordModal } from './ChangePasswordModal';
 
 // Plain spans instead of antd Typography in the shell: Typography bundles its
 // editable/copyable features (Input, TextArea, clipboard) into the first load.
@@ -28,7 +30,11 @@ function selectedKey(pathname: string): string {
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   const { t } = useTranslation();
+  const { holdsAssignment } = usePermissions();
+  const pam = useAuth((s) => s.pam);
+  const breakGlass = useAuth((s) => s.breakGlass);
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -45,7 +51,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     navigate('/login', { replace: true });
   }
 
-  const menuItems = MODULES.map((m) => ({
+  const menuItems = MODULES.filter((m) => !m.requires || holdsAssignment(...m.requires)).map((m) => ({
     key: m.path,
     icon: m.icon,
     // Preload the page's chunk on hover/focus so navigation feels instant.
@@ -55,58 +61,66 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const userMenu = {
     items: [
       { key: 'email', label: user?.email, disabled: true },
-      ...roles.map((r, i) => ({ key: `role-${i}`, label: `${r.role} · ${r.scopeType}`, disabled: true })),
+      ...roles.map((r, i) => ({ key: `role-${i}`, label: `${r.role} · ${r.scopeType}${r.dormant ? ' (dormant)' : ''}`, disabled: true })),
       { type: 'divider' as const },
+      ...(user?.isBreakGlass ? [] : [{ key: 'password', icon: <KeyOutlined />, label: t('changePassword'), onClick: () => setChangingPassword(true) }]),
       { key: 'logout', icon: <LogoutOutlined />, label: t('logout'), onClick: () => void signOut() },
     ],
   };
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Sider
-        trigger={null}
-        collapsible
-        collapsed={collapsed}
-        width={244}
-        collapsedWidth={64}
-        breakpoint="lg"
-        onBreakpoint={setCollapsed}
-        className="app-sider"
-        style={{ insetInlineStart: 0 }}
-      >
-        <div className="app-logo">
-          <img
-            src="/logo-dark.jpg"
-            alt={t('appName')}
-            style={collapsed ? { height: 36, width: 36, objectFit: 'cover', objectPosition: isRtl ? 'right' : 'left' } : { height: 44, maxWidth: '100%', objectFit: 'contain' }}
-          />
-        </div>
-        <Menu theme="dark" mode="inline" selectedKeys={[selectedKey(location.pathname)]} items={menuItems} className="app-menu" />
-      </Sider>
+    <AntApp>
+      <Layout style={{ minHeight: '100vh' }}>
+        <Sider
+          trigger={null}
+          collapsible
+          collapsed={collapsed}
+          width={244}
+          collapsedWidth={64}
+          breakpoint="lg"
+          onBreakpoint={setCollapsed}
+          className="app-sider"
+          style={{ insetInlineStart: 0 }}
+        >
+          <div className="app-logo">
+            <img
+              src="/logo-dark.jpg"
+              alt={t('appName')}
+              style={collapsed ? { height: 36, width: 36, objectFit: 'cover', objectPosition: isRtl ? 'right' : 'left' } : { height: 44, maxWidth: '100%', objectFit: 'contain' }}
+            />
+          </div>
+          <Menu theme="dark" mode="inline" selectedKeys={[selectedKey(location.pathname)]} items={menuItems} className="app-menu" />
+        </Sider>
 
-      <Layout style={{ marginInlineStart: sidebarWidth, transition: 'margin 0.2s' }}>
-        <Header className="app-header">
-          <Flex align="center" gap={8}>
-            <Button type="text" aria-label="Toggle menu" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setCollapsed(!collapsed)} />
-            <span className="app-title">{t('appName')}</span>
-          </Flex>
-          <Flex align="center" gap={4}>
-            <Tooltip title={theme === 'dark' ? t('lightMode') : t('darkMode')}>
-              <Button type="text" aria-label={theme === 'dark' ? t('lightMode') : t('darkMode')} icon={theme === 'dark' ? <BulbOutlined /> : <MoonOutlined />} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
-            </Tooltip>
-            <Button type="text" icon={<GlobalOutlined />} onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}>
-              {language === 'en' ? 'ع' : 'EN'}
-            </Button>
-            <Dropdown menu={userMenu} placement={isRtl ? 'bottomLeft' : 'bottomRight'}>
-              <Flex align="center" gap={8} style={{ cursor: 'pointer', marginInlineStart: 4 }}>
-                <Avatar className="app-avatar">{user?.displayName[0]?.toUpperCase()}</Avatar>
-                {!collapsed && <span className="app-user">{user?.displayName}</span>}
-              </Flex>
-            </Dropdown>
-          </Flex>
-        </Header>
-        <Content style={{ margin: 20 }}>{children}</Content>
+        <Layout style={{ marginInlineStart: sidebarWidth, transition: 'margin 0.2s' }}>
+          <Header className="app-header">
+            <Flex align="center" gap={8}>
+              <Button type="text" aria-label="Toggle menu" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setCollapsed(!collapsed)} />
+              <span className="app-title">{t('appName')}</span>
+            </Flex>
+            <Flex align="center" gap={4}>
+              {breakGlass && <Tag color="red">{t('breakGlassActive', { time: new Date(breakGlass.expiresAt).toLocaleTimeString() })}</Tag>}
+              {pam && !breakGlass && (
+                <Link to="/admin"><Tag color="orange">{t('elevatedUntil', { time: new Date(pam.expiresAt).toLocaleTimeString() })}</Tag></Link>
+              )}
+              <Tooltip title={theme === 'dark' ? t('lightMode') : t('darkMode')}>
+                <Button type="text" aria-label={theme === 'dark' ? t('lightMode') : t('darkMode')} icon={theme === 'dark' ? <BulbOutlined /> : <MoonOutlined />} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
+              </Tooltip>
+              <Button type="text" icon={<GlobalOutlined />} onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}>
+                {language === 'en' ? 'ع' : 'EN'}
+              </Button>
+              <Dropdown menu={userMenu} placement={isRtl ? 'bottomLeft' : 'bottomRight'}>
+                <Flex align="center" gap={8} style={{ cursor: 'pointer', marginInlineStart: 4 }}>
+                  <Avatar className="app-avatar">{user?.displayName[0]?.toUpperCase()}</Avatar>
+                  {!collapsed && <span className="app-user">{user?.displayName}</span>}
+                </Flex>
+              </Dropdown>
+            </Flex>
+          </Header>
+          <Content style={{ margin: 20 }}>{children}</Content>
+        </Layout>
+        <ChangePasswordModal open={changingPassword} onClose={() => setChangingPassword(false)} />
       </Layout>
-    </Layout>
+    </AntApp>
   );
 }

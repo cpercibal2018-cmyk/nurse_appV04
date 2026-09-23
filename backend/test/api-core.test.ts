@@ -18,7 +18,7 @@ describeDb('backend core (database)', () => {
   afterAll(async () => { await db.$disconnect(); });
 
   it('health reports the database up', async () => {
-    const app = createApp({ env: loadEnv({ NODE_ENV: 'test', DATABASE_URL: url! }), db });
+    const app = createApp({ env: loadEnv({ NODE_ENV: 'test', DATABASE_URL: url!, JWT_SECRET: 'test-only-secret-0123456789-abcdefghijklmnop' }), db });
     const res = await request(app).get('/api/v1/health');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: 'ok', database: 'up' });

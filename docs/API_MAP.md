@@ -81,10 +81,10 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | Method | Endpoint | Purpose | Permission | Request → Response | Source |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | GET | `/api/v1/health` | Liveness + DB | public | → `{status, db}` | server |
-| POST | `/api/v1/auth/login` | Login | public (rate-limited) | `{email, password}` → `{user, roles, token, csrfToken, expiresIn}` | server |
-| POST | `/api/v1/auth/refresh` | Rotate | cookie + Origin + CSRF | → same | server |
+| POST | `/api/v1/auth/login` | Login | public (rate-limited per account and per client) | `{email, password}` → `{token, csrfToken, expiresIn}` + `nurseapp_refresh` (HttpOnly, path `/api/v1/auth`) and `nurseapp_csrf` cookies; 429 `TOO_MANY_ATTEMPTS` + `Retry-After` | server |
+| POST | `/api/v1/auth/refresh` | Rotate (atomic consume; replay → family revoked, `SESSION_REVOKED`) | cookie + Origin + CSRF double-submit | → `{token, csrfToken, expiresIn}` | server |
 | POST | `/api/v1/auth/logout` | Revoke | cookie | → 204 | server |
-| GET | `/api/v1/auth/me` | Identity, effective roles, scopes, linked employee | EMP | → `{user, roles, scopes, employeeId}` | server + backend `roles/me` |
+| GET | `/api/v1/auth/me` | Identity, stored grants (SA marked `dormant` until PAM), effective roles, PAM and break-glass state | EMP | → `{user{id,email,displayName,employeeId,isBreakGlass}, roles[], effectiveRoles[], pam, breakGlass}` | server + backend `roles/me` |
 | POST | `/api/v1/auth/password` | Change own password; revokes all sessions | EMP | `{currentPassword, newPassword}` → 204 | spec §3.3 (new) |
 
 ### 2.3 Users & roles (`modules/users`)
@@ -103,6 +103,12 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | POST | `/api/v1/approvals/:id/approve` · `/reject` | Decide `{reason}` | HR, SA; approver ≠ initiator (R11) | backend |
 | POST | `/api/v1/pam/elevate` · GET `/api/v1/pam/status` · POST `/api/v1/pam/end` | JIT elevation | users holding SA | backend |
 | POST | `/api/v1/break-glass/activate` | Siren (R18) | break-glass account only | spec §3.6 — **scope decision D-9** |
+
+**Implemented in commit 5 (notes):**
+- Every route under `/api/v1` except health and `/auth/login|refresh|logout` passes one `authenticate` step; an anonymous caller gets 401 for any path, known or not.
+- State-changing requests need `X-CSRF-Token` equal to the session's token (bound into the access token as a hash) and `Origin` equal to the app origin (spec §3.4 CsrfGuard).
+- `[I]` responses carry identifiers only (`POST /users` → `{id}`; `POST /role-assignments` → `{status:'GRANTED', id}` or 202 `{status:'PENDING_APPROVAL', requestId}`), so stored idempotent responses hold no personal data.
+- Four-eyes approval executes the stored action **as the approver**: every grant rule (R2–R6) is re-checked for them, inside the approval's transaction.
 
 ### 2.4 Workforce (`modules/workforce`)
 

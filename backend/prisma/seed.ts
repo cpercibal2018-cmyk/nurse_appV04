@@ -8,6 +8,7 @@
 
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
+import { PasswordSchema } from '../src/lib/passwords.js';
 import { createPrisma, type Db } from '../src/lib/prisma.js';
 import { appendAudit } from '../src/lib/audit.js';
 import { toHijriIso } from '../src/lib/hijri.js';
@@ -103,7 +104,7 @@ async function seedDemo(db: Db, password: string) {
     const user = await db.user.upsert({
       where: { email: u.email },
       update: {},
-      create: { email: u.email, displayName: u.displayName, passwordHash, employeeId: linked },
+      create: { email: u.email, displayName: u.displayName, passwordHash, employeeId: linked, isBreakGlass: 'isBreakGlass' in u && u.isBreakGlass },
     });
     users.set(u.email, user.id);
   }
@@ -132,7 +133,10 @@ async function main() {
   const demo = process.env.SEED_DEMO === 'true';
   if (demo && process.env.NODE_ENV === 'production') throw new Error('Refusing to load demo data in production');
   const demoPassword = process.env.SEED_DEMO_PASSWORD ?? '';
-  if (demo && demoPassword.length < 8) throw new Error('SEED_DEMO_PASSWORD (8+ characters) is required with SEED_DEMO=true');
+  // Same rule as every other password (spec §3.2: 12–72 characters).
+  if (demo && !PasswordSchema.safeParse(demoPassword).success) {
+    throw new Error('SEED_DEMO_PASSWORD (12–72 characters) is required with SEED_DEMO=true');
+  }
 
   const db = createPrisma(url);
   try {

@@ -4,7 +4,7 @@
 
 import { create } from 'zustand';
 import { http, refreshSession, setSessionExpiredHandler, setTokens } from '../services/http';
-import type { MeResponse, RoleGrant, SessionUser, TokenResponse } from '../types/api';
+import type { EffectiveRole, MeResponse, RoleGrant, SessionUser, TokenResponse } from '../types/api';
 
 type Status = 'checking' | 'anonymous' | 'authenticated';
 
@@ -12,24 +12,38 @@ interface AuthState {
   status: Status;
   user: SessionUser | null;
   roles: RoleGrant[];
+  effectiveRoles: EffectiveRole[];
+  pam: MeResponse['pam'];
+  breakGlass: MeResponse['breakGlass'];
+  /** Re-reads /auth/me (after PAM elevation, a role change, …). */
+  reload: () => Promise<void>;
   /** Restores a session from the HttpOnly refresh cookie at startup. */
   restore: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
-const signedOut = { status: 'anonymous' as const, user: null, roles: [] };
+const signedOut = { status: 'anonymous' as const, user: null, roles: [], effectiveRoles: [], pam: null, breakGlass: null };
+const fromMe = (me: MeResponse) => ({
+  status: 'authenticated' as const, user: me.user, roles: me.roles, effectiveRoles: me.effectiveRoles, pam: me.pam, breakGlass: me.breakGlass,
+});
 
 export const useAuth = create<AuthState>()((set) => ({
   status: 'checking',
   user: null,
   roles: [],
+  effectiveRoles: [],
+  pam: null,
+  breakGlass: null,
+
+  reload: async () => {
+    set(fromMe(await http.get<MeResponse>('/auth/me')));
+  },
 
   restore: async () => {
     if (!(await refreshSession())) return set(signedOut);
     try {
-      const me = await http.get<MeResponse>('/auth/me');
-      set({ status: 'authenticated', user: me.user, roles: me.roles });
+      set(fromMe(await http.get<MeResponse>('/auth/me')));
     } catch {
       setTokens(null);
       set(signedOut);
@@ -39,8 +53,7 @@ export const useAuth = create<AuthState>()((set) => ({
   login: async (email, password) => {
     const tokens = await http.post<TokenResponse>('/auth/login', { email, password });
     setTokens(tokens);
-    const me = await http.get<MeResponse>('/auth/me');
-    set({ status: 'authenticated', user: me.user, roles: me.roles });
+    set(fromMe(await http.get<MeResponse>('/auth/me')));
   },
 
   logout: async () => {

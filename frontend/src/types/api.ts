@@ -5,9 +5,13 @@ export type AppRole = 'SYSTEM_ADMIN' | 'HR_ADMIN' | 'SUPERVISOR';
 export type ScopeType = 'SYSTEM' | 'DEPARTMENT' | 'UNIT';
 
 export interface RoleGrant {
+  id: number | null;
   role: AppRole;
   scopeType: ScopeType;
   scopeIds: number[];
+  expiresAt: string | null;
+  /** A System Admin assignment that needs PAM elevation before it counts (R13). */
+  dormant?: boolean;
 }
 
 export interface SessionUser {
@@ -16,12 +20,23 @@ export interface SessionUser {
   displayName: string;
   /** Set when the account belongs to an employee (self-service). */
   employeeId: number | null;
+  isBreakGlass: boolean;
 }
+
+export type EffectiveRole = AppRole | 'EMPLOYEE';
 
 /** GET /api/v1/auth/me */
 export interface MeResponse {
   user: SessionUser;
   roles: RoleGrant[];
+  effectiveRoles: EffectiveRole[];
+  pam: { expiresAt: string } | null;
+  breakGlass: { expiresAt: string } | null;
+}
+
+export interface Paged<T> {
+  items: T[];
+  total: number;
 }
 
 /** POST /api/v1/auth/login and /refresh */

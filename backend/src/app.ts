@@ -1,31 +1,65 @@
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
-import express from 'express';
+import express, { Router } from 'express';
 import type { Env } from './config/env.js';
+import { createPasswordService, type PasswordService } from './lib/passwords.js';
 import type { Db } from './lib/prisma.js';
+import { createThrottle } from './lib/throttle.js';
+import { createTokenService } from './lib/tokens.js';
+import { createAuthenticate } from './middleware/authenticate.js';
 import { errorHandler, unknownRoute } from './middleware/errors.js';
 import { requestId } from './middleware/request-id.js';
+import { createAuthRouter } from './modules/auth/routes.js';
+import { createAuthService } from './modules/auth/service.js';
+import { createAccountService } from './modules/users/accounts.js';
+import { createRoleAssignmentService } from './modules/users/role-assignments.js';
+import { createUsersRouter } from './modules/users/routes.js';
+import { createWorkforceRouter } from './modules/workforce/routes.js';
 
 export interface AppDeps {
   env: Env;
   db: Db;
+  /** Injectable so tests can use a cheaper bcrypt cost; defaults to env.BCRYPT_ROUNDS. */
+  passwords?: PasswordService;
 }
 
 const HEALTH_DB_TIMEOUT_MS = 2000;
 
 /** Builds the Express application without starting a listener (tests use it directly). */
-export function createApp({ env, db }: AppDeps) {
+export function createApp({ env, db, passwords = createPasswordService(env.BCRYPT_ROUNDS) }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
+  if (env.TRUST_PROXY) app.set('trust proxy', 1); // one hop: the hospital reverse proxy
   app.use(requestId);
   // One exact origin; credentials allowed because the refresh token travels in a cookie.
   app.use(cors({ origin: env.CORS_ORIGIN, credentials: true, exposedHeaders: ['X-Request-Id'] }));
   app.use(express.json({ limit: '1mb' }));
+  app.use(cookieParser());
 
   // Liveness + database reachability. Deliberately reveals nothing else.
   app.get('/api/v1/health', async (_req, res) => {
     const database = await ping(db).then(() => 'up' as const, () => 'down' as const);
     res.status(database === 'up' ? 200 : 503).json({ status: database === 'up' ? 'ok' : 'degraded', database });
   });
+
+  const tokens = createTokenService(env.JWT_SECRET, env.ACCESS_TOKEN_TTL_SECONDS);
+  const authenticate = createAuthenticate(db, tokens, env.CORS_ORIGIN);
+  const auth = createAuthService({
+    db, env, tokens, passwords,
+    accountThrottle: createThrottle(env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_ACCOUNT),
+    clientThrottle: createThrottle(env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_CLIENT),
+  });
+
+  app.use('/api/v1/auth', createAuthRouter(env, auth, authenticate));
+
+  // Everything else under /api/v1 requires a signed-in caller. One protected
+  // router, so authentication runs once per request; each domain module adds
+  // its router here. Anonymous callers get 401 for any path, known or not.
+  const api = Router();
+  api.use(authenticate);
+  api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db)));
+  api.use(createWorkforceRouter(db));
+  app.use('/api/v1', api);
 
   app.use('/api', unknownRoute);
   app.use(errorHandler);

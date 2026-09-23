@@ -9,6 +9,7 @@ import {
   SettingOutlined, TeamOutlined, ApartmentOutlined,
 } from '@ant-design/icons';
 import type { TranslationKey } from '../lib/i18n';
+import type { AppRole } from '../types/api';
 
 export interface AppModule {
   path: string;
@@ -16,10 +17,12 @@ export interface AppModule {
   icon: ReactNode;
   load: () => Promise<{ default: ComponentType }>;
   Page: LazyExoticComponent<ComponentType>;
+  /** Shown in the menu only to holders of one of these assignments (UI hint; the server enforces). */
+  requires?: AppRole[];
 }
 
-function page(path: string, labelKey: TranslationKey, icon: ReactNode, load: AppModule['load']): AppModule {
-  return { path, labelKey, icon, load, Page: lazy(load) };
+function page(path: string, labelKey: TranslationKey, icon: ReactNode, load: AppModule['load'], requires?: AppRole[]): AppModule {
+  return { path, labelKey, icon, load, Page: lazy(load), requires };
 }
 
 export const MODULES: AppModule[] = [
@@ -35,5 +38,5 @@ export const MODULES: AppModule[] = [
   page('/attendance', 'attendance', <ClockCircleOutlined />, () => import('../modules/attendance/AttendancePage')),
   page('/notifications', 'notifications', <BellOutlined />, () => import('../modules/notifications/NotificationsPage')),
   page('/audit', 'audit', <AuditOutlined />, () => import('../modules/audit/AuditPage')),
-  page('/admin', 'admin', <SettingOutlined />, () => import('../modules/administration/AdministrationPage')),
+  page('/admin', 'admin', <SettingOutlined />, () => import('../modules/administration/AdministrationPage'), ['HR_ADMIN', 'SYSTEM_ADMIN']),
 ];

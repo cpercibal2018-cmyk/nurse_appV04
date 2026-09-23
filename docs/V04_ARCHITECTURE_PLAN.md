@@ -170,6 +170,21 @@ Follows the brief; each commit builds.
 | C-17 (new) | Accepted upload types | Contract copy: PDF only (V03 decision, commit `1508316`). Credential evidence: PDF, JPEG, PNG, WebP (spec §5.3.2 allowlist) |
 | All others | Recommendations in §9 adopted (D-6…D-10, D-12…D-15, D-17, D-19, D-20) | Can be revisited at any commit |
 
+### Implementation notes — commit 5 (authentication and RBAC)
+
+| Topic | What was built | Status |
+| :--- | :--- | :--- |
+| **Timestamp bug found and fixed** | Prisma 7.10's pg adapter sends Dates without an offset; on a PostgreSQL server whose time zone is not UTC (e.g. Asia/Riyadh) every Prisma-written timestamp was stored 3 h early while `now()` was right. Every connection now pins `TimeZone=UTC` (`lib/prisma.ts`); a regression test forces an Asia/Riyadh connection. CI's UTC container could never have shown it | Fixed; affects every later commit |
+| Login attempt limits | Per account and per client, fixed window, in memory (single API process) | Spec §3.3 requires limits but gives **no numbers — REQUIREMENT NOT ESTABLISHED**. Defaults 5/15 min per account (mirrors the spec's registration throttle), 20/15 min per client; configurable; confirm with hospital IT |
+| CSRF | Session-bound: `sha256(csrfToken)` is a claim in the access token; mutations compare the header to it and require the app `Origin`. Refresh (cookie-authenticated) uses Origin + double-submit cookie | Meets spec §3.4 without a schema change |
+| Sessions (D-6) | 15 min access; refresh idle 1 h; absolute 24 h copied through every rotation; logout / password change / deactivation revoke the family so live access tokens stop at once | As decided |
+| Password rule | 12–72 characters (spec §3.2) **and** ≤ 72 bytes UTF-8, because bcrypt ignores bytes beyond 72 (a long Arabic password would be silently truncated) | Byte limit is a technical necessity, not a policy |
+| Accounts | HR provisions accounts with an initial password; the invitation/claim flow (spec §3.2) stays deferred until SMTP exists (§6). A scoped HR admin administers accounts whose linked employee is in scope; unlinked accounts need system-wide scope | Scope interpretation — **confirm** |
+| R5 expiry windows | 90 days SUPERVISOR, 365 others | Source is the V03 NestJS reference, **not the spec** — kept, flagged |
+| PAM | Reason ≥ 10 chars, 1–4 h, default 2 h (V03 reference values; spec says "e.g., 2 hours") | Expired elevations are ignored at once; cleanup job in commit 9 |
+| Break-glass (D-9) | Siren on successful sign-in of the flagged account: irrevocable event, HIGH audit, CRITICAL in-app notification to System Admins; root access without PAM/four-eyes; session and access end at 4 h. Failed attempts on it are audited HIGH | SMS/email to CEO + IT Director not built (no SMTP/SMS) |
+| Workforce reads | `GET /departments`, `GET /units` brought forward from commit 7 (the role-assignment scope picker needs them); read-only | Writes stay in commit 7 |
+
 ## 9. Decisions required before stage 2
 
 Each row names the conflict it resolves, my recommendation, and the consequence. **Nothing below is assumed. Stage 2 starts only once these are answered.**

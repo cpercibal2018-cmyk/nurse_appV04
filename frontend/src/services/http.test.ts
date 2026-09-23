@@ -27,6 +27,12 @@ describe('http client', () => {
     expect(init.body).toBe('{"a":1}');
   });
 
+  it('sends an Idempotency-Key when given one', async () => {
+    fetchMock.mockResolvedValueOnce(json(201, { id: 7 }));
+    await http.post('/role-assignments', {}, { idempotencyKey: 'k-1' });
+    expect((fetchMock.mock.calls[0]![1] as RequestInit).headers).toMatchObject({ 'Idempotency-Key': 'k-1' });
+  });
+
   it('turns the error envelope into an ApiError with code, message and request id', async () => {
     fetchMock.mockResolvedValueOnce(json(409, { error: { code: 'CONTRACT_PERIOD_OVERLAP', message: 'Overlaps' } }, { 'X-Request-Id': 'r-1' }));
     const err = await http.get('/x').catch((e: unknown) => e);

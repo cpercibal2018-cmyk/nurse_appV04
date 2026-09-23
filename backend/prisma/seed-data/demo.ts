@@ -63,4 +63,7 @@ export const DEMO_USERS = [
   { email: 'hr.admin@aigh.sa', displayName: 'HR Admin', role: 'HR_ADMIN', scopeType: 'SYSTEM', scopeUnits: [] },
   { email: 'supervisor@aigh.sa', displayName: 'David Lee', role: 'SUPERVISOR', scopeType: 'UNIT', scopeUnits: ['ICU_MAIN', 'INP_WARDS', 'NICU'], employeeJobNumber: '4008' },
   { email: 'nurse@aigh.sa', displayName: 'Sarah Al-Harbi', role: null, scopeType: null, scopeUnits: [], employeeJobNumber: '1001' },
+  // Break-glass root account (spec §3.6, D-9): signing in sounds the siren and
+  // gives 4 hours of root access without PAM or four-eyes.
+  { email: 'breakglass@aigh.sa', displayName: 'Break-glass (demo)', role: null, scopeType: null, scopeUnits: [], isBreakGlass: true },
 ] as const;

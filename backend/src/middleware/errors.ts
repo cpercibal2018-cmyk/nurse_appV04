@@ -17,6 +17,9 @@ const CONSTRAINT_ERRORS: Record<string, HttpError> = {
   role_assignments_active_key: new HttpError(409, 'ROLE_ALREADY_ASSIGNED', 'This user already holds an active assignment for this role and scope type'),
   approval_requests_pending_key: new HttpError(409, 'APPROVAL_ALREADY_PENDING', 'An approval request for this action is already pending'),
   chk_units_bed_count: new HttpError(422, 'BED_COUNT_OUT_OF_RANGE', 'Bed count must be between 0 and 500'),
+  users_email_key: new HttpError(409, 'EMAIL_TAKEN', 'An account with this email already exists'),
+  users_employee_id_key: new HttpError(409, 'EMPLOYEE_ALREADY_LINKED', 'This employee already has an account'),
+  chk_role_assignments_scope: new HttpError(400, 'SCOPE_INVALID', 'SYSTEM scope takes no ids; DEPARTMENT and UNIT scopes need at least one'),
 };
 
 interface DriverCause { originalCode?: string; originalMessage?: string; constraint?: { index?: string } }

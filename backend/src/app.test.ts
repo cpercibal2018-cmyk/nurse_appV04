@@ -4,7 +4,7 @@ import { createApp } from './app.js';
 import { loadEnv } from './config/env.js';
 import type { Db } from './lib/prisma.js';
 
-const env = loadEnv({ NODE_ENV: 'test', DATABASE_URL: 'postgresql://localhost/test' });
+const env = loadEnv({ NODE_ENV: 'test', DATABASE_URL: 'postgresql://localhost/test', JWT_SECRET: 'unit-test-secret-0123456789-abcdefghijkl' });
 // Only $queryRaw is used by the health check; the rest of the client is not needed here.
 const stubDb = (ping: () => Promise<unknown>) => ({ $queryRaw: ping }) as unknown as Db;
 const app = createApp({ env, db: stubDb(async () => [{ '?column?': 1 }]) });
@@ -39,10 +39,16 @@ describe('request id', () => {
 });
 
 describe('error envelope', () => {
-  it('answers an unknown API path with 404 ROUTE_NOT_FOUND', async () => {
-    const res = await request(app).get('/api/v1/nope');
+  it('answers an unknown path outside /api/v1 with 404 ROUTE_NOT_FOUND', async () => {
+    const res = await request(app).get('/api/v2/nope');
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: { code: 'ROUTE_NOT_FOUND', message: 'No such endpoint' } });
+  });
+
+  it('answers any protected path with 401 for an anonymous caller (route existence is not revealed)', async () => {
+    const res = await request(app).get('/api/v1/nope');
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHENTICATED');
   });
 
   it('answers malformed JSON with 400 MALFORMED_BODY and no parser detail', async () => {
@@ -79,7 +85,14 @@ describe('environment', () => {
   });
 
   it('parses the residency allowlist into trimmed entries', () => {
-    const e = loadEnv({ DATABASE_URL: 'postgresql://x/y', PDPL_ALLOWED_REGIONS: ' me-riyadh-1 , ksa-onprem ,' });
+    const e = loadEnv({ DATABASE_URL: 'postgresql://x/y', JWT_SECRET: 'unit-test-secret-0123456789-abcdefghijkl', PDPL_ALLOWED_REGIONS: ' me-riyadh-1 , ksa-onprem ,' });
     expect(e.PDPL_ALLOWED_REGIONS).toEqual(['me-riyadh-1', 'ksa-onprem']);
+  });
+});
+
+describe('JWT secret', () => {
+  it('is required and must be at least 32 characters', () => {
+    expect(() => loadEnv({ DATABASE_URL: 'postgresql://x/y' })).toThrow(/JWT_SECRET/);
+    expect(() => loadEnv({ DATABASE_URL: 'postgresql://x/y', JWT_SECRET: 'too-short' })).toThrow(/JWT_SECRET/);
   });
 });

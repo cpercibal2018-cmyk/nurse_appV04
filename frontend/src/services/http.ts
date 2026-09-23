@@ -45,8 +45,14 @@ function readCsrfCookie(): string | null {
 
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
-async function send(method: Method, path: string, body?: unknown): Promise<Response> {
+export interface RequestOptions {
+  /** For operations marked [I] in API_MAP: a UUID reused on retry so the server applies the write once. */
+  idempotencyKey?: string;
+}
+
+async function send(method: Method, path: string, body?: unknown, opts: RequestOptions = {}): Promise<Response> {
   const headers: Record<string, string> = { Accept: 'application/json' };
+  if (opts.idempotencyKey) headers['Idempotency-Key'] = opts.idempotencyKey;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   const csrf = csrfToken ?? readCsrfCookie();
@@ -103,12 +109,12 @@ export function refreshSession(): Promise<boolean> {
 let onSessionExpired: () => void = () => {};
 export function setSessionExpiredHandler(fn: () => void) { onSessionExpired = fn; }
 
-async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
-  let res = await send(method, path, body);
+async function request<T>(method: Method, path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
+  let res = await send(method, path, body, opts);
   // Access token expired mid-session → one silent refresh, then retry once.
   if (res.status === 401 && !`${API_PREFIX}${path}`.startsWith(AUTH_PREFIX)) {
     if (await refreshSession()) {
-      res = await send(method, path, body);
+      res = await send(method, path, body, opts);
     } else {
       setTokens(null);
       onSessionExpired();
@@ -120,7 +126,7 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
 
 export const http = {
   get: <T>(path: string) => request<T>('GET', path),
-  post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
+  post: <T>(path: string, body?: unknown, opts?: RequestOptions) => request<T>('POST', path, body, opts),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   delete: <T = void>(path: string) => request<T>('DELETE', path),
