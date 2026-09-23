@@ -23,6 +23,19 @@ export const PERMISSIONS = {
   // Reference data every signed-in user may read.
   'matrix.read': ['EMPLOYEE'],
   'workforce.read': ['EMPLOYEE'], // departments, units (API_MAP §2.4)
+
+  // Credentials and eligibility — spec §8.1 Credentials row, §5.1.4, §6.1.
+  'credentials.catalog.read': ['EMPLOYEE'],
+  'credentials.catalog.write': ['HR_ADMIN', 'SYSTEM_ADMIN'], // system-wide scope enforced in the service
+  'requirements.read': ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'],
+  'requirements.write': ['HR_ADMIN', 'SYSTEM_ADMIN'],
+  'credentials.read': ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'], // supervisors get the compliance view
+  'credentials.manage': ['HR_ADMIN', 'SYSTEM_ADMIN'], // record, verify, suspend, revoke, renewal decisions
+  'credentials.self': ['EMPLOYEE'], // own submission, evidence, alerts
+  'eligibility.read': ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'],
+  'waivers.read': ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'],
+  // Spec §6.1.2: "only users with the Supervisor or HR_Admin role can issue a waiver".
+  'waivers.write': ['SUPERVISOR', 'HR_ADMIN'],
 } as const satisfies Record<string, readonly EffectiveRole[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

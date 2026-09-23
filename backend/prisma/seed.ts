@@ -9,6 +9,7 @@
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import { PasswordSchema } from '../src/lib/passwords.js';
+import { refreshEligibility } from '../src/modules/eligibility/state.service.js';
 import { createPrisma, type Db } from '../src/lib/prisma.js';
 import { appendAudit } from '../src/lib/audit.js';
 import { toHijriIso } from '../src/lib/hijri.js';
@@ -141,7 +142,12 @@ async function main() {
   const db = createPrisma(url);
   try {
     await seedReference(db);
-    if (demo) await seedDemo(db, demoPassword);
+    if (demo) {
+      await seedDemo(db, demoPassword);
+      // Materialize eligibility for every demo nurse with the one engine (spec §6.1).
+      const emps = await db.employee.findMany({ where: { deletedAt: null }, select: { id: true } });
+      for (const e of emps) await db.$transaction((tx) => refreshEligibility(tx, e.id, 'SEED'));
+    }
     await appendAudit(db, {
       actorUserId: null, action: 'SEED_APPLIED', resource: 'system',
       changes: { reference: true, demo },

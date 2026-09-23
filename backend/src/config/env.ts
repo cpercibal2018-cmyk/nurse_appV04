@@ -36,6 +36,13 @@ const EnvSchema = z.object({
   LOGIN_THROTTLE_WINDOW_SECONDS: int(900),
   LOGIN_THROTTLE_MAX_PER_ACCOUNT: int(5),
   LOGIN_THROTTLE_MAX_PER_CLIENT: int(20),
+  // ── Uploads (spec §5.1.5, §5.3.2; decision D-10) ─────────────────────────
+  /** Local document storage root (never served directly). */
+  STORAGE_DIR: z.string().min(1).default('./storage'),
+  /** Spec §5.1.5: 10 MB per upload, configurable. */
+  UPLOAD_MAX_SIZE_BYTES: int(10 * 1024 * 1024),
+  /** D-10: dev marks files CLEAN after magic-byte checks; production refuses to start without a real scanner. */
+  UPLOAD_SCANNER: z.enum(['dev-magic-bytes', 'clamav']).default('dev-magic-bytes'),
   /** Set when running behind the reverse proxy so req.ip is the client, not the proxy. */
   TRUST_PROXY: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
 });

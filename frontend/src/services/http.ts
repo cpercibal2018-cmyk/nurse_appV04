@@ -48,12 +48,17 @@ type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export interface RequestOptions {
   /** For operations marked [I] in API_MAP: a UUID reused on retry so the server applies the write once. */
   idempotencyKey?: string;
+  /** A file sent as the raw body (evidence uploads); its name travels in X-File-Name. */
+  file?: File;
 }
 
 async function send(method: Method, path: string, body?: unknown, opts: RequestOptions = {}): Promise<Response> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (opts.idempotencyKey) headers['Idempotency-Key'] = opts.idempotencyKey;
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (opts.file) {
+    headers['Content-Type'] = opts.file.type || 'application/octet-stream';
+    headers['X-File-Name'] = encodeURIComponent(opts.file.name);
+  } else if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   const csrf = csrfToken ?? readCsrfCookie();
   if (csrf) headers['X-CSRF-Token'] = csrf;
@@ -62,7 +67,7 @@ async function send(method: Method, path: string, body?: unknown, opts: RequestO
       method,
       headers,
       credentials: 'same-origin',
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: opts.file ?? (body === undefined ? undefined : JSON.stringify(body)),
     });
   } catch {
     throw new ApiError(0, 'NETWORK_ERROR', 'The server could not be reached. Check your connection and try again.');
@@ -109,7 +114,8 @@ export function refreshSession(): Promise<boolean> {
 let onSessionExpired: () => void = () => {};
 export function setSessionExpiredHandler(fn: () => void) { onSessionExpired = fn; }
 
-async function request<T>(method: Method, path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
+/** Sends a request, refreshing the session once on 401. Resolves to the successful Response. */
+async function exchange(method: Method, path: string, body?: unknown, opts?: RequestOptions): Promise<Response> {
   let res = await send(method, path, body, opts);
   // Access token expired mid-session → one silent refresh, then retry once.
   if (res.status === 401 && !`${API_PREFIX}${path}`.startsWith(AUTH_PREFIX)) {
@@ -121,6 +127,11 @@ async function request<T>(method: Method, path: string, body?: unknown, opts?: R
     }
   }
   if (!res.ok) throw await toApiError(res);
+  return res;
+}
+
+async function request<T>(method: Method, path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
+  const res = await exchange(method, path, body, opts);
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
@@ -130,6 +141,18 @@ export const http = {
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   delete: <T = void>(path: string) => request<T>('DELETE', path),
+  /** Uploads a file as the raw request body. */
+  upload: <T>(path: string, file: File) => request<T>('POST', path, undefined, { file }),
+  /** Downloads a protected file and hands it to the browser as a save. */
+  async download(path: string, fallbackName = 'document') {
+    const res = await exchange('GET', path);
+    const m = /filename\*=UTF-8''([^;]+)/.exec(res.headers.get('Content-Disposition') ?? '');
+    const name = m?.[1] ? decodeURIComponent(m[1]) : fallbackName;
+    const url = URL.createObjectURL(await res.blob());
+    const a = Object.assign(document.createElement('a'), { href: url, download: name });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  },
 };
 
 /** GET /health. A 503 is an answer ("database down"), not a failure, so its body is returned. */

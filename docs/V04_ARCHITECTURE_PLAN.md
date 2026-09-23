@@ -190,6 +190,23 @@ Follows the brief; each commit builds.
 
 **Commit 5 validation (2026-09-23)** found and fixed five defects, each reproduced by a failing test first: logout lacked the CSRF check (spec §3.4 "all state-changing requests"); login lacked an Origin check (login CSRF); deactivating an account could remove the last System Admin, bypassing R8; R8 counted assignments held by deactivated accounts; an administrator could re-link their own account to another employee. API responses now also carry `Cache-Control: no-store`.
 
+### Implementation notes — commit 6 (credentials and clinical eligibility)
+
+| Topic | What was built | Status |
+| :--- | :--- | :--- |
+| Engine | `modules/eligibility/engine.ts`, pure: spec §6.1 order; D-4 (no rules → ELIGIBLE + `NO_REQUIREMENTS_CONFIGURED`); D-15 (dates checked against the evaluated day; waiver per template); §5.1.4 position-specific rule overrides unit-wide; grace §6.1.1; transitions §6.1.1.1; 33 unit tests from the acceptance tables, mutation-checked | As specified |
+| New status | `ELIGIBLE_WITH_POLICY_WARNING` added (spec §6.1.1.1 names it; the consolidated schema lacked it). Migration `20260923060000_credential_review_and_policy_warning` also adds `document_versions.review_status` and `credentials.latest_evidence_id` (spec §5.1.5) | Schema gap closed |
+| Materialized state | Refreshed inside the transaction of every credential, requirement, template and waiver change (L6); status changes audited | Date passage (expiries, waiver ends, deadlines) and stored-status transitions (Valid → ExpiringSoon → Expired) need the daily job — **commit 9**. The engine checks dates itself, so eligibility is never wrong in the meantime; only the stored snapshot and the stored credential status can lag |
+| Grace log | Grace activation/completion/closure are HIGH audit events, as DATABASE_CONSOLIDATION decided — no separate `grace_period_log` table (the spec's acceptance wording names one) | Deviation, documented |
+| Grace no-stacking | A grace window is tied to one expiry cycle (`graceCycleId`); approval clears it; rejection or suspension/revocation closes it so re-submitting cannot reopen it | Conservative reading of "no stacking" |
+| Uploads (D-10) | Magic-byte + size checks; development marks CLEAN; downloads CLEAN-only and audited. **Production refuses to start** (`UPLOAD_SCANNER`) until a ClamAV adapter exists | As decided in D-10 — production is blocked until a scanner is built |
+| **REQUIREMENT NOT ESTABLISHED** — Unassigned employee | No unit → no rule can apply → **blocked** (`UNIT_NOT_ASSIGNED`) rather than cleared without any credential check | **Owner to confirm** |
+| Separation of duties | Nobody verifies, suspends, revokes or decides the renewal of their own credential, or waives their own credential | Implementation safeguard (R2/R11 principle) — **owner to confirm** |
+| Catalog scope | Only system-wide HR/System Admins change templates (one hospital catalog); scoped HR manages rules for their units | Interpretation — **owner to confirm** |
+| Waiver authority | Spec §6.1.2 read literally: Supervisor or HR Admin only; **System Admin receives 403** | **Owner to confirm** |
+| Transition deadline | Judged against today (spec: `CURRENT_DATE`), not the shift date | Spec literal |
+| R10 "modifying global eligibility rules" | No four-eyes on requirement or template changes: the spec does not say which changes are "global" | **REQUIREMENT NOT ESTABLISHED** |
+
 ## 9. Decisions required before stage 2
 
 Each row names the conflict it resolves, my recommendation, and the consequence. **Nothing below is assumed. Stage 2 starts only once these are answered.**

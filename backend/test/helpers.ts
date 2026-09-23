@@ -89,6 +89,11 @@ export async function signIn(app: Express, email: string, password = PASSWORD) {
     get: (path: string) => withAuth(agent.get(`/api/v1${path}`)),
     post: (path: string, body?: object) => withAuth(agent.post(`/api/v1${path}`)).send(body ?? {}),
     patch: (path: string, body?: object) => withAuth(agent.patch(`/api/v1${path}`)).send(body ?? {}),
+    put: (path: string, body?: object) => withAuth(agent.put(`/api/v1${path}`)).send(body ?? {}),
+    del: (path: string) => withAuth(agent.delete(`/api/v1${path}`)),
+    /** Raw file upload: the body is the file, its name in X-File-Name. */
+    upload: (path: string, bytes: Buffer, contentType: string, fileName = 'evidence.pdf') =>
+      withAuth(agent.post(`/api/v1${path}`)).set('Content-Type', contentType).set('X-File-Name', encodeURIComponent(fileName)).send(bytes),
     refresh: async () => {
       const r = await agent.post('/api/v1/auth/refresh').set('Origin', ORIGIN).set('X-CSRF-Token', session.csrf);
       if (r.status === 200) { session.token = r.body.token; session.csrf = r.body.csrfToken; }
@@ -96,3 +101,36 @@ export async function signIn(app: Express, email: string, password = PASSWORD) {
     },
   };
 }
+
+/** A schedulable nurse in `unitId` with an Active contract covering the next year, plus an optional linked login. */
+export async function makeNurse(db: Db, unitId: number, opts: { account?: boolean } = {}) {
+  const emp = await makeEmployee(db, unitId);
+  const start = new Date(Date.now() - 30 * 86_400_000);
+  const end = new Date(Date.now() + 365 * 86_400_000);
+  await db.contract.create({ data: { employeeId: emp.id, jobNumber: emp.jobNumber, status: 'Active', startDate: start, endDate: end } });
+  const user = opts.account ? await makeUser(db, { employeeId: emp.id }) : null;
+  return { emp, user };
+}
+
+/** A credential template with one number field and issue/expiry date fields (spec §5.1.3 shape). */
+export async function makeTemplate(db: Db, opts: { gracePeriodDays?: number; requiresUpload?: boolean; hasExpiry?: boolean } = {}) {
+  await db.credentialCategory.upsert({ where: { code: 'LICENSURE' }, update: {}, create: { code: 'LICENSURE', name: 'Licensure' } });
+  return db.credentialTemplate.create({
+    data: {
+      code: uniq('T').toUpperCase(), name: 'Test licence', categoryCode: 'LICENSURE',
+      hasExpiry: opts.hasExpiry ?? true, requiresUpload: opts.requiresUpload ?? true, gracePeriodDays: opts.gracePeriodDays ?? 0,
+      fieldDefs: [
+        { key: 'licence_number', label: 'Licence number', type: 'text', required: true, displayOrder: 1 },
+        { key: 'issue_date', label: 'Issue date', type: 'date', required: true, displayOrder: 2, isIssueDate: true },
+        { key: 'expiry_date', label: 'Expiry date', type: 'date', required: true, displayOrder: 3, isExpiryDate: true },
+      ],
+    },
+  });
+}
+
+/** Minimal valid files for the magic-byte checks. */
+export const FILES = {
+  pdf: Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n'),
+  png: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]),
+  exe: Buffer.from('MZ\x90\x00this is not a document'),
+};

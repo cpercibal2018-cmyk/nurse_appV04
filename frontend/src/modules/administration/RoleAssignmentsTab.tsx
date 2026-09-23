@@ -86,7 +86,7 @@ export function RoleAssignmentsTab() {
         ]}
       />
 
-      <Drawer title={t('grantRole')} open={open} onClose={() => setOpen(false)} width={520} destroyOnHidden>
+      <Drawer title={t('grantRole')} open={open} onClose={() => setOpen(false)} size={520} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={submit} initialValues={{ role: 'SUPERVISOR', scopeType: 'UNIT' }}>
           <Form.Item name="userId" label={t('account')} rules={[{ required: true }]}>
             <Select

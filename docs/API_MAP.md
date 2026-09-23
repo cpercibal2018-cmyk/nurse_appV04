@@ -152,29 +152,35 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | POST | `/api/v1/contracts/:id/documents` | Add contract-copy version (D1–D3) | HR | store `attachContractCopy` |
 | GET | `/api/v1/contracts/:id/documents/:version/download` | Stream if CLEAN (D4) | HR; EMP own | store getter |
 
-### 2.7 Credentials (`modules/credentials`)
+### 2.7 Credentials (`modules/credentials`) — implemented in commit 6
 
 | Method | Endpoint | Purpose | Permission / scope | Source |
 | :--- | :--- | :--- | :--- | :--- |
-| GET | `/api/v1/credential-catalog` | Categories + templates | EMP | spec |
-| POST · PATCH | `/api/v1/credential-templates`, `/:id` | Template admin (incl. `gracePeriodDays`) | HR, SA | spec |
-| GET · POST · PATCH · DELETE | `/api/v1/credential-requirements`, `/:id` | Requirement rules (changing *global* rules → four-eyes? R10) | HR, SA | store + spec |
-| GET | `/api/v1/credentials?employeeId&status&expiringWithinDays` | List | HR (scoped); SUP compliance view (no ids/pending/downloads, D5); EMP own | spec §5.2 |
-| POST | `/api/v1/credentials` | Record credential + evidence (multipart) → PendingVerification | HR (scoped); EMP own | store |
-| POST | `/api/v1/credentials/:id/documents` | New evidence version | HR; EMP own | store |
-| POST | `/api/v1/credentials/:id/verify` | PendingVerification → Valid | HR (scoped) | spec §5.2 (**missing in V03**) |
-| POST | `/api/v1/credentials/:id/renewal` · `/renewal/approve` · `/renewal/reject` | Staged renewal | EMP own (submit); HR (decide) | spec §5.2 |
-| POST | `/api/v1/credentials/:id/suspend` · `/revoke` | Validity decision (L3) | HR | spec §5.2 |
-| GET | `/api/v1/credentials/:id/documents/:version/download` | If CLEAN | HR; EMP own; **never SUP** | spec |
+| GET | `/api/v1/credential-categories` · `/api/v1/credential-templates?includeInactive` | Catalog | EMP | spec §5.1 |
+| POST · PATCH | `/api/v1/credential-templates`, `/:id` | Template admin (fields, `gracePeriodDays` 0–90, activity); grace/expiry/activity changes re-evaluate holders | HR, SA — **system-wide scope only** (one hospital catalog) | spec §5.1, §6.1.1 |
+| GET | `/api/v1/credential-requirements?unitId&position&templateId` | Rules | HR, SA, SUP | spec §5.1.4 |
+| POST · PUT · DELETE | `/api/v1/credential-requirements`, `/:id` | Rule CRUD; re-evaluates the unit in the same transaction; `{affectedEmployees}` | HR (unit in scope), SA | spec §5.1.4 |
+| POST | `/api/v1/credential-requirements/bulk` | `{items[]}` in one transaction → `{created, updated, affectedEmployees}` | HR (scoped), SA | spec §5.1.4 |
+| GET | `/api/v1/credentials?employeeId&templateId&status&queue=review` | List (review queue = pending verification, staged renewal or pending document) | HR/SA full (scoped); SUP compliance view (no tracking data, pending values or evidence) | spec §5.2, §8.1 |
+| GET | `/api/v1/credentials/:id` | One record, shaped by viewer | owner, HR/SA scoped, SUP scoped | spec §5.2 |
+| POST | `/api/v1/credentials` · `/api/v1/credentials/me` | Record → PendingVerification; tracking data validated against template fields | HR (scoped) · EMP own | spec §5.1.5 |
+| GET | `/api/v1/credentials/me` · `/me/requirements` | Own records · rules that apply to me | EMP | spec §8.1 |
+| POST | `/api/v1/credentials/:id/verify` `{documentId?}` | PendingVerification → Valid/ExpiringSoon/Expired by date; approves evidence | HR (scoped), not own | spec §5.2 |
+| POST | `/api/v1/credentials/:id/suspend` · `/revoke` `{reason}` | L3; closes grace | HR (scoped), not own | spec §5.2 |
+| POST | `/api/v1/credentials/:id/renewal` | Stage replacement data | EMP own, HR (scoped) | spec §5.2 |
+| POST | `/api/v1/credentials/:id/renewal/approve` `{documentId?}` · `/renewal/reject` `{reason}` | Promote or discard; approval completes grace, rejection closes it | HR (scoped), not own | spec §5.2, §6.1.1 |
+| POST | `/api/v1/credentials/:id/documents` | Raw body = file, `Content-Type` = its type, `X-File-Name`; PDF/JPEG/PNG/WebP, ≤ 10 MB, magic bytes must match | EMP own, HR (scoped) | spec §5.1.5 |
+| GET | `/api/v1/credentials/:id/documents` · `/:docId` | Versions · download (CLEAN only, audited, `nosniff`) | EMP own, HR (scoped); **never SUP** (D5) | spec §5.2, §5.3.2 |
 
-### 2.8 Eligibility (`modules/eligibility`)
+### 2.8 Eligibility (`modules/eligibility`) — implemented in commit 6
 
 | Method | Endpoint | Purpose | Permission / scope | Source |
 | :--- | :--- | :--- | :--- | :--- |
-| GET | `/api/v1/eligibility?unitId&status` | Materialized states | HR, SUP (scoped) | store |
-| GET | `/api/v1/eligibility/:employeeId?date` | State + reasons, or a live check for a shift date | HR, SUP (scoped); EMP own | spec §6.1 |
-| POST | `/api/v1/eligibility/refresh` | Recalculate `{employeeIds?}` | HR, SA | store `refreshAll` |
-| GET · POST | `/api/v1/waivers`, `/api/v1/waivers` | List / create (L9) | SUP (scoped), HR | store `addWaiver` |
+| GET | `/api/v1/eligibility?unitId&status` | Materialized states with reasons | HR, SA, SUP (scoped) | spec §6.1 |
+| GET | `/api/v1/eligibility/me` · `/:employeeId` | One stored state | EMP own; HR, SUP (scoped) | spec §6.1 |
+| GET | `/api/v1/eligibility/:employeeId/evaluate?date=YYYY-MM-DD` | Live engine result for a day, not stored (the path publication will use, L7) | HR, SA, SUP (scoped) | spec §6.1 |
+| POST | `/api/v1/eligibility/:employeeId/refresh` | Recalculate and store one nurse | HR, SA (scoped) | spec §6.1 |
+| GET · POST | `/api/v1/waivers?employeeId&active`, `/api/v1/waivers` | List / create `{employeeId, templateId, reason, expiresAt}` (≤ 72 h, HIGH audit) | read HR, SA, SUP; **create SUP or HR only** (spec §6.1.2 — System Admin gets 403), scoped, not own | spec §6.1.2 |
 
 ### 2.9 Scheduling (`modules/scheduling`)
 

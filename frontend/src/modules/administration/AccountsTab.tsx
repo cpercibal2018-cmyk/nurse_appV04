@@ -66,7 +66,7 @@ export function AccountsTab() {
           },
         ]}
       />
-      <Drawer title={t('newAccount')} open={open} onClose={() => setOpen(false)} width={480} destroyOnHidden>
+      <Drawer title={t('newAccount')} open={open} onClose={() => setOpen(false)} size={480} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={submit}>
           <Form.Item name="email" label={t('email')} rules={[{ required: true, type: 'email' }]}><Input autoComplete="off" /></Form.Item>
           <Form.Item name="displayName" label={t('displayName')} rules={[{ required: true, max: 120 }]}><Input /></Form.Item>

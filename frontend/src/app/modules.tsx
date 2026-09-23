@@ -19,24 +19,28 @@ export interface AppModule {
   Page: LazyExoticComponent<ComponentType>;
   /** Shown in the menu only to holders of one of these assignments (UI hint; the server enforces). */
   requires?: AppRole[];
+  /** Shown only to accounts linked to an employee record (self-service pages). */
+  employeeOnly?: boolean;
 }
 
-function page(path: string, labelKey: TranslationKey, icon: ReactNode, load: AppModule['load'], requires?: AppRole[]): AppModule {
-  return { path, labelKey, icon, load, Page: lazy(load), requires };
+function page(path: string, labelKey: TranslationKey, icon: ReactNode, load: AppModule['load'], access: { requires?: AppRole[]; employeeOnly?: boolean } = {}): AppModule {
+  return { path, labelKey, icon, load, Page: lazy(load), ...access };
 }
+
+const STAFF: AppRole[] = ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'];
 
 export const MODULES: AppModule[] = [
   page('/', 'dashboard', <DashboardOutlined />, () => import('../modules/dashboard/DashboardPage')),
   page('/nurses', 'nurses', <TeamOutlined />, () => import('../modules/nurses/NursesPage')),
   page('/contracts', 'contracts', <FileProtectOutlined />, () => import('../modules/contracts/ContractsPage')),
-  page('/credentials', 'credentials', <SafetyCertificateOutlined />, () => import('../modules/credentials/CredentialsPage')),
-  page('/my-credentials', 'myCredentials', <IdcardOutlined />, () => import('../modules/credentials/MyCredentialsPage')),
-  page('/eligibility', 'eligibility', <CheckCircleOutlined />, () => import('../modules/eligibility/EligibilityPage')),
+  page('/credentials', 'credentials', <SafetyCertificateOutlined />, () => import('../modules/credentials/CredentialsPage'), { requires: STAFF }),
+  page('/my-credentials', 'myCredentials', <IdcardOutlined />, () => import('../modules/credentials/MyCredentialsPage'), { employeeOnly: true }),
+  page('/eligibility', 'eligibility', <CheckCircleOutlined />, () => import('../modules/eligibility/EligibilityPage'), { requires: STAFF }),
   page('/workforce', 'workforce', <ApartmentOutlined />, () => import('../modules/workforce/WorkforcePage')),
   page('/kpi', 'kpi', <FundOutlined />, () => import('../modules/workforce/KpiPage')),
   page('/scheduling', 'scheduling', <ScheduleOutlined />, () => import('../modules/scheduling/SchedulingPage')),
   page('/attendance', 'attendance', <ClockCircleOutlined />, () => import('../modules/attendance/AttendancePage')),
   page('/notifications', 'notifications', <BellOutlined />, () => import('../modules/notifications/NotificationsPage')),
   page('/audit', 'audit', <AuditOutlined />, () => import('../modules/audit/AuditPage')),
-  page('/admin', 'admin', <SettingOutlined />, () => import('../modules/administration/AdministrationPage'), ['HR_ADMIN', 'SYSTEM_ADMIN']),
+  page('/admin', 'admin', <SettingOutlined />, () => import('../modules/administration/AdministrationPage'), { requires: ['HR_ADMIN', 'SYSTEM_ADMIN'] }),
 ];

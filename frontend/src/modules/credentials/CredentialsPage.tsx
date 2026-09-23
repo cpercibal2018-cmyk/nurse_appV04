@@ -1,16 +1,190 @@
-import { ModulePlaceholder } from '../../components/ModulePlaceholder';
+// Credentials for HR / System Admin (full, scoped) and Supervisors (compliance
+// view only — spec §8.1, §5.2). Every rule is enforced by the server; this page
+// shows data and sends the user's decisions.
 
-export default function CredentialsPage() {
+import { useState } from 'react';
+import { App, Button, Card, DatePicker, Flex, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tabs, Tag } from 'antd';
+import { useTranslation } from 'react-i18next';
+import { usePermissions } from '../../hooks/usePermissions';
+import { describeApiError } from '../../lib/errors';
+import { useUnits } from '../administration/api';
+import { useCredentialAction, useCredentials, useRequirements, useTemplates, type CredentialRow, type Requirement, type Template } from './api';
+import { CredentialStatusTag, DocumentsDrawer, LifecycleTag } from './components';
+
+type Decision = { kind: 'suspend' | 'revoke' | 'reject'; row: CredentialRow };
+
+function RecordsTable({ queue }: { queue?: 'review' }) {
+  const { t } = useTranslation();
+  const { message } = App.useApp();
+  const { hasRole } = usePermissions();
+  const hr = hasRole('HR_ADMIN', 'SYSTEM_ADMIN');
+  const rows = useCredentials(queue);
+  const action = useCredentialAction();
+  const [docsFor, setDocsFor] = useState<number | null>(null);
+  const [decision, setDecision] = useState<Decision | null>(null);
+  const [reason, setReason] = useState('');
+
+  async function run(p: Promise<unknown>) {
+    try { await p; message.success(t('saved')); } catch (e) { message.error(describeApiError(e)); }
+  }
+
   return (
-    <ModulePlaceholder
-      titleKey="credentials"
-      deliveredBy="Clinical eligibility (commit 6)"
-      planned={[
-        "Credential catalog: categories and templates",
-        "Requirements by unit, optionally narrowed by position",
-        "Credential records per employee",
-        "Verification queue",
+    <>
+      <Table<CredentialRow>
+        rowKey="id" size="middle" loading={rows.isLoading} dataSource={rows.data?.items} pagination={{ pageSize: 20 }} scroll={{ x: true }}
+        columns={[
+          { title: t('employee'), render: (_, r) => `${r.employee.jobNumber} — ${r.employee.fullName}` },
+          { title: t('credential'), render: (_, r) => `${r.template.code} — ${r.template.name}` },
+          { title: t('status'), render: (_, r) => <Space size={4} wrap><CredentialStatusTag status={r.status} /><LifecycleTag label={r.lifecycle} />{r.graceExpiryDate && <Tag color="gold">{t('graceUntil', { date: r.graceExpiryDate })}</Tag>}</Space> },
+          { title: t('issueDate'), dataIndex: 'issueDate' },
+          { title: t('expiryDate'), render: (_, r) => r.expiryDate ? `${r.expiryDate}${r.expiryDateHijri ? ` (${r.expiryDateHijri} هـ)` : ''}` : '—' },
+          ...(hr ? [{
+            title: '', render: (_: unknown, r: CredentialRow) => (
+              <Flex gap={4} wrap>
+                <Button size="small" onClick={() => setDocsFor(r.id)}>{t('evidence')}</Button>
+                {r.status === 'PendingVerification' && <Button size="small" type="primary" onClick={() => run(action.mutateAsync({ kind: 'verify', id: r.id }))}>{t('verify')}</Button>}
+                {(r.pendingData || (r.documentsPendingReview ?? 0) > 0) && r.status !== 'PendingVerification' && (
+                  <>
+                    <Popconfirm title={t('approveRenewal')} onConfirm={() => run(action.mutateAsync({ kind: 'approve', id: r.id }))}><Button size="small" type="primary">{t('approveRenewal')}</Button></Popconfirm>
+                    <Button size="small" onClick={() => setDecision({ kind: 'reject', row: r })}>{t('rejectRenewal')}</Button>
+                  </>
+                )}
+                {r.status !== 'Revoked' && r.status !== 'Suspended' && <Button size="small" danger onClick={() => setDecision({ kind: 'suspend', row: r })}>{t('suspend')}</Button>}
+                {r.status !== 'Revoked' && <Button size="small" danger onClick={() => setDecision({ kind: 'revoke', row: r })}>{t('revoke')}</Button>}
+              </Flex>
+            ),
+          }] : []),
+        ]}
+      />
+      <DocumentsDrawer credentialId={docsFor} onClose={() => setDocsFor(null)} canUpload={hr} />
+      <Modal
+        title={decision ? `${t(decision.kind === 'reject' ? 'rejectRenewal' : decision.kind)} — ${decision.row.template.code} · ${decision.row.employee.fullName}` : ''}
+        open={decision !== null} onCancel={() => setDecision(null)} cancelText={t('cancel')} okText={t('submit')}
+        okButtonProps={{ danger: true, disabled: reason.trim().length === 0, loading: action.isPending }}
+        onOk={async () => {
+          if (!decision) return;
+          await run(action.mutateAsync({ kind: decision.kind, id: decision.row.id, reason }));
+          setDecision(null); setReason('');
+        }}
+        destroyOnHidden
+      >
+        <Input.TextArea rows={3} placeholder={t('reason')} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={1000} />
+      </Modal>
+    </>
+  );
+}
+
+function RequirementsTab() {
+  const { t } = useTranslation();
+  const { message } = App.useApp();
+  const { hasRole } = usePermissions();
+  const hr = hasRole('HR_ADMIN', 'SYSTEM_ADMIN');
+  const reqs = useRequirements();
+  const templates = useTemplates();
+  const units = useUnits();
+  const action = useCredentialAction();
+  const [open, setOpen] = useState(false);
+  const [form] = Form.useForm();
+  const policy = Form.useWatch('policyStatus', form);
+
+  async function add(v: { templateId: number; unitId: number; positionCode?: string; policyStatus: string; transitionDeadline?: { format: (f: string) => string } }) {
+    try {
+      const res = await action.mutateAsync({ kind: 'requirement', body: {
+        templateId: v.templateId, unitId: v.unitId, positionCode: v.positionCode?.trim() || null, policyStatus: v.policyStatus,
+        transitionDeadline: v.policyStatus === 'TRANSITION' && v.transitionDeadline ? v.transitionDeadline.format('YYYY-MM-DD') : null,
+      } }) as { affectedEmployees: number };
+      message.success(t('requirementSaved', { count: res.affectedEmployees }));
+      setOpen(false); form.resetFields();
+    } catch (e) { message.error(describeApiError(e)); }
+  }
+
+  return (
+    <>
+      {hr && <Button type="primary" style={{ marginBottom: 12 }} onClick={() => setOpen(true)}>{t('addRequirement')}</Button>}
+      <Table<Requirement>
+        rowKey="id" size="middle" loading={reqs.isLoading} dataSource={reqs.data?.items} pagination={{ pageSize: 25 }} scroll={{ x: true }}
+        columns={[
+          { title: t('unit'), render: (_, r) => `${r.unit.code} — ${r.unit.name}` },
+          { title: t('position'), render: (_, r) => r.positionCode ?? <Tag>{t('allPositions')}</Tag> },
+          { title: t('credential'), render: (_, r) => `${r.template.code} — ${r.template.name}` },
+          { title: t('policy'), render: (_, r) => <Tag color={r.policyStatus === 'MANDATORY' ? 'red' : r.policyStatus === 'TRANSITION' ? 'orange' : 'default'}>{r.policyStatus}{r.transitionDeadline ? ` · ${r.transitionDeadline.slice(0, 10)}` : ''}</Tag> },
+          ...(hr ? [{
+            title: '', render: (_: unknown, r: Requirement) => (
+              <Popconfirm title={t('deleteRequirement')} onConfirm={async () => { try { await action.mutateAsync({ kind: 'requirementDelete', id: r.id }); message.success(t('saved')); } catch (e) { message.error(describeApiError(e)); } }}>
+                <Button size="small" danger>{t('delete')}</Button>
+              </Popconfirm>
+            ),
+          }] : []),
+        ]}
+      />
+      <Modal title={t('addRequirement')} open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} okText={t('create')} cancelText={t('cancel')} confirmLoading={action.isPending} destroyOnHidden>
+        <Form form={form} layout="vertical" onFinish={add} initialValues={{ policyStatus: 'MANDATORY' }}>
+          <Form.Item name="unitId" label={t('unit')} rules={[{ required: true }]}>
+            <Select showSearch optionFilterProp="label" options={units.data?.items.map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))} />
+          </Form.Item>
+          <Form.Item name="positionCode" label={t('position')} extra={t('positionBlankHint')}><Input placeholder="SN" /></Form.Item>
+          <Form.Item name="templateId" label={t('credential')} rules={[{ required: true }]}>
+            <Select showSearch optionFilterProp="label" options={templates.data?.items.filter((x) => x.isActive).map((x) => ({ value: x.id, label: `${x.code} — ${x.name}` }))} />
+          </Form.Item>
+          <Form.Item name="policyStatus" label={t('policy')}>
+            <Select options={['MANDATORY', 'TRANSITION', 'OPTIONAL'].map((p) => ({ value: p, label: p }))} />
+          </Form.Item>
+          {policy === 'TRANSITION' && (
+            <Form.Item name="transitionDeadline" label={t('transitionDeadline')} rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} /></Form.Item>
+          )}
+        </Form>
+      </Modal>
+    </>
+  );
+}
+
+function CatalogTab() {
+  const { t } = useTranslation();
+  const { message } = App.useApp();
+  const { hasRole } = usePermissions();
+  const hr = hasRole('HR_ADMIN', 'SYSTEM_ADMIN');
+  const templates = useTemplates();
+  const action = useCredentialAction();
+
+  return (
+    <Table<Template>
+      rowKey="id" size="middle" loading={templates.isLoading} dataSource={templates.data?.items} pagination={false} scroll={{ x: true }}
+      columns={[
+        { title: t('code'), dataIndex: 'code' },
+        { title: t('credential'), dataIndex: 'name' },
+        { title: t('category'), dataIndex: 'categoryCode' },
+        { title: t('fields'), render: (_, x) => x.fieldDefs.map((f) => f.label).join(', ') || '—', ellipsis: true },
+        {
+          title: t('graceDays'),
+          render: (_, x) => hr
+            ? <InputNumber size="small" min={0} max={90} defaultValue={x.gracePeriodDays} onBlur={async (e) => {
+                const v = Number(e.target.value);
+                if (Number.isNaN(v) || v === x.gracePeriodDays) return;
+                try { await action.mutateAsync({ kind: 'template', id: x.id, body: { gracePeriodDays: v } }); message.success(t('saved')); } catch (err) { message.error(describeApiError(err)); }
+              }} />
+            : x.gracePeriodDays,
+        },
+        { title: t('status'), render: (_, x) => <Tag color={x.isActive ? 'green' : 'default'}>{x.isActive ? t('active') : t('inactive')}</Tag> },
       ]}
     />
+  );
+}
+
+export default function CredentialsPage() {
+  const { t } = useTranslation();
+  const { hasRole } = usePermissions();
+  const hr = hasRole('HR_ADMIN', 'SYSTEM_ADMIN');
+  return (
+    <Card title={t('credentials')}>
+      <Tabs
+        destroyOnHidden
+        items={[
+          { key: 'records', label: t('records'), children: <RecordsTable /> },
+          ...(hr ? [{ key: 'queue', label: t('reviewQueue'), children: <RecordsTable queue="review" /> }] : []),
+          { key: 'requirements', label: t('requirements'), children: <RequirementsTab /> },
+          { key: 'catalog', label: t('catalog'), children: <CatalogTab /> },
+        ]}
+      />
+    </Card>
   );
 }

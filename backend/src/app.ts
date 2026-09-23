@@ -14,6 +14,11 @@ import { createAuthService } from './modules/auth/service.js';
 import { createAccountService } from './modules/users/accounts.js';
 import { createRoleAssignmentService } from './modules/users/role-assignments.js';
 import { createUsersRouter } from './modules/users/routes.js';
+import { createCatalogService } from './modules/credentials/catalog.js';
+import { createRecordService } from './modules/credentials/records.js';
+import { createCredentialsRouter } from './modules/credentials/routes.js';
+import { createEligibilityService } from './modules/eligibility/service.js';
+import { createStorage } from './lib/uploads.js';
 import { createWorkforceRouter } from './modules/workforce/routes.js';
 
 export interface AppDeps {
@@ -61,6 +66,12 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   api.use(authenticate);
   api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db)));
   api.use(createWorkforceRouter(db));
+  api.use(createCredentialsRouter(
+    createCatalogService(db),
+    createRecordService(db, createStorage(env.STORAGE_DIR), env.UPLOAD_MAX_SIZE_BYTES),
+    createEligibilityService(db),
+    env.UPLOAD_MAX_SIZE_BYTES,
+  ));
   app.use('/api/v1', api);
 
   app.use('/api', unknownRoute);

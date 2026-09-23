@@ -1,0 +1,369 @@
+// Credential records, verification and renewal lifecycle (spec §5.1.5, §5.2;
+// rules L1–L3, L8, D1–D5). Every change re-evaluates eligibility in the same
+// transaction (L6).
+//
+// Who sees what (spec §8.1 Credentials, §5.2):
+//   OWN        — full record, own evidence, may submit and stage a renewal
+//   HR / SA    — scoped: full record, evidence, verify / suspend / revoke / renewal decisions
+//   SUPERVISOR — scoped compliance view only: no tracking data (private identity
+//                numbers), no pending values, no documents (D5)
+
+import { z } from 'zod';
+import type { Credential, CredentialTemplate } from '../../generated/prisma/client.js';
+import { appendAudit } from '../../lib/audit.js';
+import { daysBetween, dbDate, isIsoDate, riyadhDate, toDbDate, type IsoDate } from '../../lib/dates.js';
+import { toHijriIso } from '../../lib/hijri.js';
+import { HttpError, notFound } from '../../lib/http-errors.js';
+import { Prisma, type Db, type DbClient } from '../../lib/prisma.js';
+import { checkUpload, type Storage } from '../../lib/uploads.js';
+import { refreshEligibility } from '../eligibility/state.service.js';
+import { unitScope, type AuthContext } from '../users/access.js';
+import { HR_ROLES, viewerOf, type Viewer } from './access.js';
+import type { FieldDef } from './catalog.js';
+
+/** Spec §5.2: "Subject to Renew" = within 60 days of expiry (also N1's credential window). */
+export const RENEWAL_WINDOW_DAYS = 60;
+
+const DateStr = z.string().refine(isIsoDate, 'YYYY-MM-DD');
+const TrackingData = z.record(z.string(), z.union([z.string().max(500), z.number()]));
+
+export const RecordBody = z.strictObject({
+  employeeId: z.number().int().positive(),
+  templateId: z.number().int().positive(),
+  trackingData: TrackingData.default({}),
+  issueDate: DateStr.optional(),
+  expiryDate: DateStr.optional(),
+});
+export const SelfRecordBody = RecordBody.omit({ employeeId: true });
+export const VerifyBody = z.strictObject({ documentId: z.number().int().positive().optional() });
+export const DecisionBody = z.strictObject({ reason: z.string().trim().min(1).max(1000) });
+export const RenewalBody = z.strictObject({ trackingData: TrackingData.default({}), issueDate: DateStr.optional(), expiryDate: DateStr.optional() });
+export const ApproveRenewalBody = z.strictObject({ documentId: z.number().int().positive().optional() });
+export const ListQuery = z.object({
+  employeeId: z.coerce.number().int().positive().optional(),
+  templateId: z.coerce.number().int().positive().optional(),
+  status: z.enum(['PendingVerification', 'Valid', 'ExpiringSoon', 'Expired', 'Suspended', 'Revoked']).optional(),
+  queue: z.enum(['review']).optional(),
+});
+
+/** Stored status for a verified credential on a given day (L1). */
+export function deriveStatus(expiry: IsoDate | null, today: IsoDate): 'Valid' | 'ExpiringSoon' | 'Expired' {
+  if (!expiry) return 'Valid';
+  if (expiry < today) return 'Expired';
+  return daysBetween(today, expiry) <= RENEWAL_WINDOW_DAYS ? 'ExpiringSoon' : 'Valid';
+}
+
+/** Display label (spec §5.2). Never authorizes scheduling on its own. */
+export function lifecycleLabel(c: { status: string; expiryDate: Date | null; pendingData: unknown }, hasPendingDocument: boolean, today: IsoDate) {
+  const expiry = c.expiryDate ? dbDate(c.expiryDate) : null;
+  if (expiry && expiry < today) return 'Expired';
+  if (c.pendingData != null || hasPendingDocument) return 'OnProcess';
+  if (expiry && daysBetween(today, expiry) <= RENEWAL_WINDOW_DAYS) return 'SubjectToRenew';
+  return 'Active';
+}
+
+/** Validates tracking data against the template's field definitions and extracts issue/expiry dates. */
+export function readTrackingData(tpl: Pick<CredentialTemplate, 'fieldDefs' | 'hasExpiry'>, data: Record<string, string | number>, explicit: { issueDate?: string; expiryDate?: string }) {
+  const defs = (tpl.fieldDefs ?? []) as unknown as FieldDef[];
+  const known = new Set(defs.map((d) => d.key));
+  const problems: string[] = [];
+  for (const key of Object.keys(data)) if (!known.has(key)) problems.push(`${key}: not a field of this template`);
+  for (const d of defs) {
+    const v = data[d.key];
+    const empty = v === undefined || v === '';
+    if (empty) { if (d.required) problems.push(`${d.key}: required`); continue; }
+    if (d.type === 'date' && !(typeof v === 'string' && isIsoDate(v))) problems.push(`${d.key}: must be YYYY-MM-DD`);
+    if (d.type === 'date_hijri' && !(typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v))) problems.push(`${d.key}: must be a Hijri date YYYY-MM-DD`);
+    if (d.type === 'number' && !(typeof v === 'number' || /^-?\d+(\.\d+)?$/.test(String(v)))) problems.push(`${d.key}: must be a number`);
+  }
+  const issueField = defs.find((d) => d.isIssueDate);
+  const expiryField = defs.find((d) => d.isExpiryDate);
+  const issueDate = explicit.issueDate ?? (issueField ? (data[issueField.key] as string | undefined) : undefined);
+  const expiryDate = explicit.expiryDate ?? (expiryField ? (data[expiryField.key] as string | undefined) : undefined);
+  if (issueDate && expiryDate && expiryDate < issueDate) problems.push('expiry date is before issue date');
+  if (problems.length > 0) throw new HttpError(400, 'TRACKING_DATA_INVALID', 'The credential details are invalid', problems);
+  return { issueDate: issueDate ?? null, expiryDate: expiryDate ?? null };
+}
+
+type WithRelations = Credential & {
+  template: Pick<CredentialTemplate, 'id' | 'code' | 'name' | 'hasExpiry' | 'requiresUpload'>;
+  documents: Array<{ id: number; reviewStatus: string; scanStatus: string }>;
+  employee: { id: number; fullName: string; jobNumber: string; unitId: number | null };
+};
+
+const withRelations = {
+  template: { select: { id: true, code: true, name: true, hasExpiry: true, requiresUpload: true } },
+  documents: { select: { id: true, reviewStatus: true, scanStatus: true } },
+  employee: { select: { id: true, fullName: true, jobNumber: true, unitId: true } },
+} satisfies Prisma.CredentialInclude;
+
+function present(c: WithRelations, viewer: Viewer, today: IsoDate) {
+  const pendingDoc = c.documents.some((d) => d.reviewStatus === 'PENDING_REVIEW' && d.scanStatus !== 'INFECTED');
+  const base = {
+    id: c.id, employeeId: c.employeeId, employee: { fullName: c.employee.fullName, jobNumber: c.employee.jobNumber, unitId: c.employee.unitId },
+    templateId: c.templateId, template: { code: c.template.code, name: c.template.name },
+    status: c.status, lifecycle: lifecycleLabel(c, pendingDoc, today),
+    issueDate: c.issueDate ? dbDate(c.issueDate) : null, expiryDate: c.expiryDate ? dbDate(c.expiryDate) : null,
+    expiryDateHijri: c.expiryDateHijri, graceExpiryDate: c.graceExpiryDate ? dbDate(c.graceExpiryDate) : null,
+  };
+  if (viewer === 'SUPERVISOR') return base; // compliance view (spec §5.2)
+  return {
+    ...base, trackingData: c.trackingData, pendingData: c.pendingData, statusReason: c.statusReason,
+    latestEvidenceId: c.latestEvidenceId, verifiedAt: c.verifiedAt, documentsPendingReview: c.documents.filter((d) => d.reviewStatus === 'PENDING_REVIEW').length,
+  };
+}
+
+export function createRecordService(db: Db, storage: Storage, maxUploadBytes: number) {
+  async function load(tx: DbClient, id: number) {
+    const c = await tx.credential.findUnique({ where: { id }, include: withRelations });
+    if (!c) throw notFound('Credential not found');
+    return c;
+  }
+  const noSelfReview = (auth: AuthContext, c: { employeeId: number }) => {
+    // Separation of duties (the R2/R11 principle): nobody verifies their own credential.
+    if (auth.user.employeeId === c.employeeId) throw new HttpError(403, 'SELF_REVIEW_FORBIDDEN', 'You cannot review or decide on your own credential');
+  };
+  const refresh = (tx: DbClient, employeeId: number, event: string, auth: AuthContext, requestId?: string) =>
+    refreshEligibility(tx, employeeId, event, { actorUserId: auth.user.id, requestId });
+
+  return {
+    async list(auth: AuthContext, q: z.infer<typeof ListQuery>) {
+      const today = riyadhDate();
+      const hr = await unitScope(db, auth, HR_ROLES);
+      const sup = await unitScope(db, auth, ['SUPERVISOR']);
+      const scopeAll = hr.all || sup.all;
+      const units = new Set([...(hr.all ? [] : hr.unitIds), ...(sup.all ? [] : sup.unitIds)]);
+      const rows = await db.credential.findMany({
+        where: {
+          ...(q.employeeId ? { employeeId: q.employeeId } : {}), ...(q.templateId ? { templateId: q.templateId } : {}), ...(q.status ? { status: q.status } : {}),
+          ...(q.queue === 'review' ? { OR: [{ status: 'PendingVerification' as const }, { pendingData: { not: Prisma.DbNull } }, { documents: { some: { reviewStatus: 'PENDING_REVIEW' as const } } }] } : {}),
+          employee: { deletedAt: null, ...(scopeAll ? {} : { unitId: { in: [...units] } }) },
+        },
+        include: withRelations,
+        orderBy: [{ expiryDate: 'asc' }, { id: 'asc' }],
+        take: 1000,
+      });
+      // Each row is shaped by how the caller relates to that employee.
+      return {
+        items: rows.map((c) => present(c, hr.all || (c.employee.unitId !== null && hr.unitIds.has(c.employee.unitId)) ? 'HR' : 'SUPERVISOR', today)),
+        total: rows.length,
+      };
+    },
+
+    async listOwn(auth: AuthContext) {
+      if (auth.user.employeeId === null) return { items: [], total: 0 };
+      const rows = await db.credential.findMany({ where: { employeeId: auth.user.employeeId }, include: withRelations, orderBy: { id: 'asc' } });
+      return { items: rows.map((c) => present(c, 'OWN', riyadhDate())), total: rows.length };
+    },
+
+    /** The requirements that apply to the caller (their unit and position). */
+    async ownRequirements(auth: AuthContext) {
+      if (auth.user.employeeId === null) return { items: [], total: 0 };
+      const emp = await db.employee.findUnique({ where: { id: auth.user.employeeId }, select: { unitId: true, positionCode: true } });
+      if (!emp?.unitId) return { items: [], total: 0 };
+      const rows = await db.credentialRequirement.findMany({
+        where: { unitId: emp.unitId, OR: [{ positionCode: null }, { positionCode: emp.positionCode }] },
+        include: { template: { select: { id: true, code: true, name: true, fieldDefs: true, requiresUpload: true } } },
+      });
+      return { items: rows, total: rows.length };
+    },
+
+    async get(auth: AuthContext, id: number) {
+      const c = await load(db, id);
+      const { viewer } = await viewerOf(db, auth, c.employeeId, ['OWN', 'HR', 'SUPERVISOR']);
+      return present(c, viewer, riyadhDate());
+    },
+
+    /** Records a credential as PendingVerification (HR for a scoped employee, or the employee themselves). */
+    async record(auth: AuthContext, body: z.infer<typeof RecordBody>, selfService: boolean, requestId?: string) {
+      await viewerOf(db, auth, body.employeeId, selfService ? ['OWN'] : ['HR']);
+      const tpl = await db.credentialTemplate.findUnique({ where: { id: body.templateId } });
+      if (!tpl) throw new HttpError(422, 'TEMPLATE_NOT_FOUND', 'The credential template does not exist');
+      if (!tpl.isActive) throw new HttpError(422, 'TEMPLATE_INACTIVE', 'The credential template is inactive');
+      const dates = readTrackingData(tpl, body.trackingData, body);
+      return db.$transaction(async (tx) => {
+        const c = await tx.credential.create({
+          data: {
+            employeeId: body.employeeId, templateId: body.templateId, status: 'PendingVerification', trackingData: body.trackingData,
+            issueDate: dates.issueDate ? toDbDate(dates.issueDate) : null, expiryDate: dates.expiryDate ? toDbDate(dates.expiryDate) : null,
+            expiryDateHijri: dates.expiryDate ? toHijriIso(dates.expiryDate) : null,
+          },
+        });
+        await appendAudit(tx, { actorUserId: auth.user.id, action: 'CREDENTIAL_RECORDED', resource: 'credential', resourceId: c.id, changes: { employeeId: body.employeeId, templateId: body.templateId, ...dates, selfService }, requestId });
+        await refresh(tx, body.employeeId, 'CREDENTIAL_RECORDED', auth, requestId);
+        return { id: c.id };
+      });
+    },
+
+    /** PendingVerification → Valid / ExpiringSoon / Expired by date (spec §5.2, L1). */
+    async verify(auth: AuthContext, id: number, body: z.infer<typeof VerifyBody>, requestId?: string) {
+      return db.$transaction(async (tx) => {
+        const c = await load(tx, id);
+        await viewerOf(tx, auth, c.employeeId, ['HR']);
+        noSelfReview(auth, c);
+        if (c.status !== 'PendingVerification') throw new HttpError(409, 'CREDENTIAL_NOT_PENDING', `Only a credential awaiting verification can be verified (it is ${c.status})`);
+        if (c.template.hasExpiry && !c.expiryDate) throw new HttpError(422, 'EXPIRY_DATE_REQUIRED', 'This credential type expires: record its expiry date before verifying');
+        const evidenceId = await pickEvidence(tx, c, body.documentId);
+        const now = new Date();
+        const status = deriveStatus(c.expiryDate ? dbDate(c.expiryDate) : null, riyadhDate(now));
+        await tx.credential.update({ where: { id }, data: { status, verifiedById: auth.user.id, verifiedAt: now, statusReason: null, ...(evidenceId ? { latestEvidenceId: evidenceId } : {}) } });
+        if (evidenceId) await tx.documentVersion.update({ where: { id: evidenceId }, data: { reviewStatus: 'APPROVED', reviewedById: auth.user.id, reviewedAt: now } });
+        await appendAudit(tx, { actorUserId: auth.user.id, action: 'CREDENTIAL_VERIFIED', resource: 'credential', resourceId: id, changes: { employeeId: c.employeeId, status, evidenceId }, requestId });
+        await refresh(tx, c.employeeId, 'CREDENTIAL_VERIFIED', auth, requestId);
+        return { id, status };
+      });
+    },
+
+    /** Suspension / revocation invalidate eligibility immediately (L3), grace included. */
+    async decide(auth: AuthContext, id: number, to: 'Suspended' | 'Revoked', reason: string, requestId?: string) {
+      return db.$transaction(async (tx) => {
+        const c = await load(tx, id);
+        await viewerOf(tx, auth, c.employeeId, ['HR']);
+        noSelfReview(auth, c);
+        if (c.status === 'Revoked') throw new HttpError(409, 'CREDENTIAL_REVOKED', 'A revoked credential cannot change');
+        if (c.status === to) throw new HttpError(409, 'CREDENTIAL_ALREADY_IN_STATE', `The credential is already ${to}`);
+        await tx.credential.update({ where: { id }, data: { status: to, statusReason: reason } });
+        await appendAudit(tx, { actorUserId: auth.user.id, action: to === 'Revoked' ? 'CREDENTIAL_REVOKED' : 'CREDENTIAL_SUSPENDED', resource: 'credential', resourceId: id, changes: { employeeId: c.employeeId, from: c.status, reason }, requestId, priority: 'HIGH' });
+        if (c.graceCycleId && !c.graceCycleId.endsWith(':closed')) await closeGrace(tx, auth, c, to === 'Revoked' ? 'REVOKED' : 'SUSPENDED', requestId);
+        await refresh(tx, c.employeeId, to === 'Revoked' ? 'CREDENTIAL_REVOKED' : 'CREDENTIAL_SUSPENDED', auth, requestId);
+        return { id, status: to };
+      });
+    },
+
+    /** Stages replacement values (spec §5.2): the approved credential stays usable until its own expiry (L2). */
+    async stageRenewal(auth: AuthContext, id: number, body: z.infer<typeof RenewalBody>, requestId?: string) {
+      return db.$transaction(async (tx) => {
+        const c = await load(tx, id);
+        await viewerOf(tx, auth, c.employeeId, ['OWN', 'HR']);
+        if (!['Valid', 'ExpiringSoon', 'Expired'].includes(c.status)) throw new HttpError(409, 'RENEWAL_NOT_ALLOWED', `A ${c.status} credential cannot be renewed`);
+        const tpl = await tx.credentialTemplate.findUniqueOrThrow({ where: { id: c.templateId } });
+        const dates = readTrackingData(tpl, body.trackingData, body);
+        if (tpl.hasExpiry && !dates.expiryDate) throw new HttpError(422, 'EXPIRY_DATE_REQUIRED', 'A renewal must state the new expiry date');
+        const pendingData = { trackingData: body.trackingData, ...dates, submittedById: auth.user.id, submittedAt: new Date().toISOString() };
+        await tx.credential.update({ where: { id }, data: { pendingData } });
+        await appendAudit(tx, { actorUserId: auth.user.id, action: 'CREDENTIAL_RENEWAL_SUBMITTED', resource: 'credential', resourceId: id, changes: { employeeId: c.employeeId, ...dates }, requestId });
+        await refresh(tx, c.employeeId, 'CREDENTIAL_RENEWAL_SUBMITTED', auth, requestId);
+        return { id };
+      });
+    },
+
+    /** Approval promotes the reviewed data and the selected pending document (spec §5.2); it closes any grace (L8). */
+    async approveRenewal(auth: AuthContext, id: number, body: z.infer<typeof ApproveRenewalBody>, requestId?: string) {
+      return db.$transaction(async (tx) => {
+        const c = await load(tx, id);
+        await viewerOf(tx, auth, c.employeeId, ['HR']);
+        noSelfReview(auth, c);
+        const pending = c.pendingData as { trackingData: Record<string, string | number>; issueDate: string | null; expiryDate: string | null } | null;
+        if (!pending) throw new HttpError(409, 'NO_RENEWAL_PENDING', 'There is no staged renewal to approve');
+        if (c.status === 'Suspended' || c.status === 'Revoked') throw new HttpError(409, 'RENEWAL_NOT_ALLOWED', `A ${c.status} credential cannot be renewed`);
+        const evidenceId = await pickEvidence(tx, c, body.documentId);
+        const now = new Date();
+        const status = deriveStatus(pending.expiryDate, riyadhDate(now));
+        await tx.credential.update({
+          where: { id },
+          data: {
+            status, trackingData: pending.trackingData, pendingData: Prisma.DbNull,
+            issueDate: pending.issueDate ? toDbDate(pending.issueDate) : null, expiryDate: pending.expiryDate ? toDbDate(pending.expiryDate) : null,
+            expiryDateHijri: pending.expiryDate ? toHijriIso(pending.expiryDate) : null,
+            verifiedById: auth.user.id, verifiedAt: now, statusReason: null,
+            ...(evidenceId ? { latestEvidenceId: evidenceId } : {}),
+            // A completed renewal ends the grace cycle, so a future expiry may use grace again (L8).
+            graceActivatedAt: null, graceExpiryDate: null, graceCycleId: null,
+          },
+        });
+        if (evidenceId) await tx.documentVersion.update({ where: { id: evidenceId }, data: { reviewStatus: 'APPROVED', reviewedById: auth.user.id, reviewedAt: now } });
+        await tx.documentVersion.updateMany({ where: { credentialId: id, reviewStatus: 'PENDING_REVIEW' }, data: { reviewStatus: 'REJECTED', reviewedById: auth.user.id, reviewedAt: now } });
+        if (c.graceCycleId && !c.graceCycleId.endsWith(':closed')) {
+          await appendAudit(tx, { actorUserId: auth.user.id, action: 'GRACE_COMPLETED', resource: 'credential', resourceId: id, changes: { employeeId: c.employeeId, cycleId: c.graceCycleId, reason: 'RENEWAL_APPROVED' }, requestId, priority: 'HIGH' });
+        }
+        await appendAudit(tx, { actorUserId: auth.user.id, action: 'CREDENTIAL_RENEWAL_APPROVED', resource: 'credential', resourceId: id, changes: { employeeId: c.employeeId, status, issueDate: pending.issueDate, expiryDate: pending.expiryDate, evidenceId }, requestId });
+        await refresh(tx, c.employeeId, 'CREDENTIAL_RENEWAL_APPROVED', auth, requestId);
+        return { id, status };
+      });
+    },
+
+    /** Rejection clears staged changes without touching the approved credential; grace ends at once (L8). */
+    async rejectRenewal(auth: AuthContext, id: number, reason: string, requestId?: string) {
+      return db.$transaction(async (tx) => {
+        const c = await load(tx, id);
+        await viewerOf(tx, auth, c.employeeId, ['HR']);
+        noSelfReview(auth, c);
+        const hasPendingDoc = c.documents.some((d) => d.reviewStatus === 'PENDING_REVIEW');
+        if (!c.pendingData && !hasPendingDoc) throw new HttpError(409, 'NO_RENEWAL_PENDING', 'There is no staged renewal to reject');
+        const now = new Date();
+        await tx.credential.update({ where: { id }, data: { pendingData: Prisma.DbNull } });
+        await tx.documentVersion.updateMany({ where: { credentialId: id, reviewStatus: 'PENDING_REVIEW' }, data: { reviewStatus: 'REJECTED', reviewedById: auth.user.id, reviewedAt: now } });
+        if (c.graceCycleId && !c.graceCycleId.endsWith(':closed')) await closeGrace(tx, auth, c, 'RENEWAL_REJECTED', requestId);
+        await appendAudit(tx, { actorUserId: auth.user.id, action: 'CREDENTIAL_RENEWAL_REJECTED', resource: 'credential', resourceId: id, changes: { employeeId: c.employeeId, reason }, requestId });
+        await refresh(tx, c.employeeId, 'CREDENTIAL_RENEWAL_REJECTED', auth, requestId);
+        return { id };
+      });
+    },
+
+    /** Evidence upload (spec §5.1.5): a new version, never overwriting; HR review decides approval. */
+    async upload(auth: AuthContext, id: number, bytes: Buffer, contentType: string | undefined, fileName: string | undefined, requestId?: string) {
+      const c = await load(db, id);
+      await viewerOf(db, auth, c.employeeId, ['OWN', 'HR']);
+      if (c.status === 'Revoked') throw new HttpError(409, 'CREDENTIAL_REVOKED', 'Evidence cannot be added to a revoked credential');
+      const checked = checkUpload('CREDENTIAL_EVIDENCE', bytes, contentType, fileName, maxUploadBytes);
+      const storageKey = await storage.put(bytes);
+      return db.$transaction(async (tx) => {
+        const last = await tx.documentVersion.aggregate({ where: { credentialId: id }, _max: { version: true } });
+        const doc = await tx.documentVersion.create({
+          data: {
+            credentialId: id, version: (last._max.version ?? 0) + 1, fileName: checked.fileName, mimeType: checked.mimeType, sizeBytes: checked.sizeBytes,
+            sha256: checked.sha256, storageKey,
+            // D-10 (development): the size and magic-byte checks passed → CLEAN.
+            // Production cannot start without a real scanner (lib/uploads.ts).
+            scanStatus: 'CLEAN', uploadedById: auth.user.id,
+          },
+        });
+        await appendAudit(tx, { actorUserId: auth.user.id, action: 'DOCUMENT_UPLOADED', resource: 'credential', resourceId: id, changes: { documentId: doc.id, version: doc.version, mimeType: doc.mimeType, sizeBytes: doc.sizeBytes, sha256: doc.sha256 }, requestId });
+        await refresh(tx, c.employeeId, 'DOCUMENT_UPLOADED', auth, requestId);
+        return { id: doc.id, version: doc.version };
+      });
+    },
+
+    async listDocuments(auth: AuthContext, id: number) {
+      const c = await load(db, id);
+      await viewerOf(db, auth, c.employeeId, ['OWN', 'HR']); // supervisors never (D5)
+      const docs = await db.documentVersion.findMany({
+        where: { credentialId: id },
+        select: { id: true, version: true, fileName: true, mimeType: true, sizeBytes: true, scanStatus: true, reviewStatus: true, uploadedAt: true, reviewedAt: true },
+        orderBy: { version: 'desc' },
+      });
+      return { items: docs.map((d) => ({ ...d, isCurrentEvidence: d.id === c.latestEvidenceId })), total: docs.length };
+    },
+
+    /** Only CLEAN files are served (D4); only the owner and scoped HR/System Admin (D5). */
+    async download(auth: AuthContext, id: number, documentId: number, requestId?: string) {
+      const c = await load(db, id);
+      await viewerOf(db, auth, c.employeeId, ['OWN', 'HR']);
+      const doc = await db.documentVersion.findFirst({ where: { id: documentId, credentialId: id } });
+      if (!doc) throw notFound('Document not found');
+      if (doc.scanStatus !== 'CLEAN') throw new HttpError(409, 'DOCUMENT_NOT_CLEAN', 'This file has not passed scanning and cannot be downloaded');
+      const bytes = await storage.get(doc.storageKey);
+      await appendAudit(db, { actorUserId: auth.user.id, action: 'DOCUMENT_DOWNLOADED', resource: 'credential', resourceId: id, changes: { documentId, version: doc.version }, requestId });
+      return { bytes, mimeType: doc.mimeType, fileName: doc.fileName };
+    },
+  };
+
+  /** The evidence to approve: the chosen or newest CLEAN pending version; required when the template requires upload. */
+  async function pickEvidence(tx: DbClient, c: WithRelations, documentId: number | undefined): Promise<number | null> {
+    const candidates = await tx.documentVersion.findMany({
+      where: { credentialId: c.id, reviewStatus: 'PENDING_REVIEW', scanStatus: 'CLEAN', ...(documentId ? { id: documentId } : {}) },
+      orderBy: { version: 'desc' }, take: 1, select: { id: true },
+    });
+    if (documentId && candidates.length === 0) throw new HttpError(422, 'DOCUMENT_NOT_REVIEWABLE', 'The selected document is not a clean version awaiting review');
+    if (candidates.length === 0 && c.template.requiresUpload) throw new HttpError(422, 'EVIDENCE_REQUIRED', 'This credential type requires evidence: upload a document first');
+    return candidates[0]?.id ?? null;
+  }
+
+  async function closeGrace(tx: DbClient, auth: AuthContext, c: WithRelations, reason: string, requestId?: string) {
+    // The cycle is marked closed so the same expiry cannot re-enter grace (L8: no stacking).
+    await tx.credential.update({ where: { id: c.id }, data: { graceCycleId: `${c.graceCycleId}:closed` } });
+    await appendAudit(tx, { actorUserId: auth.user.id, action: 'GRACE_CLOSED', resource: 'credential', resourceId: c.id, changes: { employeeId: c.employeeId, cycleId: c.graceCycleId, reason }, requestId, priority: 'HIGH' });
+  }
+}
+
+export type RecordService = ReturnType<typeof createRecordService>;

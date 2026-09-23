@@ -453,6 +453,8 @@ model Credential {
   trackingData     Json             @default("{}") @map("tracking_data")
   /// Renewal staging (spec §5.2): replacement values awaiting HR review.
   pendingData      Json?            @map("pending_data")
+  /// Current approved evidence (spec §5.1.5 latest_evidence_id).
+  latestEvidenceId Int?             @unique @map("latest_evidence_id")
   verifiedById     Int?             @map("verified_by_id")
   verifiedAt       DateTime?        @map("verified_at") @db.Timestamptz
   statusReason     String?          @map("status_reason")
@@ -464,9 +466,10 @@ model Credential {
   createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz
 
-  employee  Employee           @relation(fields: [employeeId], references: [id])
-  template  CredentialTemplate @relation(fields: [templateId], references: [id])
-  documents DocumentVersion[]
+  employee       Employee           @relation(fields: [employeeId], references: [id])
+  template       CredentialTemplate @relation(fields: [templateId], references: [id])
+  documents      DocumentVersion[]
+  latestEvidence DocumentVersion?   @relation("latestEvidence", fields: [latestEvidenceId], references: [id])
 
   @@index([employeeId, status])
   @@index([expiryDate])
@@ -482,21 +485,25 @@ enum ScanStatus {
 /// Append-only versioned evidence for contracts and credentials (rules D1–D4).
 /// SQL: CHECK exactly one of contract_id / credential_id is set.
 model DocumentVersion {
-  id           Int        @id @default(autoincrement())
-  contractId   Int?       @map("contract_id")
-  credentialId Int?       @map("credential_id")
+  id           Int                  @id @default(autoincrement())
+  contractId   Int?                 @map("contract_id")
+  credentialId Int?                 @map("credential_id")
   version      Int
-  fileName     String     @map("file_name")
-  mimeType     String     @map("mime_type")
-  sizeBytes    Int        @map("size_bytes")
+  fileName     String               @map("file_name")
+  mimeType     String               @map("mime_type")
+  sizeBytes    Int                  @map("size_bytes")
   sha256       String
-  storageKey   String     @unique @map("storage_key") // never exposed as a URL
-  scanStatus   ScanStatus @default(PENDING) @map("scan_status")
-  uploadedById Int?       @map("uploaded_by_id")
-  uploadedAt   DateTime   @default(now()) @map("uploaded_at") @db.Timestamptz
+  storageKey   String               @unique @map("storage_key") // never exposed as a URL
+  scanStatus   ScanStatus           @default(PENDING) @map("scan_status")
+  reviewStatus DocumentReviewStatus @default(PENDING_REVIEW) @map("review_status")
+  reviewedById Int?                 @map("reviewed_by_id")
+  reviewedAt   DateTime?            @map("reviewed_at") @db.Timestamptz
+  uploadedById Int?                 @map("uploaded_by_id")
+  uploadedAt   DateTime             @default(now()) @map("uploaded_at") @db.Timestamptz
 
   contract   Contract?   @relation(fields: [contractId], references: [id])
   credential Credential? @relation(fields: [credentialId], references: [id])
+  evidenceOf Credential? @relation("latestEvidence")
 
   @@unique([contractId, version])
   @@unique([credentialId, version])
@@ -510,7 +517,17 @@ model DocumentVersion {
 enum EligibilityStatus {
   ELIGIBLE
   ELIGIBLE_WITH_GRACE
+  /// Spec §6.1.1.1: a TRANSITION requirement is unmet but its deadline has not passed.
+  ELIGIBLE_WITH_POLICY_WARNING
   INELIGIBLE
+}
+
+/// HR review of an uploaded document (spec §5.1.5, §5.2): a replacement stays
+/// PENDING_REVIEW while the previously APPROVED version remains the evidence.
+enum DocumentReviewStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
 }
 
 /// Materialized state, one row per employee (spec §6.1 / V39).
