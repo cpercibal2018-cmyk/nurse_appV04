@@ -503,6 +503,25 @@ describeDb('credentials and eligibility', () => {
       expect([after.hasExpiry, after.requiresUpload, after.displayOrder]).toEqual([tpl.hasExpiry, tpl.requiresUpload, tpl.displayOrder]);
     });
 
+    it('the Catalog screen\'s field edit (reordered and renumbered, a field added, description cleared) applies as sent', async () => {
+      const tpl = await makeTemplate(db);
+      await db.credentialTemplate.update({ where: { id: tpl.id }, data: { description: 'Old text' } });
+      const hr2 = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] })).email);
+      const [num, issue, expiry] = tpl.fieldDefs;
+      // The shape frontend/src/modules/credentials/catalogForm.ts sends: whole list, display order 1..n.
+      const fieldDefs = [
+        { ...expiry!, displayOrder: 1 }, { ...num!, displayOrder: 2 }, { ...issue!, displayOrder: 3 },
+        { key: 'issuing_body', label: 'Issuing body', type: 'text', required: false, displayOrder: 4 },
+      ];
+      const change = await hr.patch(`/credential-templates/${tpl.id}`, { description: '', fieldDefs, reason });
+      expect(change.body.status).toBe('PENDING_APPROVAL');
+      expect((await approve(hr2, change.body.requestId)).body).toMatchObject({ status: 'EXECUTED' });
+      const after = await loadTemplate(db, tpl.id);
+      expect(after.fieldDefs).toEqual(fieldDefs);
+      expect(after.description).toBe('');
+      expect(await db.credentialTemplateField.count({ where: { templateId: tpl.id } })).toBe(4);
+    });
+
     it('an approval is refused when the credential type changed after the request', async () => {
       const tpl = await makeTemplate(db);
       const hr2 = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] })).email);

@@ -24,6 +24,7 @@ import { z } from 'zod';
 import { appendAudit } from '../../lib/audit.js';
 import { HttpError, unprocessable } from '../../lib/http-errors.js';
 import { Prisma, type Db, type DbClient } from '../../lib/prisma.js';
+import { sameValue } from '../../lib/same.js';
 import { FieldDefs } from '../credentials/catalog.js';
 import { canonicalField, fieldRows, toFieldDefs, WITH_FIELDS } from '../credentials/fields.js';
 import { unitScope, type AuthContext } from '../users/access.js';
@@ -84,7 +85,8 @@ export const isBaselinePayload = (p: { kind: string }): p is BaselineApprovalPay
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 const orNull = (v: unknown) => (v === undefined ? null : v);
-const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+/** Key order is not compared: stored approval payloads come back from jsonb with their keys re-sorted. */
+const same = sameValue;
 /** Keys whose values differ between the file row and the stored record. */
 function differences(fileRow: Record<string, unknown>, stored: Record<string, unknown>) {
   return Object.keys(fileRow).filter((k) => !same(fileRow[k], stored[k])).map((k) => `${k}: stored ${JSON.stringify(stored[k] ?? null)}, file ${JSON.stringify(fileRow[k] ?? null)}`);

@@ -9,6 +9,7 @@ import { isIsoDate, toDbDate } from '../../lib/dates.js';
 import { HttpError, notFound } from '../../lib/http-errors.js';
 import type { CredentialCategory } from '../../generated/prisma/client.js';
 import { Prisma, type Db, type DbClient } from '../../lib/prisma.js';
+import { sameValue } from '../../lib/same.js';
 import { refreshEligibility, refreshUnit } from '../eligibility/state.service.js';
 import { unitScope, type AuthContext } from '../users/access.js';
 import { HR_ROLES, REVIEW_ROLES } from './access.js';
@@ -112,7 +113,8 @@ export const isCatalogPayload = (p: { kind: string }): p is CatalogApprovalPaylo
 export type CatalogOutcome = { status: 'APPLIED'; template: TemplateView } | { status: 'PENDING_APPROVAL'; requestId: number };
 export type CategoryOutcome = { status: 'APPLIED'; category: CredentialCategory } | { status: 'PENDING_APPROVAL'; requestId: number };
 
-const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+/** Key order is not compared: stored approval payloads come back from jsonb with their keys re-sorted. */
+const same = sameValue;
 
 const Policy = z.enum(['MANDATORY', 'TRANSITION', 'OPTIONAL']);
 const RequirementFields = {
