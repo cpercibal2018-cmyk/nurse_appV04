@@ -6,6 +6,11 @@ import { initReactI18next } from 'react-i18next';
 import { usePreferences, type Language } from '../hooks/usePreferences';
 
 const en = {
+  categories: 'Categories',
+  addCategory: 'Add category',
+  categoriesFourEyes: 'Credential categories are hospital-wide. Every new or changed category goes to a second hospital-wide administrator for approval.',
+  criticalArea: 'KPI critical area',
+  criticalAreaHint: 'ICU, ER or OR units count towards nurse-to-bed KPI A; leave empty for every other unit.',
   baselineImport: 'Hospital baseline import',
   baselineHint: 'Load a hospital baseline file (departments, units and beds, positions, credential categories and types). Preview it, then request the import: a second hospital-wide administrator must approve it in Approvals, and it is applied in one step or not at all. Existing records are never changed.',
   baselineChooseFile: 'Choose baseline file',
@@ -366,6 +371,11 @@ const en = {
 };
 
 const ar: Record<keyof typeof en, string> = {
+  categories: 'الفئات',
+  addCategory: 'إضافة فئة',
+  categoriesFourEyes: 'فئات الشهادات على مستوى المستشفى. كل فئة جديدة أو معدَّلة تُرسل لمسؤول ثانٍ على مستوى المستشفى لاعتمادها.',
+  criticalArea: 'المنطقة الحرجة للمؤشر',
+  criticalAreaHint: 'وحدات العناية المركزة أو الطوارئ أو العمليات تُحتسب في المؤشر (أ) لنسبة التمريض إلى الأسرّة؛ اتركها فارغة لسائر الوحدات.',
   baselineImport: 'استيراد البيانات الأساسية للمستشفى',
   baselineHint: 'حمّل ملف البيانات الأساسية للمستشفى (الأقسام، الوحدات والأسرّة، المسميات الوظيفية، فئات وأنواع الشهادات). راجعه أولاً ثم اطلب الاستيراد: يجب أن يعتمده مسؤول ثانٍ على مستوى المستشفى في صفحة الاعتمادات، ويُطبَّق دفعة واحدة أو لا يُطبَّق إطلاقاً. لا تُعدَّل السجلات الموجودة أبداً.',
   baselineChooseFile: 'اختر ملف البيانات الأساسية',

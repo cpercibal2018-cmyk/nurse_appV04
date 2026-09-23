@@ -58,6 +58,7 @@ function UnitsTab({ canWrite }: { canWrite: boolean }) {
           { title: t('name'), dataIndex: 'name' },
           { title: t('department'), render: (_, u) => deptName.get(u.departmentId) ?? u.departmentId },
           { title: t('beds'), dataIndex: 'bedCount', align: 'end' },
+          { title: t('criticalArea'), render: (_, u) => u.criticalArea ?? '—' },
           { title: t('status'), render: (_, u) => activeTag(u.isActive, t) },
           {
             title: '', render: (_, u) => (
@@ -84,7 +85,7 @@ function UnitsTab({ canWrite }: { canWrite: boolean }) {
         <Form form={unitForm} layout="vertical" onFinish={async (v) => {
           const out = editing === 'new'
             ? await run({ kind: 'unit', body: v })
-            : await run({ kind: 'unit', id: (editing as UnitRow).id, body: { name: v.name, description: v.description ?? null, departmentId: v.departmentId, isActive: v.isActive } });
+            : await run({ kind: 'unit', id: (editing as UnitRow).id, body: { name: v.name, description: v.description ?? null, departmentId: v.departmentId, isActive: v.isActive, criticalArea: v.criticalArea ?? null } });
           if (out !== undefined) setEditing(null);
         }}>
           {editing === 'new' && <Form.Item name="code" label={t('code')} rules={[{ required: true }]}><Input maxLength={20} /></Form.Item>}
@@ -93,6 +94,9 @@ function UnitsTab({ canWrite }: { canWrite: boolean }) {
             <Select options={depts.data?.items.filter((d) => d.isActive).map((d) => ({ value: d.id, label: `${d.code} — ${d.name}` }))} />
           </Form.Item>
           <Form.Item name="description" label={t('description')}><Input.TextArea rows={2} maxLength={500} /></Form.Item>
+          <Form.Item name="criticalArea" label={t('criticalArea')} extra={t('criticalAreaHint')}>
+            <Select allowClear options={(['ICU', 'ER', 'OR'] as const).map((a) => ({ value: a, label: a }))} />
+          </Form.Item>
           {editing === 'new'
             ? <Form.Item name="bedCount" label={t('beds')} initialValue={0}><InputNumber min={0} max={500} precision={0} style={{ width: '100%' }} /></Form.Item>
             : <Form.Item name="isActive" label={t('status')} valuePropName="checked"><Switch checkedChildren={t('active')} unCheckedChildren={t('inactive')} /></Form.Item>}

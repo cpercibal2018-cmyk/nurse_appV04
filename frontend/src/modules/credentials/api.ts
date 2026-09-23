@@ -35,6 +35,8 @@ export interface Waiver {
 const invalidateAll = (qc: ReturnType<typeof useQueryClient>) =>
   Promise.all(['credentials', 'my-credentials', 'eligibility', 'requirements', 'documents', 'waivers', 'templates'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
 
+export interface Category { code: string; name: string; description: string | null; displayOrder: number }
+export const useCategories = () => useQuery({ queryKey: ['categories'], queryFn: () => http.get<{ items: Category[] }>('/credential-categories') });
 export const useTemplates = () => useQuery({ queryKey: ['templates'], queryFn: () => http.get<{ items: Template[] }>('/credential-templates?includeInactive=true') });
 export const useRequirements = () => useQuery({ queryKey: ['requirements'], queryFn: () => http.get<Paged<Requirement>>('/credential-requirements') });
 export const useCredentials = (queue?: 'review') => useQuery({ queryKey: ['credentials', queue ?? 'all'], queryFn: () => http.get<Paged<CredentialRow>>(`/credentials${queue ? `?queue=${queue}` : ''}`) });
@@ -62,6 +64,8 @@ export function useCredentialAction() {
       | { kind: 'requirementUpdate'; id: number; body: object }
       | { kind: 'requirementDelete'; id: number }
       | { kind: 'template'; id: number; body: object }
+      | { kind: 'categoryCreate'; body: object }
+      | { kind: 'categoryUpdate'; code: string; body: object }
       | { kind: 'waiver'; body: object }) => {
       switch (a.kind) {
         case 'verify': return http.post(`/credentials/${a.id}/verify`, {});
@@ -76,6 +80,8 @@ export function useCredentialAction() {
         case 'requirementUpdate': return http.put(`/credential-requirements/${a.id}`, a.body);
         case 'requirementDelete': return http.delete(`/credential-requirements/${a.id}`);
         case 'template': return http.patch(`/credential-templates/${a.id}`, a.body);
+        case 'categoryCreate': return http.post('/credential-categories', a.body);
+        case 'categoryUpdate': return http.patch(`/credential-categories/${a.code}`, a.body);
         case 'waiver': return http.post('/waivers', a.body);
       }
     },

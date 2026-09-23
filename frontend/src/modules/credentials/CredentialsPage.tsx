@@ -8,7 +8,8 @@ import { useTranslation } from 'react-i18next';
 import { usePermissions } from '../../hooks/usePermissions';
 import { describeApiError } from '../../lib/errors';
 import { useUnits } from '../administration/api';
-import { useCredentialAction, useCredentials, useRequirements, useTemplates, type CredentialRow, type Requirement, type Template } from './api';
+import { usePositions } from '../workforce/api';
+import { useCategories, useCredentialAction, useCredentials, useRequirements, useTemplates, type Category, type CredentialRow, type Requirement, type Template } from './api';
 import { CredentialStatusTag, DocumentsDrawer, LifecycleTag } from './components';
 
 type Decision = { kind: 'suspend' | 'revoke' | 'reject'; row: CredentialRow };
@@ -75,6 +76,7 @@ function RecordsTable({ queue }: { queue?: 'review' }) {
 }
 
 function RequirementsTab() {
+  const positions = usePositions();
   const { t } = useTranslation();
   const { message } = App.useApp();
   const { hasRole } = usePermissions();
@@ -122,7 +124,9 @@ function RequirementsTab() {
           <Form.Item name="unitId" label={t('unit')} rules={[{ required: true }]}>
             <Select showSearch optionFilterProp="label" options={units.data?.items.map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))} />
           </Form.Item>
-          <Form.Item name="positionCode" label={t('position')} extra={t('positionBlankHint')}><Input placeholder="SN" /></Form.Item>
+          <Form.Item name="positionCode" label={t('position')} extra={t('positionBlankHint')}>
+            <Select allowClear showSearch optionFilterProp="label" options={positions.data?.items.map((p) => ({ value: p.code, label: `${p.code} — ${p.title}` }))} />
+          </Form.Item>
           <Form.Item name="templateId" label={t('credential')} rules={[{ required: true }]}>
             <Select showSearch optionFilterProp="label" options={templates.data?.items.filter((x) => x.isActive).map((x) => ({ value: x.id, label: `${x.code} — ${x.name}` }))} />
           </Form.Item>
@@ -132,6 +136,59 @@ function RequirementsTab() {
           {policy === 'TRANSITION' && (
             <Form.Item name="transitionDeadline" label={t('transitionDeadline')} rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} /></Form.Item>
           )}
+        </Form>
+      </Modal>
+    </>
+  );
+}
+
+/** Categories group credential types; every change goes to a second system-wide administrator (P8). */
+function CategoriesTab() {
+  const { t } = useTranslation();
+  const { message } = App.useApp();
+  const { hasRole } = usePermissions();
+  const hr = hasRole('HR_ADMIN', 'SYSTEM_ADMIN');
+  const categories = useCategories();
+  const action = useCredentialAction();
+  const [editing, setEditing] = useState<Category | 'new' | null>(null);
+  const [form] = Form.useForm<{ code?: string; name: string; description?: string | null; displayOrder: number; reason: string }>();
+
+  async function submit(v: { code?: string; name: string; description?: string | null; displayOrder: number; reason: string }) {
+    try {
+      const out = editing === 'new'
+        ? await action.mutateAsync({ kind: 'categoryCreate', body: { ...v, description: v.description || undefined } })
+        : await action.mutateAsync({ kind: 'categoryUpdate', code: (editing as Category).code, body: { name: v.name, description: v.description || null, displayOrder: v.displayOrder, reason: v.reason } });
+      const o = out as { status: string; requestId?: number };
+      if (o.status === 'PENDING_APPROVAL') message.info(t('submittedForApproval', { id: o.requestId }), 6);
+      else message.success(t('saved'));
+      setEditing(null);
+    } catch (e) { message.error(describeApiError(e)); }
+  }
+
+  return (
+    <>
+      <Flex justify="space-between" align="center" gap={8} wrap style={{ marginBottom: 12 }}>
+        <Alert type="info" showIcon title={t('categoriesFourEyes')} style={{ flex: 1 }} />
+        {hr && <Button type="primary" onClick={() => { form.resetFields(); setEditing('new'); }}>{t('addCategory')}</Button>}
+      </Flex>
+      <Table<Category>
+        rowKey="code" size="middle" loading={categories.isLoading} dataSource={categories.data?.items} pagination={false} scroll={{ x: true }}
+        columns={[
+          { title: t('displayOrder'), dataIndex: 'displayOrder', width: 90 },
+          { title: t('code'), dataIndex: 'code' },
+          { title: t('name'), dataIndex: 'name' },
+          { title: t('description'), dataIndex: 'description', ellipsis: true },
+          ...(hr ? [{ title: '', render: (_: unknown, c: Category) => <Button size="small" onClick={() => { form.setFieldsValue({ name: c.name, description: c.description, displayOrder: c.displayOrder, reason: '' }); setEditing(c); }}>{t('edit')}</Button> }] : []),
+        ]}
+      />
+      <Modal title={editing === 'new' ? t('addCategory') : editing ? `${t('edit')}: ${editing.code}` : ''} open={editing !== null} onCancel={() => setEditing(null)}
+        onOk={() => form.submit()} okText={t('submit')} cancelText={t('cancel')} confirmLoading={action.isPending} forceRender>
+        <Form form={form} layout="vertical" onFinish={submit} initialValues={{ displayOrder: 0 }}>
+          {editing === 'new' && <Form.Item name="code" label={t('code')} rules={[{ required: true, pattern: /^[A-Z][A-Z0-9_]{1,39}$/ }]}><Input maxLength={40} /></Form.Item>}
+          <Form.Item name="name" label={t('name')} rules={[{ required: true, whitespace: true }]}><Input maxLength={120} /></Form.Item>
+          <Form.Item name="description" label={t('description')}><Input.TextArea rows={2} maxLength={500} /></Form.Item>
+          <Form.Item name="displayOrder" label={t('displayOrder')}><InputNumber min={0} precision={0} /></Form.Item>
+          <Form.Item name="reason" label={t('reason')} rules={[{ required: true, min: 10, whitespace: true }]}><Input.TextArea rows={3} maxLength={1000} /></Form.Item>
         </Form>
       </Modal>
     </>
@@ -199,6 +256,7 @@ export default function CredentialsPage() {
           ...(hr ? [{ key: 'queue', label: t('reviewQueue'), children: <RecordsTable queue="review" /> }] : []),
           { key: 'requirements', label: t('requirements'), children: <RequirementsTab /> },
           { key: 'catalog', label: t('catalog'), children: <CatalogTab /> },
+          { key: 'categories', label: t('categories'), children: <CategoriesTab /> },
         ]}
       />
     </Card>

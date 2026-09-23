@@ -6,7 +6,8 @@ export type ShiftType = 'Morning' | 'Evening' | 'Night';
 export const SHIFTS: ShiftType[] = ['Morning', 'Evening', 'Night'];
 
 export interface DepartmentRow { id: number; code: string; name: string; nameAr: string | null; description: string | null; isActive: boolean }
-export interface UnitRow { id: number; code: string; name: string; nameAr: string | null; description: string | null; departmentId: number; bedCount: number; isActive: boolean }
+export type CriticalArea = 'ICU' | 'ER' | 'OR';
+export interface UnitRow { id: number; code: string; name: string; nameAr: string | null; description: string | null; departmentId: number; bedCount: number; criticalArea: CriticalArea | null; isActive: boolean }
 export interface PositionRow { code: string; title: string; titleAr: string | null; tier: string; description: string | null; isSchedulable: boolean; isActive: boolean; displayOrder: number; replacedBy: string | null }
 export interface CoverageTarget { id: number; unitId: number; shiftType: ShiftType; minimumStaff: number }
 export interface BedLog { id: number; previousCount: number; newCount: number; reason: string; changedAt: string; changedBy: string | null }
