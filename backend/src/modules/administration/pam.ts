@@ -2,8 +2,8 @@
 // Admin assignments are dormant until the holder elevates with a documented
 // reason for a limited window. Ported from the V03 NestJS reference
 // (pam.service.ts): reason ≥ 10 characters, 1–4 hours, default 2 (the spec's
-// example window). Expired elevations are simply ignored by the access check;
-// the cleanup job arrives with the other jobs (commit 9).
+// example window). Expired elevations are ignored by the access check at once;
+// the daily transition job (jobs/daily-transition.ts) removes and audits them.
 
 import { z } from 'zod';
 import { appendAudit } from '../../lib/audit.js';

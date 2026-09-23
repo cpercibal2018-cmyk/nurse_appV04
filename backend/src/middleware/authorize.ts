@@ -7,8 +7,8 @@ import type { Permission } from '../modules/users/permissions.js';
  * Role gate for a route (default deny, R15). Record scope is then applied by
  * the service, which filters rows by the caller's resolved unit scope.
  */
-export function authorize(permission: Permission): RequestHandler {
-  return (_req, res, next) => {
+export function authorize(permission: Permission): RequestHandler & { permission: Permission } {
+  const gate: RequestHandler = (_req, res, next) => {
     const auth = res.locals.auth;
     if (!auth) return next(unauthorized());
     const result = checkPermission(auth, permission);
@@ -18,6 +18,8 @@ export function authorize(permission: Permission): RequestHandler {
     }
     next(new HttpError(403, 'FORBIDDEN', 'You do not have permission to do this'));
   };
+  // Tagged so the route-matrix test can read which permission guards each route.
+  return Object.assign(gate, { permission });
 }
 
 /** The authenticated caller; only valid after `authenticate`. */

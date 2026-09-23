@@ -262,6 +262,30 @@ Follows the brief; each commit builds.
 | Audit reading | System Admin only (D-20), search + chain verification; HR audit access still **REQUIREMENT NOT ESTABLISHED** | As decided |
 | Own session history (D-22) | `refresh_sessions.ip_address` / `user_agent` (migration `20260923180000_session_meta_and_job_runs`), `GET /auth/sessions`, Sign-in history page | Done |
 
+### Implementation notes — commit 10 (tests against the Phase 15 matrix)
+
+Totals after commit 10: **backend 260 tests / 17 files** (unit + integration against PostgreSQL), **frontend 20 tests / 4 files**. Every new test file was mutation-checked: a deliberate break of the rule it guards made it fail.
+
+| Phase 15 item | Where it is tested | Status |
+| :--- | :--- | :--- |
+| Nurse creation | `scenarios.test.ts` §1; `workforce.test.ts` onboarding | Covered |
+| Credential management | `scenarios` §2; `credentials.test.ts` | Covered |
+| Eligibility | `engine.test.ts` (33, acceptance tables); `scenarios` §1–7 | Covered |
+| Expired licence | `scenarios` §7 (daily job → Expired → INELIGIBLE → published shift back to draft → supervisor notice) | Covered |
+| Missing credential | `scenarios` §2, §5–6 (blocked at publish; per-template waiver) | Covered |
+| Training requirement | `scenarios` §3 (TRANSITION warning → policy notice → block after deadline) | Covered |
+| Staffing target / coverage | `scenarios` §4–7; `scheduling.test.ts` | Covered |
+| Assignment / roster | `scenarios` §4–6; `scheduling.test.ts` | Covered |
+| Attendance gap | `scenarios` §8; `scheduling.test.ts`; `jobs.test.ts` | Covered |
+| Break-glass | `scenarios` §9; `auth.test.ts` | Covered |
+| Audit trail | `scenarios` §10 (every step's action present, chain intact); `database-constraints.test.ts` A2/A3 | Covered for the scenario path; there is no generic "every mutation writes a row" test |
+| DB constraints (overlap, 72 h waiver, bed range, duplicate job number, double booking) | `database-constraints.test.ts` | Covered |
+| RBAC matrix per role | `route-matrix.test.ts`: every registered route × 5 personas matches `permissions.ts`; every non-public route 401 without a token; ungated routes must be on a reviewed own-or-scoped list; no unused permission | Covered — new routes are included automatically |
+| Auth, CSRF on refresh, hashing, rotation/reuse | `auth.test.ts`, `rbac.test.ts` | Covered |
+| No PII in logs | `logging.test.ts` (email, password, names, salary, query text) | Covered for request logging; error logs include exception messages (`describeError`) — acceptable for driver errors, which carry column names, not values |
+| No unscoped reads | per-module scope tests and the sweeps in `credentials`, `workforce`, `scheduling` tests | Covered |
+| Frontend imports / routes | `modules.test.tsx` (registry; every page module loads); `i18n.test.ts` (every used key and enum-driven key family exists in en and ar, none empty) | Covered. No component/DOM tests (no jsdom dependency added) |
+
 ### Proposals received with the D-24…D-28 decisions — not adopted yet
 
 The owner's notes for D-24…D-28 also suggested features beyond those decisions. None is specified, so each is **REQUIREMENT NOT ESTABLISHED** until the owner schedules it:
