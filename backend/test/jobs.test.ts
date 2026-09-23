@@ -19,10 +19,14 @@ const today = () => riyadhDate();
 
 describe('reminder milestones (D-39)', () => {
   it.each([
-    [91, null], [90, 90], [31, 90], [30, 30], [15, 30], [14, 14], [8, 14], [7, 7], [0, 7], [-1, 'expired'],
-  ])('%i days left → %s', (days, m) => { expect(milestoneFor(days)).toBe(m); });
+    [61, null], [60, 60], [31, 60], [30, 30], [15, 30], [14, 14], [8, 14], [7, 7], [0, 7], [-1, 'expired'],
+  ])('credential: %i days left → %s', (days, m) => { expect(milestoneFor('CREDENTIAL', days)).toBe(m); });
 
-  it('the renewal window opens at the first milestone', () => { expect(MILESTONES[0]).toBe(RENEWAL_WINDOW_DAYS); });
+  it.each([
+    [91, null], [90, 90], [61, 90], [31, 90], [30, 30], [14, 14], [7, 7], [0, 7], [-1, 'expired'],
+  ])('contract: %i days left → %s', (days, m) => { expect(milestoneFor('CONTRACT', days)).toBe(m); });
+
+  it('the credential renewal window opens at the first credential milestone', () => { expect(MILESTONES.CREDENTIAL[0]).toBe(RENEWAL_WINDOW_DAYS); });
 });
 
 describeDb('jobs, notifications, audit and sessions', () => {
@@ -78,7 +82,7 @@ describeDb('jobs, notifications, audit and sessions', () => {
       const { emp, user } = await makeNurse(db, unit.id, { account: true });
       await db.contract.updateMany({ where: { employeeId: emp.id }, data: { endDate: toDbDate(addDays(today(), 20)) } });
       const credIn = async (days: number) => (await db.credential.create({ data: { employeeId: emp.id, templateId: (await makeTemplate(db)).id, status: days < 0 ? 'Expired' : 'ExpiringSoon', trackingData: {}, expiryDate: toDbDate(addDays(today(), days)) } })).id;
-      const c = { d80: await credIn(80), d20: await credIn(20), d10: await credIn(10), d0: await credIn(0), past: await credIn(-3), d120: await credIn(120) };
+      const c = { d50: await credIn(50), d80: await credIn(80), d20: await credIn(20), d10: await credIn(10), d0: await credIn(0), past: await credIn(-3), d120: await credIn(120) };
       // A contract that ended, but whose next period is already approved: no reminder.
       const renewed = await makeEmployee(db, unit.id);
       const ended = await db.contract.create({ data: { employeeId: renewed.id, jobNumber: renewed.jobNumber, status: 'Expired', startDate: toDbDate(addDays(today(), -400)), endDate: toDbDate(addDays(today(), -2)) } });
@@ -92,8 +96,8 @@ describeDb('jobs, notifications, audit and sessions', () => {
       const cred = (id: number, m: string) => expect.stringMatching(new RegExp(`^credential:${id}:.*:${m}$`));
       const contract = (m: string) => expect.stringMatching(new RegExp(`^contract:[0-9]+:.*:${m}$`));
 
-      // Nurse: every milestone (credentials 90, 30, 14, 7, expired; contract 30). Nothing beyond 90 days.
-      expect(await keys(user!.id)).toEqual(expect.arrayContaining([cred(c.d80, 'within-90'), cred(c.d20, 'within-30'), cred(c.d10, 'within-14'), cred(c.d0, 'within-7'), cred(c.past, 'expired'), contract('within-30')]));
+      // Nurse: every milestone (credentials 60, 30, 14, 7, expired; contract 30). Nothing beyond 60 days for a credential.
+      expect(await keys(user!.id)).toEqual(expect.arrayContaining([cred(c.d50, 'within-60'), cred(c.d20, 'within-30'), cred(c.d10, 'within-14'), cred(c.d0, 'within-7'), cred(c.past, 'expired'), contract('within-30')]));
       expect(await keys(user!.id)).toHaveLength(6);
       // Supervisor: credentials from 14 days; contracts from 14 days (this one is at 30).
       expect(await keys(sup.id)).toEqual(expect.arrayContaining([cred(c.d10, 'within-14'), cred(c.d0, 'within-7'), cred(c.past, 'expired')]));

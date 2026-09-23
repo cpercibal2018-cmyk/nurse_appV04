@@ -1,13 +1,13 @@
 // Expiry scan (spec §7.1; N1, N3, N4; owner decision D-39). Daily at 06:00 Asia/Riyadh.
 //
-// Milestones: 90, 30, 14 and 7 days before the expiry / end date, and once it
-// has passed ("0 days": the day after the last valid day — a credential is
+// Milestones: credentials 60, 30, 14 and 7 days before the expiry date;
+// contracts 90, 30, 14 and 7 days before the end date; both once it has passed ("0 days": the day after the last valid day — a credential is
 // valid through its expiry date, a contract through its end date). Each run
 // sends the milestone the record is in now, so a missed run or a record that
 // enters late gets the current milestone, never a burst of old ones (N4).
 //
 // Routing (D-39, overrides N2's "HR at every notice"):
-//   credentials — the nurse renews: employee at 90 and 30; + unit supervisor
+//   credentials — the nurse renews: employee at 60 and 30; + unit supervisor
 //                 from 14; + scoped HR from 7 and at expiry.
 //   contracts   — HR renews: employee and scoped HR from 90; + unit supervisor
 //                 from 14 (the same cadence as credentials).
@@ -21,14 +21,15 @@ import { addDays, daysBetween, dbDate, riyadhDate, toDbDate } from '../lib/dates
 import type { Db, DbClient } from '../lib/prisma.js';
 import { recipientsForUnit } from '../modules/eligibility/state.service.js';
 
-/** The first milestone is the renewal window (RENEWAL_WINDOW_DAYS, §5.2 "Subject to Renew"). */
-export const MILESTONES = [90, 30, 14, 7] as const;
-type Milestone = (typeof MILESTONES)[number] | 'expired';
+type Kind = 'CREDENTIAL' | 'CONTRACT';
+/** Days before the last valid day. A credential's first milestone is its renewal window (RENEWAL_WINDOW_DAYS, §5.2 "Subject to Renew"). */
+export const MILESTONES = { CREDENTIAL: [60, 30, 14, 7], CONTRACT: [90, 30, 14, 7] } as const;
+type Milestone = 90 | 60 | 30 | 14 | 7 | 'expired';
 type Audience = 'EMPLOYEE' | 'SUPERVISOR' | 'HR';
 
-export const ROUTING: Record<'CREDENTIAL' | 'CONTRACT', Record<Milestone, Audience[]>> = {
+export const ROUTING: Record<Kind, Partial<Record<Milestone, Audience[]>>> = {
   CREDENTIAL: {
-    90: ['EMPLOYEE'], 30: ['EMPLOYEE'], 14: ['EMPLOYEE', 'SUPERVISOR'],
+    60: ['EMPLOYEE'], 30: ['EMPLOYEE'], 14: ['EMPLOYEE', 'SUPERVISOR'],
     7: ['EMPLOYEE', 'SUPERVISOR', 'HR'], expired: ['EMPLOYEE', 'SUPERVISOR', 'HR'],
   },
   CONTRACT: {
@@ -38,19 +39,19 @@ export const ROUTING: Record<'CREDENTIAL' | 'CONTRACT', Record<Milestone, Audien
 };
 
 /** The milestone a record is in, `daysLeft` days before its last valid day (0 = last day). */
-export function milestoneFor(daysLeft: number): Milestone | null {
+export function milestoneFor(kind: Kind, daysLeft: number): Milestone | null {
   if (daysLeft < 0) return 'expired';
-  const within = MILESTONES.filter((m) => daysLeft <= m);
+  const within = MILESTONES[kind].filter((m) => daysLeft <= m);
   return within.length ? within[within.length - 1]! : null;
 }
 
 type Notice = {
-  kind: 'CREDENTIAL' | 'CONTRACT'; milestone: Milestone; employeeId: number; unitId: number | null; eventKey: string;
+  kind: Kind; milestone: Milestone; employeeId: number; unitId: number | null; eventKey: string;
   title: string; message: string; titleAr: string; messageAr: string;
 };
 
 async function deliver(tx: DbClient, n: Notice, now: Date) {
-  const audience = ROUTING[n.kind][n.milestone];
+  const audience = ROUTING[n.kind][n.milestone] ?? [];
   const ids: number[] = [];
   if (audience.includes('EMPLOYEE')) {
     const own = await tx.user.findFirst({ where: { employeeId: n.employeeId, isActive: true }, select: { id: true } });
@@ -58,7 +59,7 @@ async function deliver(tx: DbClient, n: Notice, now: Date) {
   }
   if (audience.includes('SUPERVISOR')) ids.push(...(await recipientsForUnit(tx, 'SUPERVISOR', n.unitId, now)));
   if (audience.includes('HR')) ids.push(...(await recipientsForUnit(tx, 'HR_ADMIN', n.unitId, now)));
-  const priority = n.milestone === 90 || n.milestone === 30 ? 'MEDIUM' as const : 'HIGH' as const;
+  const priority = n.milestone === 90 || n.milestone === 60 || n.milestone === 30 ? 'MEDIUM' as const : 'HIGH' as const;
   const { eventKey, title, message, titleAr, messageAr, employeeId } = n;
   const r = await tx.notification.createMany({
     data: [...new Set(ids)].map((recipientId) => ({ recipientId, employeeId, type: n.kind, priority, eventKey, title, message, titleAr, messageAr })),
@@ -69,12 +70,12 @@ async function deliver(tx: DbClient, n: Notice, now: Date) {
 
 export async function expiryScan(db: Db, now = new Date()) {
   const today = riyadhDate(now);
-  const horizon = toDbDate(addDays(today, MILESTONES[0]));
+  const horizon = (kind: Kind) => toDbDate(addDays(today, MILESTONES[kind][0]));
   const summary = { contracts: 0, contractsEnded: 0, credentialsExpiring: 0, credentialsExpired: 0, notificationsCreated: 0 };
   const employee = { select: { unitId: true, jobNumber: true, fullName: true } } as const;
 
   const contracts = await db.contract.findMany({
-    where: { status: { in: ['Approved', 'Active', 'Expired'] }, endDate: { lte: horizon }, employee: { deletedAt: null } },
+    where: { status: { in: ['Approved', 'Active', 'Expired'] }, endDate: { lte: horizon('CONTRACT') }, employee: { deletedAt: null } },
     select: {
       id: true, employeeId: true, endDate: true, status: true,
       employee: { select: { ...employee.select, contracts: { where: { status: { in: ['Approved', 'Active'] } }, select: { id: true, endDate: true } } } },
@@ -83,7 +84,7 @@ export async function expiryScan(db: Db, now = new Date()) {
   const credentials = await db.credential.findMany({
     where: {
       OR: [
-        { status: { in: ['Valid', 'ExpiringSoon'] }, expiryDate: { gte: toDbDate(today), lte: horizon } },
+        { status: { in: ['Valid', 'ExpiringSoon'] }, expiryDate: { gte: toDbDate(today), lte: horizon('CREDENTIAL') } },
         { status: { notIn: ['Suspended', 'Revoked', 'PendingVerification'] }, expiryDate: { lt: toDbDate(today) } },
       ],
       employee: { deletedAt: null },
@@ -97,7 +98,7 @@ export async function expiryScan(db: Db, now = new Date()) {
     // The next period is already secured: nothing to remind.
     if (c.employee.contracts.some((o) => o.id !== c.id && dbDate(o.endDate) > end)) continue;
     const left = daysBetween(today, end);
-    const milestone = milestoneFor(left);
+    const milestone = milestoneFor('CONTRACT', left);
     // An Expired status only matters once the end date has passed; Approved/Active past their end are expired too.
     if (!milestone || (c.status === 'Expired' && milestone !== 'expired')) continue;
     const who = `${c.employee.jobNumber} ${c.employee.fullName}`;
@@ -120,7 +121,7 @@ export async function expiryScan(db: Db, now = new Date()) {
   for (const c of credentials) {
     const expiry = dbDate(c.expiryDate!);
     const left = daysBetween(today, expiry);
-    const milestone = milestoneFor(left);
+    const milestone = milestoneFor('CREDENTIAL', left);
     if (!milestone) continue;
     const who = `${c.employee.jobNumber} ${c.employee.fullName}`;
     if (milestone === 'expired') {

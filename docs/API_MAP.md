@@ -227,7 +227,7 @@ Eligibility in every response is the **live engine for the shift date** (L7), no
 | Job | When (Asia/Riyadh) | Does | Source |
 | :--- | :--- | :--- | :--- |
 | `daily-transition` | 00:05 daily (catches up if missed) | Contracts Approved→Active / →Expired; stored credential status by date; closes ended grace windows (HIGH audit + HR notice); removes expired PAM; ends expired break-glass; purges spent idempotency keys; re-evaluates every live nurse (demotes invalid future published shifts; TRANSITION policy notice) | spec §6.1, §6.1.1, §6.1.1.1, §6.2, §5.2, R13, R18 |
-| `expiry-scan` | 06:00 daily | Credentials and contracts at 90 / 30 / 14 / 7 days before the last valid day and once expired (current milestone only). Credentials → employee; + unit Supervisor from 14; + scoped HR from 7. Contracts → employee + scoped HR from 90; + Supervisor from 14; none once a later contract is Approved/Active. Key = record + expiry date + milestone | spec §7.1 (N1, N3, N4); **D-39 overrides N2** |
+| `expiry-scan` | 06:00 daily | Credentials at 60 / 30 / 14 / 7 days, contracts at 90 / 30 / 14 / 7 days before the last valid day, both once expired (current milestone only). Credentials → employee; + unit Supervisor from 14; + scoped HR from 7. Contracts → employee + scoped HR from 90; + Supervisor from 14; none once a later contract is Approved/Active. Key = record + expiry date + milestone | spec §7.1 (N1, N3, N4); **D-39 overrides N2** |
 | `attendance-alerts` | every 15 minutes | Shifts under way: not clocked in 30 min after the start, or clocked in while ineligible → CRITICAL notice to the unit's supervisors, once per assignment | spec §14.2 |
 
 ### 2.12 Removed from V03
