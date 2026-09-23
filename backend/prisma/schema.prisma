@@ -296,6 +296,10 @@ model Employee {
   maritalStatus   MaritalStatus? @map("marital_status")
   salary          Decimal?       @db.Decimal(12, 2) // SAR
   contactEmail    String         @map("contact_email")
+  /// E.164, "+" and 8–15 digits (D-35). The employee may update both (self-service).
+  primaryPhone          String? @map("primary_phone") @db.VarChar(16)
+  /// Next-of-kin number — third-party data: the employee and HR only, never the supervisor view (D-35).
+  emergencyContactPhone String? @map("emergency_contact_phone") @db.VarChar(16)
   /// null = Unassigned (replaces the V03 sentinel unit id 0).
   unitId          Int?           @map("unit_id")
   positionCode    String         @map("position_code")

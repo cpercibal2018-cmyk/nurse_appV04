@@ -9,12 +9,21 @@ import type { Db } from '../src/lib/prisma.js';
 import { withLease } from '../src/lib/worker-lease.js';
 import { attendanceAlerts } from '../src/jobs/attendance-alerts.js';
 import { dailyTransition } from '../src/jobs/daily-transition.js';
-import { expiryScan } from '../src/jobs/expiry-scan.js';
+import { expiryScan, milestoneFor, MILESTONES } from '../src/jobs/expiry-scan.js';
+import { RENEWAL_WINDOW_DAYS } from '../src/modules/credentials/records.js';
 import { runJob, type JobDefinition } from '../src/jobs/scheduler.js';
 import { makeEmployee, makeNurse, makeOrg, makeTemplate, makeUser, openDb, signIn, TEST_URL, testApp, uniq } from './helpers.js';
 
 const describeDb = TEST_URL ? describe : describe.skip;
 const today = () => riyadhDate();
+
+describe('reminder milestones (D-39)', () => {
+  it.each([
+    [91, null], [90, 90], [31, 90], [30, 30], [15, 30], [14, 14], [8, 14], [7, 7], [0, 7], [-1, 'expired'],
+  ])('%i days left → %s', (days, m) => { expect(milestoneFor(days)).toBe(m); });
+
+  it('the renewal window opens at the first milestone', () => { expect(MILESTONES[0]).toBe(RENEWAL_WINDOW_DAYS); });
+});
 
 describeDb('jobs, notifications, audit and sessions', () => {
   let db: Db;
@@ -63,23 +72,45 @@ describeDb('jobs, notifications, audit and sessions', () => {
     }, 120_000);
   });
 
-  describe('expiry scan (N1–N3)', () => {
-    it('notifies the employee and scoped HR once per record, expiry date and milestone', async () => {
-      const { emp, user } = await makeNurse(db, org.unitA.id, { account: true });
-      await db.contract.updateMany({ where: { employeeId: emp.id }, data: { endDate: toDbDate(addDays(today(), 30)) } });
-      const tpl = await makeTemplate(db);
-      await db.credential.create({ data: { employeeId: emp.id, templateId: tpl.id, status: 'Expired', trackingData: {}, expiryDate: toDbDate(addDays(today(), -3)) } });
-      const scopedHr = await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] });
+  describe('expiry scan (N1, N3, N4; D-39 milestones and routing)', () => {
+    it('sends the current milestone to the audience it names, once per record, date and milestone', async () => {
+      const unit = await db.unit.create({ data: { code: uniq('EX').toUpperCase().slice(0, 20), name: 'Expiry unit', departmentId: org.dept.id } });
+      const { emp, user } = await makeNurse(db, unit.id, { account: true });
+      await db.contract.updateMany({ where: { employeeId: emp.id }, data: { endDate: toDbDate(addDays(today(), 20)) } });
+      const credIn = async (days: number) => (await db.credential.create({ data: { employeeId: emp.id, templateId: (await makeTemplate(db)).id, status: days < 0 ? 'Expired' : 'ExpiringSoon', trackingData: {}, expiryDate: toDbDate(addDays(today(), days)) } })).id;
+      const c = { d80: await credIn(80), d20: await credIn(20), d10: await credIn(10), d0: await credIn(0), past: await credIn(-3), d120: await credIn(120) };
+      // A contract that ended, but whose next period is already approved: no reminder.
+      const renewed = await makeEmployee(db, unit.id);
+      const ended = await db.contract.create({ data: { employeeId: renewed.id, jobNumber: renewed.jobNumber, status: 'Expired', startDate: toDbDate(addDays(today(), -400)), endDate: toDbDate(addDays(today(), -2)) } });
+      await db.contract.create({ data: { employeeId: renewed.id, jobNumber: renewed.jobNumber, status: 'Active', startDate: toDbDate(addDays(today(), -1)), endDate: toDbDate(addDays(today(), 364)) } });
+      const sup = await makeUser(db, { roles: [{ role: 'SUPERVISOR', scopeType: 'UNIT', scopeIds: [unit.id] }] });
+      const scopedHr = await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'UNIT', scopeIds: [unit.id] }] });
       const otherHr = await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'UNIT', scopeIds: [org.unitC.id] }] });
 
       await expiryScan(db);
-      for (const id of [user!.id, scopedHr.id]) {
-        expect(await db.notification.count({ where: { recipientId: id, employeeId: emp.id, eventKey: { endsWith: ':within-90' } } })).toBe(1);
-        expect(await db.notification.count({ where: { recipientId: id, employeeId: emp.id, eventKey: { endsWith: ':expired' } } })).toBe(1);
-      }
-      expect(await db.notification.count({ where: { recipientId: otherHr.id, employeeId: emp.id } })).toBe(0);
+      const keys = async (recipientId: number) => (await db.notification.findMany({ where: { recipientId, employeeId: { in: [emp.id, renewed.id] } }, select: { eventKey: true } })).map((n) => n.eventKey).sort();
+      const cred = (id: number, m: string) => expect.stringMatching(new RegExp(`^credential:${id}:.*:${m}$`));
+      const contract = (m: string) => expect.stringMatching(new RegExp(`^contract:[0-9]+:.*:${m}$`));
+
+      // Nurse: every milestone (credentials 90, 30, 14, 7, expired; contract 30). Nothing beyond 90 days.
+      expect(await keys(user!.id)).toEqual(expect.arrayContaining([cred(c.d80, 'within-90'), cred(c.d20, 'within-30'), cred(c.d10, 'within-14'), cred(c.d0, 'within-7'), cred(c.past, 'expired'), contract('within-30')]));
+      expect(await keys(user!.id)).toHaveLength(6);
+      // Supervisor: credentials from 14 days; contracts from 14 days (this one is at 30).
+      expect(await keys(sup.id)).toEqual(expect.arrayContaining([cred(c.d10, 'within-14'), cred(c.d0, 'within-7'), cred(c.past, 'expired')]));
+      expect(await keys(sup.id)).toHaveLength(3);
+      // Scoped HR: credentials from 7 days; contracts from 90.
+      expect(await keys(scopedHr.id)).toEqual(expect.arrayContaining([cred(c.d0, 'within-7'), cred(c.past, 'expired'), contract('within-30')]));
+      expect(await keys(scopedHr.id)).toHaveLength(3);
+      expect(await keys(otherHr.id)).toEqual([]);
+      expect(await db.notification.count({ where: { employeeId: renewed.id, eventKey: { contains: `contract:${ended.id}:` } } })).toBe(0);
+
+      // Idempotent on the same day; eleven days later the 20-day credential and the contract reach 14 days.
+      const before = await db.notification.count({ where: { employeeId: emp.id } });
       await expiryScan(db);
-      expect(await db.notification.count({ where: { recipientId: user!.id, employeeId: emp.id } })).toBe(2);
+      expect(await db.notification.count({ where: { employeeId: emp.id } })).toBe(before);
+      await expiryScan(db, new Date(Date.now() + 11 * 86_400_000));
+      expect(await keys(sup.id)).toEqual(expect.arrayContaining([cred(c.d20, 'within-14'), contract('within-14')]));
+      expect(await keys(user!.id)).toEqual(expect.arrayContaining([cred(c.d20, 'within-14'), contract('within-14')]));
     }, 120_000);
   });
 
@@ -93,7 +124,7 @@ describeDb('jobs, notifications, audit and sessions', () => {
       for (const e of [absent, present]) {
         await db.shiftAssignment.create({ data: { employeeId: e.id, unitId: unit.id, shiftDate: toDbDate(date), shiftType: 'Morning', status: 'Published' } });
       }
-      await db.attendanceEvent.create({ data: { employeeId: present.id, eventType: 'CLOCK_IN', eventTimestamp: new Date(`${date}T07:02:00+03:00`) } });
+      await db.attendanceEvent.create({ data: { employeeId: present.id, eventType: 'CLOCK_IN', eventTimestamp: new Date(`${date}T06:40:00+03:00`) } }); // early arrival counts (D-38)
 
       expect((await attendanceAlerts(db, new Date(`${date}T07:20:00+03:00`))).missing).toBe(0); // still within 30 minutes
       const at = new Date(`${date}T07:40:00+03:00`);

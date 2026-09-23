@@ -187,16 +187,19 @@ describeDb('workforce, employees and contracts', () => {
   });
 
   describe('employee views and changes (§8.1, E9)', () => {
-    it('HR sees every field, a Supervisor the baseline, the employee their own profile', async () => {
+    it('HR sees every field, a Supervisor the baseline (D-36), the employee their own profile', async () => {
       const { emp, user } = await makeNurse(db, org.unitA.id, { account: true });
-      await db.employee.update({ where: { id: emp.id }, data: { salary: 9000, nationality: 'SA' } });
-      expect((await hr.get(`/employees/${emp.id}`)).body).toMatchObject({ view: 'FULL', salary: '9000.00', nationality: 'SA' });
+      await db.employee.update({
+        where: { id: emp.id },
+        data: { salary: 9000, nationality: 'SA', maritalStatus: 'Married', rankGrade: 'G5', fileNo: 'F-77', jobPostLocation: 'Post A', actualWorkPlace: 'Ward 3', primaryPhone: '+966501234567', emergencyContactPhone: '+639171234567' },
+      });
+      expect((await hr.get(`/employees/${emp.id}`)).body).toMatchObject({ view: 'FULL', salary: '9000.00', nationality: 'SA', emergencyContactPhone: '+639171234567' });
       const sup = await signIn(app, (await makeUser(db, { roles: [{ role: 'SUPERVISOR', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
       const seen = await sup.get(`/employees/${emp.id}`);
-      expect(seen.body.view).toBe('BASELINE');
-      expect(seen.body).not.toHaveProperty('salary');
-      expect(seen.body).not.toHaveProperty('nationality');
-      expect(seen.body).not.toHaveProperty('contactEmail');
+      expect(seen.body).toMatchObject({ view: 'BASELINE', contactEmail: emp.contactEmail, primaryPhone: '+966501234567', actualWorkPlace: 'Ward 3' });
+      for (const hidden of ['salary', 'maritalStatus', 'nationality', 'rankGrade', 'fileNo', 'jobPostLocation', 'emergencyContactPhone']) {
+        expect(seen.body, hidden).not.toHaveProperty(hidden);
+      }
       const listed = (await sup.get(`/employees?unitId=${org.unitA.id}`)).body.items;
       expect(listed.every((e: { view: string }) => e.view === 'BASELINE')).toBe(true);
       const outside = await makeEmployee(db, org.unitC.id);
@@ -222,6 +225,31 @@ describeDb('workforce, employees and contracts', () => {
       expect((await hr.del(`/employees/${emp.id}`).send({ reason: 'Left the hospital' })).body.deleted).toBe(true);
       expect((await hr.get(`/employees/${emp.id}`)).status).toBe(404);
       expect((await db.eligibilityState.findUniqueOrThrow({ where: { employeeId: emp.id } })).status).toBe('INELIGIBLE');
+    });
+  });
+
+  describe('own phone numbers (D-35)', () => {
+    it('the employee updates only their phones, in international format; HR too; the next-of-kin number stays out of the audit', async () => {
+      const { emp, user } = await makeNurse(db, org.unitA.id, { account: true });
+      const self = await signIn(app, user!.email);
+      const ok = await self.patch('/employees/me/contact', { primaryPhone: '+966 50-123-4567', emergencyContactPhone: '+44 (20) 7946 0958' });
+      expect(ok.status).toBe(200);
+      expect(ok.body).toMatchObject({ id: emp.id, primaryPhone: '+966501234567', emergencyContactPhone: '+442079460958' });
+      for (const bad of ['0501234567', '+0501234567', '+1234567', '+9665012345678901', 'call me']) {
+        expect((await self.patch('/employees/me/contact', { primaryPhone: bad })).body.error.code, bad).toBe('VALIDATION_FAILED');
+      }
+      expect((await self.patch('/employees/me/contact', { salary: '1' })).body.error.code).toBe('VALIDATION_FAILED');
+      expect((await self.patch('/employees/me/contact', {})).body.error.code).toBe('NO_CHANGES');
+      expect((await self.patch('/employees/me/contact', { emergencyContactPhone: null })).body.emergencyContactPhone).toBeNull();
+
+      const audit = await db.auditEntry.findMany({ where: { action: 'EMPLOYEE_CONTACT_UPDATED', resourceId: String(emp.id) }, orderBy: { id: 'asc' } });
+      expect(audit[0]!.changes).toMatchObject({ primaryPhone: { from: null, to: '+966501234567' }, emergencyContactPhone: { from: '(redacted)', to: '(redacted)' } });
+      expect(JSON.stringify(audit.map((a) => a.changes))).not.toContain('442079460958');
+
+      expect((await hr.patch(`/employees/${emp.id}`, { primaryPhone: '+639171234567' })).body.primaryPhone).toBe('+639171234567');
+      await expect(db.employee.update({ where: { id: emp.id }, data: { primaryPhone: '0501234567' } })).rejects.toThrow(); // database CHECK
+      const unlinked = await signIn(app, (await makeUser(db)).email);
+      expect((await unlinked.patch('/employees/me/contact', { primaryPhone: '+966501234567' })).body.error.code).toBe('NO_EMPLOYEE_RECORD');
     });
   });
 
@@ -287,7 +315,11 @@ describeDb('workforce, employees and contracts', () => {
       await act(hr2, id, 'approve');
       expect((await idem(hr.post('/contracts', { employeeId: emp.id, startDate: today(), endDate: addDays(today(), 10) }))).body.error.code).toBe('EMPLOYEE_HAS_CONTRACT');
 
-      const renewable = (await hr.get('/contracts/renewable')).body.items.find((r: { employeeId: number }) => r.employeeId === emp.id);
+      // The picker lists at most 500 employees; read it through HR scoped to a unit of its own so the shared test database cannot push this one out.
+      const own = await db.unit.create({ data: { code: uniq('RN').toUpperCase().slice(0, 20), name: 'Renewal unit', departmentId: org.dept.id } });
+      await db.employee.update({ where: { id: emp.id }, data: { unitId: own.id } });
+      const unitHr = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'UNIT', scopeIds: [own.id] }] })).email);
+      const renewable = (await unitHr.get('/contracts/renewable')).body.items.find((r: { employeeId: number }) => r.employeeId === emp.id);
       expect(renewable.prefill.start).toBe(addDays(today(), 365));
       const next = await idem(hr.post(`/contracts/${id}/renew`, {}));
       await hr.upload(`/contracts/${next.body.id}/documents`, FILES.pdf, 'application/pdf');

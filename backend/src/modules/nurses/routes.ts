@@ -6,7 +6,7 @@ import { z } from 'zod';
 import type { Db } from '../../lib/prisma.js';
 import { authOf, authorize } from '../../middleware/authorize.js';
 import { idempotent } from '../../middleware/idempotency.js';
-import { DeleteBody, ListQuery, OnboardBody, PositionBody, UpdateBody, type NurseService } from './service.js';
+import { DeleteBody, ListQuery, OnboardBody, OwnContactBody, PositionBody, UpdateBody, type NurseService } from './service.js';
 
 const IdParam = z.object({ id: z.coerce.number().int().positive() });
 
@@ -16,6 +16,8 @@ export function createNursesRouter(db: Db, nurses: NurseService) {
 
   r.get('/employees', authorize('employees.read'), async (req, res) => { res.json(await nurses.list(authOf(res), ListQuery.parse(req.query))); });
   r.get('/employees/me', async (_req, res) => { res.json(await nurses.me(authOf(res))); });
+  // Own record only (D-35): no permission, the caller's employee id is the target.
+  r.patch('/employees/me/contact', async (req, res) => { res.json(await nurses.updateOwnContact(authOf(res), OwnContactBody.parse(req.body), rid(res))); });
   r.post('/employees/onboard', authorize('employees.write'), idempotent(db, 'employees.onboard'), async (req, res) => {
     res.status(201).json(await nurses.onboard(authOf(res), OnboardBody.parse(req.body), rid(res)));
   });

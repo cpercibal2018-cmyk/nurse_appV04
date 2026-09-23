@@ -112,11 +112,13 @@ describeDb('credentials and eligibility', () => {
       expect((await hr.post(`/credentials/${rec.body.id}/verify`)).body.error.code).toBe('CREDENTIAL_NOT_PENDING');
     });
 
-    it('stores ExpiringSoon within 60 days and Expired past expiry; tracking data is validated against the template', async () => {
+    it('stores ExpiringSoon within 90 days (D-39) and Expired past expiry; tracking data is validated against the template', async () => {
       const { emp } = await makeNurse(db, org.unitB.id);
       const tpl = await makeTemplate(db);
-      const soon = await validCredential(emp.id, tpl.id, addDays(today(), -300), addDays(today(), 30));
+      const soon = await validCredential(emp.id, tpl.id, addDays(today(), -300), addDays(today(), 90));
       expect((await db.credential.findUniqueOrThrow({ where: { id: soon } })).status).toBe('ExpiringSoon');
+      const later = await validCredential(emp.id, (await makeTemplate(db)).id, addDays(today(), -300), addDays(today(), 91));
+      expect((await db.credential.findUniqueOrThrow({ where: { id: later } })).status).toBe('Valid');
       const bad = await hr.post('/credentials', { employeeId: emp.id, templateId: tpl.id, trackingData: { licence_number: '', issue_date: 'nope', expiry_date: '2020-01-01', extra: 'x' } });
       expect(bad.body.error.code).toBe('TRACKING_DATA_INVALID');
       expect(bad.body.error.details).toEqual(expect.arrayContaining(['extra: not a field of this template', 'licence_number: required', 'issue_date: must be YYYY-MM-DD']));

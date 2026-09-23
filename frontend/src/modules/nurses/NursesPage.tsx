@@ -1,5 +1,6 @@
 // Employee master (spec §3.1, §8.1). HR sees and maintains every field within
-// scope; a Supervisor sees the baseline (the server leaves private fields out).
+// scope; a Supervisor sees the baseline (the server leaves private fields out;
+// owner list D-36).
 // Onboarding creates the employee and a Draft contract together (D-3): the
 // nurse has no coverage until another HR person approves the contract.
 
@@ -10,11 +11,12 @@ import { useTranslation } from 'react-i18next';
 import { usePermissions } from '../../hooks/usePermissions';
 import { describeApiError } from '../../lib/errors';
 import { toHijriShort } from '../../lib/hijri';
+import { phoneRule } from '../../lib/phone';
 import { useUnits } from '../administration/api';
 import { usePositions } from '../workforce/api';
 import { useEmployee, useEmployeeAction, useEmployees, type EmployeeRow } from './api';
 
-const OPTIONAL_TEXT = ['middleName', 'jobTitle', 'fileNo', 'rankGrade', 'nationality', 'jobPostLocation', 'actualWorkPlace', 'specialty'] as const;
+const OPTIONAL_TEXT = ['middleName', 'jobTitle', 'fileNo', 'rankGrade', 'nationality', 'jobPostLocation', 'actualWorkPlace', 'specialty', 'primaryPhone', 'emergencyContactPhone'] as const;
 
 /** Form values → API body: empty strings become null, dates YYYY-MM-DD. */
 function toBody(v: Record<string, unknown>) {
@@ -61,6 +63,10 @@ function EmployeeFields({ units, positions, onboarding }: { units: Array<{ value
       <Form.Item name="unitId" label={t('unit')}><Select options={units} /></Form.Item>
       {onboarding && <Form.Item name="positionCode" label={t('position')}><Select showSearch optionFilterProp="label" options={positions} /></Form.Item>}
       <Form.Item name="contactEmail" label={t('contactEmail')} rules={[{ required: true, type: 'email' }]}><Input maxLength={200} /></Form.Item>
+      <Flex gap={8}>
+        <Form.Item name="primaryPhone" label={t('primaryPhone')} extra={t('phoneHint')} rules={[phoneRule(t('phoneInvalid'))]} style={{ flex: 1 }}><Input maxLength={24} dir="ltr" /></Form.Item>
+        <Form.Item name="emergencyContactPhone" label={t('emergencyContactPhone')} extra={t('emergencyPhoneHint')} rules={[phoneRule(t('phoneInvalid'))]} style={{ flex: 1 }}><Input maxLength={24} dir="ltr" /></Form.Item>
+      </Flex>
       <Form.Item name="hireDate" label={t('hireDate')}><DatePicker style={{ width: '100%' }} /></Form.Item>
     </>
   );
@@ -148,10 +154,11 @@ export default function NursesPage() {
             <Descriptions column={1} size="small" bordered items={[
               ['jobNumber', e.jobNumber], ['name', e.fullName], ['unit', e.unit ? `${e.unit.code} — ${e.unit.name}` : t('unassigned')],
               ['position', `${e.position.code} — ${e.position.title}`], ['jobTitle', e.jobTitle], ['specialty', e.specialty], ['hireDate', e.hireDate],
+              ['actualWorkPlace', e.actualWorkPlace], ['contactEmail', e.contactEmail], ['primaryPhone', e.primaryPhone],
               ...(e.view === 'FULL' ? [
+                ['emergencyContactPhone', e.emergencyContactPhone],
                 ['fileNo', e.fileNo], ['rankGrade', e.rankGrade], ['nationality', e.nationality], ['jobPostLocation', e.jobPostLocation],
-                ['actualWorkPlace', e.actualWorkPlace], ['maritalStatus', e.maritalStatus ? t(`marital_${e.maritalStatus}`) : null],
-                ['salarySar', e.salary], ['contactEmail', e.contactEmail],
+                ['maritalStatus', e.maritalStatus ? t(`marital_${e.maritalStatus}`) : null], ['salarySar', e.salary],
               ] : []),
             ].map(([k, v]) => ({ key: k as string, label: t(k as string), children: (v as string | null | undefined) ?? '—' }))} />
           </>

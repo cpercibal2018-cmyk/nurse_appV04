@@ -6,7 +6,7 @@ import { lazy, type ComponentType, type LazyExoticComponent, type ReactNode } fr
 import {
   AuditOutlined, BellOutlined, CheckCircleOutlined, ClockCircleOutlined, DashboardOutlined,
   FileProtectOutlined, FundOutlined, IdcardOutlined, SafetyCertificateOutlined, ScheduleOutlined,
-  SettingOutlined, TeamOutlined, ApartmentOutlined, HistoryOutlined,
+  SettingOutlined, TeamOutlined, ApartmentOutlined, HistoryOutlined, UserOutlined,
 } from '@ant-design/icons';
 import type { TranslationKey } from '../lib/i18n';
 import type { AppRole } from '../types/api';
@@ -34,6 +34,7 @@ export const MODULES: AppModule[] = [
   page('/nurses', 'nurses', <TeamOutlined />, () => import('../modules/nurses/NursesPage'), { requires: STAFF }),
   page('/contracts', 'contracts', <FileProtectOutlined />, () => import('../modules/contracts/ContractsPage')),
   page('/credentials', 'credentials', <SafetyCertificateOutlined />, () => import('../modules/credentials/CredentialsPage'), { requires: STAFF }),
+  page('/my-profile', 'myProfile', <UserOutlined />, () => import('../modules/nurses/MyProfilePage'), { employeeOnly: true }),
   page('/my-credentials', 'myCredentials', <IdcardOutlined />, () => import('../modules/credentials/MyCredentialsPage'), { employeeOnly: true }),
   page('/eligibility', 'eligibility', <CheckCircleOutlined />, () => import('../modules/eligibility/EligibilityPage'), { requires: STAFF }),
   page('/workforce', 'workforce', <ApartmentOutlined />, () => import('../modules/workforce/WorkforcePage')),

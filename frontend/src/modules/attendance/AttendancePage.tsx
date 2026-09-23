@@ -39,7 +39,7 @@ export default function AttendancePage() {
             <DatePicker value={dayjs(date)} allowClear={false} onChange={(d) => d && setDate(d.format('YYYY-MM-DD'))} />
           </Flex>
           {gaps.error && <Alert type="error" showIcon title={describeApiError(gaps.error)} style={{ marginBottom: 12 }} />}
-          {gaps.data && <Alert type="warning" showIcon style={{ marginBottom: 12 }} title={t('gapRule', { minutes: gaps.data.gapMinutes })} />}
+          {gaps.data && <Alert type="warning" showIcon style={{ marginBottom: 12 }} title={t('gapRule', { minutes: gaps.data.gapMinutes, early: gaps.data.earlyClockInMinutes })} />}
           {!unitId ? <Empty description={t('chooseUnit')} /> : (
             <Table<Gap> rowKey="assignmentId" size="small" loading={gaps.isLoading} dataSource={gaps.data?.items} pagination={false}
               columns={[

@@ -344,7 +344,7 @@ IDs are referenced by the other reports. **Source** is where the rule is establi
 
 | ID | Rule | Source |
 | :--- | :--- | :--- |
-| N1 | Daily scan 06:00 Asia/Riyadh; contracts 90-day window; credentials 60-day window + already expired | spec §7.1 |
+| N1 | Daily scan 06:00 Asia/Riyadh; contracts 90-day window; credentials 60-day window + already expired — **amended by D-39:** both 90/30/14/7 days + expired, with escalation | spec §7.1 |
 | N2 | Recipients: employee + scoped active HR users; acknowledgement per recipient only | spec §7.1 |
 | N3 | Dedup key = record id + expiry date + milestone | spec §7.1 |
 | N4 | Window queries catch up after missed runs | spec §7.1 |

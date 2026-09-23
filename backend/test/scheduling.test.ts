@@ -165,24 +165,26 @@ describeDb('scheduling and attendance', () => {
   });
 
   describe('attendance gaps (§14.2, D-31, D-33)', () => {
-    it('classifies published shifts against clock-ins at or after the shift start', async () => {
+    it('classifies published shifts against clock-ins from 30 minutes before the start (D-38)', async () => {
       const unit = await db.unit.create({ data: { code: `AT${Date.now().toString(36).toUpperCase()}`.slice(0, 20), name: 'Attendance unit', departmentId: org.dept.id } });
       const s3 = await signIn(app, (await makeUser(db, { roles: [{ role: 'SUPERVISOR', scopeType: 'UNIT', scopeIds: [unit.id] }] })).email);
-      const [present, missing, early] = [(await makeNurse(db, unit.id)).emp, (await makeNurse(db, unit.id)).emp, (await makeNurse(db, unit.id)).emp];
+      const [present, missing, early, tooEarly] = [(await makeNurse(db, unit.id)).emp, (await makeNurse(db, unit.id)).emp, (await makeNurse(db, unit.id)).emp, (await makeNurse(db, unit.id)).emp];
       const yesterday = addDays(today(), -1);
-      for (const e of [present, missing, early]) {
+      for (const e of [present, missing, early, tooEarly]) {
         await db.shiftAssignment.create({ data: { employeeId: e.id, unitId: unit.id, shiftDate: toDbDate(yesterday), shiftType: 'Morning', status: 'Published' } });
       }
       const at = (time: string) => new Date(`${yesterday}T${time}:00+03:00`);
       await db.attendanceEvent.create({ data: { employeeId: present.id, eventType: 'CLOCK_IN', eventTimestamp: at('07:05') } });
-      await db.attendanceEvent.create({ data: { employeeId: early.id, eventType: 'CLOCK_IN', eventTimestamp: at('06:50') } });
+      await db.attendanceEvent.create({ data: { employeeId: early.id, eventType: 'CLOCK_IN', eventTimestamp: at('06:30') } }); // exactly at the edge
+      await db.attendanceEvent.create({ data: { employeeId: tooEarly.id, eventType: 'CLOCK_IN', eventTimestamp: at('06:29') } });
 
       const gaps = await s3.get(`/attendance/gaps?unitId=${unit.id}&date=${yesterday}`);
       const status = (id: number) => gaps.body.items.find((i: { employeeId: number }) => i.employeeId === id).status;
       expect(status(present.id)).toBe('PRESENT');
       expect(status(missing.id)).toBe('MISSING');
-      expect(status(early.id)).toBe('MISSING'); // spec §14.2 literal: only clock-ins at or after the start count
-      expect(gaps.body.gapMinutes).toBe(30);
+      expect(status(early.id)).toBe('PRESENT');
+      expect(status(tooEarly.id)).toBe('MISSING');
+      expect(gaps.body).toMatchObject({ gapMinutes: 30, earlyClockInMinutes: 30 });
 
       await db.shiftAssignment.create({ data: { employeeId: missing.id, unitId: unit.id, shiftDate: toDbDate(addDays(today(), 1)), shiftType: 'Night', status: 'Published' } });
       const upcoming = await s3.get(`/attendance/gaps?unitId=${unit.id}&date=${addDays(today(), 1)}`);
@@ -190,7 +192,7 @@ describeDb('scheduling and attendance', () => {
       expect(new Date(upcoming.body.items[0].shiftEnd).getTime() - new Date(upcoming.body.items[0].shiftStart).getTime()).toBe(8 * 3600_000);
 
       const events = await s3.get(`/attendance/events?unitId=${unit.id}&from=${yesterday}&to=${yesterday}`);
-      expect(events.body.total).toBe(2);
+      expect(events.body.total).toBe(3);
       expect((await sup.get(`/attendance/gaps?unitId=${unit.id}`)).status).toBe(403);
     });
   });

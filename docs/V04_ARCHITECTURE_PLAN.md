@@ -182,6 +182,12 @@ Follows the brief; each commit builds.
 | D-31 (2026-09-23) | **Shift times = V03's**: Morning 07:00–15:00, Evening 15:00–23:00, Night 23:00–07:00 (next day), Asia/Riyadh | Kept in one file (`backend/src/config/shifts.ts`) so they can change; used by attendance gaps |
 | D-32 (2026-09-23) | **Home unit only** — no floating | A nurse is drafted and published only in their own unit: the engine checks the home unit's credential rules, so floating would skip the target unit's rules. A unit move demotes future published shifts. Floating needs an engine change first |
 | D-33 (2026-09-23) | **Attendance: gap view now, badge feed later** | Events list and gap view built; the PACS ingest endpoint waits for its contract (auth, format, delivery — B-15) |
+| D-34 (2026-09-24) | **Organisation structure is hospital-wide** — confirmed | Departments, unit create/move/deactivate, positions and the unit CSV import need system-wide HR/SA; unit-scoped HR manages bed counts and coverage targets for their units (the D-25 principle). No code change |
+| D-35 (2026-09-24) | **Phone numbers: mobile + next-of-kin emergency contact** | New `employees.primary_phone` and `emergency_contact_phone` (migration `20260924090000_employee_phones`), E.164 — `+`, no leading zero, 8–15 digits; spaces, hyphens and brackets are removed before checking; a database CHECK repeats the rule. Any country code is accepted (expatriate staff and overseas next of kin). The employee updates both on their own record (`PATCH /employees/me/contact`, new **My Profile** page); HR maintains them too. The emergency number is a third person's data: seen by the employee and HR only, never in the Supervisor view, and its value is kept out of the audit trail (only "changed" is recorded). Implements the "own phone" item of spec §3.3 |
+| D-36 (2026-09-24) | **Supervisor view (spec §8.1 "private fields suppressed")** | Shown: name, job number, unit, position, job title, specialty, status, hire date, **contact email, mobile phone, actual work place**. Hidden: salary, marital status, nationality, rank/grade, file number, job post location, emergency contact phone |
+| D-37 (2026-09-24) | **No one acts on their own contract or deletes their own employee record** — confirmed (extension of D-26) | As built in commit 7 (`SELF_ACTION_FORBIDDEN`). **Basis cited by the owner:** CBAHI Human Resources Management standards (integrity of staff files and credentialing, conflict of interest); NCA Essential Cybersecurity Controls (identity and access management, segregation of duties, protected audit logs); MHRSD — Saudi Labor Law and digital employment contracts (Qiwa). The specific standard and control numbers are not held in this repository; the owner's compliance team should add them for audit reference |
+| D-38 (2026-09-24) | **Early clock-in counts: 30 minutes** | A clock-in from 30 minutes before the shift start until its end marks the nurse present (gap view and missing alerts share `classifyShift`). **Spec §14.2 amended** (it counted only clock-ins at or after the start). Presence only — early-arrival pay rules belong to payroll, not this system |
+| D-39 (2026-09-24) | **Reminder schedule 90 / 30 / 14 / 7 / 0 days, with escalation** | **Spec §5.2 amended:** the "Subject to Renew" / ExpiringSoon window is 90 days (was 60). Milestones at 90, 30, 14 and 7 days before the last valid day and once expired, for credentials and contracts. **Rule N2 overridden by the owner:** credentials go to the employee at 90 and 30, + unit Supervisor from 14, + scoped HR from 7 and at expiry; contracts (HR owns renewal) go to the employee and scoped HR from 90, + Supervisor from 14. Each run sends the current milestone only, so a late record or a missed run never produces a burst |
 
 ### Implementation notes — commit 5 (authentication and RBAC)
 
@@ -222,15 +228,15 @@ Follows the brief; each commit builds.
 
 | Topic | What was built | Status |
 | :--- | :--- | :--- |
-| Organisation scope | Departments, unit create/move/deactivate, positions and CSV import need **system-wide** HR/SA; bed counts and coverage targets follow **unit scope**; bed history is readable by scoped Supervisors | Interpretation (same principle as D-25) — **owner to confirm** |
+| Organisation scope | Departments, unit create/move/deactivate, positions and CSV import need **system-wide** HR/SA; bed counts and coverage targets follow **unit scope**; bed history is readable by scoped Supervisors | **Confirmed — D-34** |
 | W1–W8 | Deactivation guards (W1, W2, W6); beds 0–500 with reason and one log row per change (W4); bulk per-row results committed together (W5); schedulability change re-evaluates holders; coverage target `null` = unspecified (W8) | As specified |
 | CSV import | V03 kit behaviour (dry run default, never deletes) plus RFC 4180 quoting, BOM handling and case-insensitive code matching (V03 split on every comma) | Improved port |
 | Onboarding | Employee + Draft contract + HIGH audit + eligibility state in one transaction (D-3, D-17); Hijri dates converted by the server, not taken from the browser | As decided |
-| **REQUIREMENT NOT ESTABLISHED** — Supervisor private fields | The spec says "private fields suppressed" without a list. Suppressed: salary, marital status, nationality, file no., rank/grade, contact email, job post, actual work place. Shown: name, job number, unit, position, job title, specialty, status, hire date | **Owner to confirm the list** |
-| Own contract / own record | Nobody creates, renews, transitions or uploads to their **own** contract, or deletes their own employee record (`SELF_ACTION_FORBIDDEN`) — the D-26 principle applied to contracts | Extension of D-26 — **owner to confirm** |
+| Supervisor private fields | The spec says "private fields suppressed" without a list. Commit 7 suppressed contact email and actual work place too | **Decided — D-36** (contact email, mobile and work place now shown; built in commit 10b) |
+| Own contract / own record | Nobody creates, renews, transitions or uploads to their **own** contract, or deletes their own employee record (`SELF_ACTION_FORBIDDEN`) — the D-26 principle applied to contracts | **Confirmed — D-37** |
 | **CONFLICT — renewal timing (C7 vs spec §4.2)** | V03 (`contracts.ts:130-147`, rule C7) allowed renewal only after all Approved/Active coverage had ended, which forces a gap between contracts. Spec §4.2 says an Approved future period may sit next to the current one ("approval does not supersede the current contract"; C12). **V04 follows the spec:** renewal is allowed any time; the approval overlap check (C4) and the database constraint prevent overlap | **Owner to confirm** |
 | C11 contract copy | V03 required the PDF on the create form. V04 creates the Draft first and requires a CLEAN copy before **submit** — the copy is still mandatory before approval | Same rule, different step |
-| Own phone update (spec §3.3) | Not built: the employee schema has no phone column | **REQUIREMENT NOT ESTABLISHED** |
+| Own phone update (spec §3.3) | Not built in commit 7: the employee schema had no phone column | **Decided — D-35**, built in commit 10b |
 | KPI (D-11) | Ported engine; response and page state that the Ada'a card is not in the repository. Unit → area map is V03's (by unit code). Beds count **active** units only (V03 counted inactive critical units in KPI A) | Kept per D-11; thresholds unverified |
 | Stored status lag | Approved → Active at start date and Active → Expired at end date need the daily job (commit 9). The engine treats Approved and Active alike for coverage (C12), so eligibility is correct meanwhile | Same pattern as commit 6 |
 
@@ -245,7 +251,7 @@ Follows the brief; each commit builds.
 | Auto-fill | V03 filled to the removed bed formula (D-16); V04 fills to configured targets only. **Heuristics, not policy:** one auto-filled shift per nurse per day, fewest shifts first. Manual drafting can still give a nurse two shifts in a day (only S1 applies) | Rest/fatigue rules **REQUIREMENT NOT ESTABLISHED** |
 | Past dates | Drafting and publishing refuse shift dates before today | Implementation safeguard |
 | Coverage | Eligible, non-cancelled assignments counted per status; shortage = target − published eligible; never blocks (S4) | As specified |
-| **Spec issue — early clock-in** | Spec §14.2's query counts only clock-ins **at or after** the shift start, so a nurse who badges in at 06:50 for 07:00 shows as MISSING. Kept literal (test documents it) | **Owner to confirm** — recommend counting clock-ins from a set time before the start |
+| Early clock-in | Spec §14.2's query counted only clock-ins **at or after** the shift start, so a nurse who badged in at 06:50 for 07:00 showed as MISSING | **Decided — D-38** (30 minutes; built in commit 10b) |
 | Gap alerts | On-demand view only; the 15-minute worker and "Critical Coverage Alert" push are **commit 9** | Planned |
 | API map correction | §2.10 said "after 15 min"; the spec says 30 minutes. The map now says 30 | Corrected |
 
@@ -255,7 +261,7 @@ Follows the brief; each commit builds.
 | :--- | :--- | :--- |
 | Scheduler | One minute tick; each period is a unique `job_runs.run_key` (completed once, failed/stuck retried up to 5 attempts, missed days run on next start — N4); `worker_leases` stops two processes running one job | Spec §10.3 lease + run history. `JOBS_MODE=in-process` (default, development), `worker` for production with `npm run worker`, `off` |
 | Daily transition | Everything date-driven that commits 6–8 left to "the daily job": contract and credential statuses, grace closure (+ HR notice), PAM and break-glass expiry, idempotency purge, full eligibility refresh (which demotes invalid future published shifts) | As specified. First run on the dev data corrected the three V03 credentials stored as Valid with past expiry dates |
-| **REQUIREMENT NOT ESTABLISHED** — reminder milestones | Spec §7.1 names the event key (record + expiry date + milestone) but not the milestones. V04 sends one notice on entering the window (90 days contracts, 60 days credentials) and one when a credential has expired | **Owner to confirm** (e.g. add 30/14/7-day reminders) |
+| Reminder milestones | Spec §7.1 names the event key (record + expiry date + milestone) but not the milestones. Commit 9 sent one notice on entering the window and one on credential expiry | **Decided — D-39** (built in commit 10b) |
 | Email | Notifications are stored with `emailStatus = SKIPPED`: SMTP is not decided (spec §7.2 worker not built); unregistered employees receive nothing yet | Deferred with SMTP |
 | Coverage alerts | Spec §14.2 "push notification" is an in-app CRITICAL notice to the unit's supervisors; suppression is provable (one per assignment via the unique event key) | Push channel not built |
 | Role expiry | Expired role assignments stop working at once (queries filter on `expiresAt`); no separate "expired" audit row is written | As built in commit 5 |
@@ -286,6 +292,22 @@ Totals after commit 10: **backend 260 tests / 17 files** (unit + integration aga
 | No unscoped reads | per-module scope tests and the sweeps in `credentials`, `workforce`, `scheduling` tests | Covered |
 | Frontend imports / routes | `modules.test.tsx` (registry; every page module loads); `i18n.test.ts` (every used key and enum-driven key family exists in en and ar, none empty) | Covered. No component/DOM tests (no jsdom dependency added) |
 
+### Implementation notes — commit 10b (owner decisions D-34…D-39)
+
+| Area | What was built | Status |
+| :--- | :--- | :--- |
+| Phones (D-35) | Migration `20260924090000_employee_phones` (two nullable `VARCHAR(16)` columns + CHECK constraints). HR onboarding and edit accept both; `PATCH /employees/me/contact` accepts only these two fields (strict body), audited as `EMPLOYEE_CONTACT_UPDATED` with the next-of-kin value redacted. Frontend: phone fields in the HR form, **My Profile** page (employees only) | Built; tests in `workforce.test.ts`, `lib/phone.test.ts` |
+| Supervisor view (D-36) | `baselineView` adds contact email, mobile and actual work place; the test lists every hidden field | Built |
+| Early clock-in (D-38) | `EARLY_CLOCK_IN_MINUTES = 30` in `attendance/service.ts`; the gap response carries `earlyClockInMinutes`. A clock-in at 06:30 counts for 07:00, 06:29 does not | Built; tests in `scheduling.test.ts` (edge) and `jobs.test.ts` (alert suppressed) |
+| Reminders (D-39) | `RENEWAL_WINDOW_DAYS = 90`; `jobs/expiry-scan.ts` rewritten around `MILESTONES` and a `ROUTING` table. Event keys `…:within-90/30/14/7` and `…:expired`; contract end notices are new ("Contract ended") | Built; tests in `jobs.test.ts` (milestone table, routing per audience, idempotency, time travel) |
+| **Implementation choice** — renewed contracts | A contract whose employee already has a later Approved or Active contract gets no reminder (the renewal is secured). Not stated by the owner; without it HR and the nurse would be told a contract "ended" after it was renewed | Owner may revisit |
+| **Implementation choice** — Supervisor on contracts | The owner set "the same 90/30/14/7/0 cadence" for contracts with HR from day 90; Supervisors are added from day 14 as for credentials | Owner may revisit |
+| One-time effect on deployment | Commit 9's `within-60` keys are retired: the first scan after deployment sends each record's current milestone once under the new keys. Contracts already ended with no later contract get one "Contract ended" notice | Expected |
+| "Action required" visibility | The header bell with the unread count is on every page (commit 9). No separate dashboard widget was added | As built |
+| Test-data fix | The contract renewal test now reads the renewal picker (max 500 rows) through HR scoped to a unit of its own; the shared test database had grown past 500 employees | Test only; the 500-row cap is noted for commit 11 |
+
+Totals after commit 10b: backend **272 tests / 17 files**, frontend **31 tests / 5 files**; each new rule mutation-checked (HR at 30 days, contract HR from 90 removed, renewal suppression removed, early window removed, next-of-kin shown to Supervisor, next-of-kin not redacted — each made a test fail).
+
 ### Proposals received with the D-24…D-28 decisions — not adopted yet
 
 The owner's notes for D-24…D-28 also suggested features beyond those decisions. None is specified, so each is **REQUIREMENT NOT ESTABLISHED** until the owner schedules it:
@@ -296,7 +318,7 @@ The owner's notes for D-24…D-28 also suggested features beyond those decisions
 | Employee "report status change" button (self-report → under review, pause shifts, HR ticket) | New workflow; needs definition of the "under review" effect on eligibility |
 | In-app "request a new credential type" form for unit HR | New workflow; D-25 currently means asking hospital-wide HR outside the app |
 | Primary-source verification APIs, HRIS sync | The examples given (Nursys, US state boards, AHA, Workday) are US systems; the Saudi equivalent would be SCFHS. No integration is specified |
-| SMS / e-mail expiry reminders at 90/60/30/14 days | Spec §9 defines in-app notifications; SMTP/SMS are deferred (§6). Reminder schedule not specified |
+| SMS / e-mail expiry reminders at 90/60/30/14 days | The **in-app** schedule is now decided (D-39: 90/30/14/7/0). SMTP/SMS stay deferred — the owner confirmed on 2026-09-24 |
 | E-mail alerts to CNO / HR Director / IT Security on break-glass use | Break-glass already sounds an in-app CRITICAL alert to System Admins (R18); named recipients and e-mail are not specified |
 
 ## 9. Decisions required before stage 2

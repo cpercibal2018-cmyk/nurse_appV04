@@ -135,13 +135,13 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 
 | Method | Endpoint | Purpose | Permission / scope | Source |
 | :--- | :--- | :--- | :--- | :--- |
-| GET | `/api/v1/employees?unitId&unassigned&positionCode&q&page&pageSize` | List | HR/SA scoped → `view: FULL`; SUP scoped → `view: BASELINE` (identity, unit, position, job title, specialty, status, hire date — salary, marital status, nationality, file no., rank, contact email, job post and work place suppressed) | spec §8.1 |
+| GET | `/api/v1/employees?unitId&unassigned&positionCode&q&page&pageSize` | List | HR/SA scoped → `view: FULL`; SUP scoped → `view: BASELINE` (identity, unit, position, job title, specialty, status, hire date, contact email, mobile phone, actual work place — salary, marital status, nationality, file no., rank, job post and emergency contact phone suppressed) | spec §8.1, **D-36** |
 | GET | `/api/v1/employees/me` · `/:id` | Own profile (FULL) · one record, shaped by viewer | EMP own; HR, SUP scoped | spec §8.1 |
 | POST | `/api/v1/employees/onboard` **[I]** | Employee + **Draft** contract (Hijri dates converted by the server) + HIGH audit + eligibility state in one transaction → `{employeeId, contractId}`. Defaults: Unassigned, position SN (E6). Job number unique regardless of case (E1) | HR, SA — unit in scope; Unassigned needs system-wide | spec §3.1, **D-3**, D-17 |
-| PATCH | `/api/v1/employees/:id` | Source fields E1–E8 (not position); a unit move re-evaluates eligibility; salary values are not copied into the audit trail | HR, SA — old and new unit in scope | spec §3.1 |
+| PATCH | `/api/v1/employees/:id` | Source fields E1–E8 and the two phones (not position); a unit move re-evaluates eligibility; salary and emergency-phone values are not copied into the audit trail | HR, SA — old and new unit in scope | spec §3.1, D-35 |
 | POST | `/api/v1/employees/:id/position` | `{positionCode, reason}`; rejects inactive/unchanged; HIGH audit from → to; re-evaluates eligibility | **HR_ADMIN only** (E9), scoped | E9 |
 | DELETE | `/api/v1/employees/:id` | Soft delete, body `{reason ≥ 10}`; history kept; eligibility becomes INELIGIBLE; not on one's own record | HR, SA — scoped | spec |
-| — | `PATCH /api/v1/employees/me` (own phone, spec §3.3) | **Not built:** the schema has no phone column | — | REQUIREMENT NOT ESTABLISHED |
+| PATCH | `/api/v1/employees/me/contact` | Own `primaryPhone` / `emergencyContactPhone` only (E.164 `+` 8–15 digits; separators removed; `null` clears); anything else → 422; audited `EMPLOYEE_CONTACT_UPDATED` | EMP own record (no permission; `NO_EMPLOYEE_RECORD` if unlinked) | spec §3.3, **D-35** |
 
 ### 2.6 Contracts (`modules/contracts`) — implemented in commit 7
 
@@ -209,7 +209,7 @@ Eligibility in every response is the **live engine for the shift date** (L7), no
 | POST | `/api/v1/attendance/events` | Ingest from the badge system (PACS) | **Not built** — integration contract not established (B-15, **D-33**) | spec §14.2 |
 | GET | `/api/v1/attendance/events?employeeId\|unitId&from&to` | Clock events (≤ 94 days) | HR, SA, SUP — scoped | spec §14.2 |
 | GET | `/api/v1/attendance/me?from&to` | Own clock events | EMP | spec |
-| GET | `/api/v1/attendance/gaps?unitId&date` | Published shifts of a unit/date vs clock-ins: `UPCOMING`, `PENDING`, `MISSING` (no clock-in at or after the start, **30 min** passed), `PRESENT`, `INELIGIBLE_ON_DUTY` (clocked in, engine blocks today). Shift times from D-31 | HR, SA, SUP — scoped | spec §14.2 (30 min; the earlier "15 min" in this map was wrong) |
+| GET | `/api/v1/attendance/gaps?unitId&date` | Published shifts of a unit/date vs clock-ins: `UPCOMING`, `PENDING`, `MISSING` (no clock-in from **30 min before** the start — D-38 — and **30 min** passed since the start), `PRESENT`, `INELIGIBLE_ON_DUTY` (clocked in, engine blocks today). Shift times from D-31 | HR, SA, SUP — scoped | spec §14.2 (30 min; the earlier "15 min" in this map was wrong); response has `gapMinutes`, `earlyClockInMinutes` |
 
 ### 2.11 Notifications, audit and jobs — implemented in commit 9
 
@@ -227,7 +227,7 @@ Eligibility in every response is the **live engine for the shift date** (L7), no
 | Job | When (Asia/Riyadh) | Does | Source |
 | :--- | :--- | :--- | :--- |
 | `daily-transition` | 00:05 daily (catches up if missed) | Contracts Approved→Active / →Expired; stored credential status by date; closes ended grace windows (HIGH audit + HR notice); removes expired PAM; ends expired break-glass; purges spent idempotency keys; re-evaluates every live nurse (demotes invalid future published shifts; TRANSITION policy notice) | spec §6.1, §6.1.1, §6.1.1.1, §6.2, §5.2, R13, R18 |
-| `expiry-scan` | 06:00 daily | Contracts ending ≤ 90 days; credentials expiring ≤ 60 days and already expired → employee + scoped HR; key = record + expiry date + milestone | spec §7.1 (N1–N4) |
+| `expiry-scan` | 06:00 daily | Credentials and contracts at 90 / 30 / 14 / 7 days before the last valid day and once expired (current milestone only). Credentials → employee; + unit Supervisor from 14; + scoped HR from 7. Contracts → employee + scoped HR from 90; + Supervisor from 14; none once a later contract is Approved/Active. Key = record + expiry date + milestone | spec §7.1 (N1, N3, N4); **D-39 overrides N2** |
 | `attendance-alerts` | every 15 minutes | Shifts under way: not clocked in 30 min after the start, or clocked in while ineligible → CRITICAL notice to the unit's supervisors, once per assignment | spec §14.2 |
 
 ### 2.12 Removed from V03

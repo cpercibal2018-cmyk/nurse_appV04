@@ -51,7 +51,7 @@ const SELF_OR_SCOPED = [
   'GET /api/v1/pam/status', 'POST /api/v1/pam/elevate', 'POST /api/v1/pam/end', // own elevation only; elevate needs a System Admin assignment
   'GET /api/v1/credentials/:id', 'POST /api/v1/credentials/:id/renewal', 'POST /api/v1/credentials/:id/documents',
   'GET /api/v1/credentials/:id/documents', 'GET /api/v1/credentials/:id/documents/:docId',
-  'GET /api/v1/employees/me', 'GET /api/v1/employees/:id',
+  'GET /api/v1/employees/me', 'PATCH /api/v1/employees/me/contact', 'GET /api/v1/employees/:id', // contact: own phones only (D-35)
   'GET /api/v1/contracts/me', 'GET /api/v1/contracts/:id', 'GET /api/v1/contracts/:id/documents', 'GET /api/v1/contracts/:id/documents/:docId',
   'GET /api/v1/roster/me', 'GET /api/v1/attendance/me',
   'GET /api/v1/notifications', 'POST /api/v1/notifications/:id/read', 'POST /api/v1/notifications/read-all',

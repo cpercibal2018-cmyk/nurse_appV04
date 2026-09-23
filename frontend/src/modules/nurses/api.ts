@@ -2,14 +2,15 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { http } from '../../services/http';
 import type { Paged } from '../../types/api';
 
-/** HR and own profile get every field; a Supervisor gets the baseline (§8.1). */
+/** HR and own profile get every field; a Supervisor gets the baseline (§8.1, D-36). */
 export interface EmployeeRow {
   id: number; jobNumber: string; firstName: string; middleName: string | null; lastName: string; fullName: string;
   jobTitle: string | null; specialty: string | null; unitId: number | null; unit: { code: string; name: string } | null;
   positionCode: string; position: { code: string; title: string }; status: string; hireDate: string | null;
   view: 'FULL' | 'BASELINE';
-  fileNo?: string | null; rankGrade?: string | null; nationality?: string | null; jobPostLocation?: string | null; actualWorkPlace?: string | null;
-  maritalStatus?: 'Single' | 'Married' | 'Others' | null; salary?: string | null; contactEmail?: string;
+  contactEmail: string; primaryPhone: string | null; actualWorkPlace: string | null;
+  fileNo?: string | null; rankGrade?: string | null; nationality?: string | null; jobPostLocation?: string | null; emergencyContactPhone?: string | null;
+  maritalStatus?: 'Single' | 'Married' | 'Others' | null; salary?: string | null;
 }
 
 export interface EmployeeFilter { q?: string; unitId?: number; page: number }
@@ -23,6 +24,17 @@ export const useEmployees = (f: EmployeeFilter) => useQuery({
     return http.get<Paged<EmployeeRow>>(`/employees?${p}`);
   },
 });
+export const useMyEmployee = () => useQuery({ queryKey: ['employees', 'me'], queryFn: () => http.get<EmployeeRow>('/employees/me'), retry: false });
+
+/** D-35: the employee's own phone numbers — the only fields they maintain. */
+export function useUpdateOwnContact() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { primaryPhone?: string | null; emergencyContactPhone?: string | null }) => http.patch<EmployeeRow>('/employees/me/contact', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['employees'] }),
+  });
+}
+
 export const useEmployee = (id: number | null) => useQuery({ queryKey: ['employees', 'one', id], enabled: id !== null, queryFn: () => http.get<EmployeeRow>(`/employees/${id}`) });
 
 type Action =

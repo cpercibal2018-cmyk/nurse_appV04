@@ -5,10 +5,9 @@
 // The contract provides no coverage until a second HR person approves it (C1, D-30).
 //
 // Views (§8.1): scoped HR / System Admin see every field; a scoped Supervisor
-// sees the assigned-unit baseline with private fields suppressed; an employee
-// sees their own profile. The spec does not list the private fields — the
-// suppressed set below is the conservative reading (REQUIREMENT NOT
-// ESTABLISHED: owner to confirm the list).
+// sees the assigned-unit baseline with private fields suppressed (owner list,
+// D-36); an employee sees their own profile and may update their own phone
+// numbers (D-35).
 
 import { z } from 'zod';
 import type { Employee } from '../../generated/prisma/client.js';
@@ -24,6 +23,9 @@ import { unitScope, type AuthContext } from '../users/access.js';
 const Text = (max: number) => z.string().trim().max(max);
 const Req = (max: number) => z.string().trim().min(1).max(max);
 const IsoDate = z.string().refine(isIsoDate, 'YYYY-MM-DD');
+/** D-35: E.164 — "+", no leading zero, 8–15 digits. Spaces, hyphens and brackets are removed first. */
+export const PHONE_E164 = /^\+[1-9]\d{7,14}$/;
+const Phone = z.string().transform((v) => v.replace(/[\s\-()]/g, '')).pipe(z.string().regex(PHONE_E164, 'Phone: international format, e.g. +966501234567'));
 /** SAR, NUMERIC(12,2), non-negative (E7). */
 const Salary = z.union([z.number(), z.string().trim().regex(/^\d+(\.\d{1,2})?$/)])
   .transform((v) => new Prisma.Decimal(v))
@@ -45,6 +47,8 @@ const SourceFields = {
   maritalStatus: z.enum(['Single', 'Married', 'Others']).nullable(),
   salary: Salary.nullable(),
   contactEmail: z.string().trim().toLowerCase().pipe(z.email()),
+  primaryPhone: Phone.nullable(),
+  emergencyContactPhone: Phone.nullable(),
   unitId: z.number().int().positive().nullable(), // null = Unassigned (E5)
   hireDate: IsoDate.nullable(),
 };
@@ -61,6 +65,8 @@ export const OnboardBody = z.strictObject({
   specialty: SourceFields.specialty.default(null),
   maritalStatus: SourceFields.maritalStatus.default(null),
   salary: SourceFields.salary.default(null),
+  primaryPhone: SourceFields.primaryPhone.default(null),
+  emergencyContactPhone: SourceFields.emergencyContactPhone.default(null),
   unitId: SourceFields.unitId.default(null), // E6: Unassigned
   hireDate: SourceFields.hireDate.default(null),
   positionCode: z.string().min(1).max(20).default('SN'), // E6
@@ -83,8 +89,15 @@ export const UpdateBody = z.strictObject({
   maritalStatus: SourceFields.maritalStatus.optional(),
   salary: SourceFields.salary.optional(),
   contactEmail: SourceFields.contactEmail.optional(),
+  primaryPhone: SourceFields.primaryPhone.optional(),
+  emergencyContactPhone: SourceFields.emergencyContactPhone.optional(),
   unitId: SourceFields.unitId.optional(),
   hireDate: SourceFields.hireDate.optional(),
+});
+/** D-35: the only fields an employee maintains on their own record. */
+export const OwnContactBody = z.strictObject({
+  primaryPhone: SourceFields.primaryPhone.optional(),
+  emergencyContactPhone: SourceFields.emergencyContactPhone.optional(),
 });
 export const PositionBody = z.strictObject({ positionCode: z.string().min(1).max(20), reason: z.string().trim().min(3).max(500) });
 export const DeleteBody = z.strictObject({ reason: z.string().trim().min(10, 'Deleting an employee needs a reason of at least 10 characters').max(500) });
@@ -110,13 +123,27 @@ function fullView(e: WithRefs) {
   };
 }
 
-/** Supervisor baseline (§8.1): identity, placement and role only. */
+/**
+ * Supervisor baseline (§8.1; owner list D-36): identity, placement, role and the
+ * operational contact fields. Hidden: salary, marital status, nationality, rank,
+ * file number, job post location and the next-of-kin phone (D-35).
+ */
 function baselineView(e: WithRefs) {
   return {
     id: e.id, jobNumber: e.jobNumber, firstName: e.firstName, middleName: e.middleName, lastName: e.lastName, fullName: e.fullName,
     jobTitle: e.jobTitle, specialty: e.specialty, unitId: e.unitId, unit: e.unit, positionCode: e.positionCode, position: e.position,
+    contactEmail: e.contactEmail, primaryPhone: e.primaryPhone, actualWorkPlace: e.actualWorkPlace,
     status: e.status, hireDate: e.hireDate ? dbDate(e.hireDate) : null, view: 'BASELINE' as const,
   };
+}
+
+/**
+ * Values kept out of the audit trail — only the fact that they changed: salary,
+ * and the next-of-kin phone, which is a third person's data (D-35).
+ */
+function redact(changed: Record<string, unknown>) {
+  for (const k of ['salary', 'emergencyContactPhone']) if (k in changed) changed[k] = { from: '(redacted)', to: '(redacted)' };
+  return changed;
 }
 
 const shape = (e: WithRefs, viewer: Viewer) => (viewer === 'SUPERVISOR' ? baselineView(e) : fullView(e));
@@ -186,6 +213,21 @@ export function createNurseService(db: Db) {
       return fullView(e);
     },
 
+    /** D-35: an employee updates their own phone numbers; nothing else on the record. */
+    async updateOwnContact(auth: AuthContext, body: z.infer<typeof OwnContactBody>, requestId?: string) {
+      if (Object.keys(body).length === 0) throw new HttpError(400, 'NO_CHANGES', 'Nothing to update');
+      if (auth.user.employeeId === null) throw new HttpError(404, 'NO_EMPLOYEE_RECORD', 'Your account is not linked to an employee record');
+      const id = auth.user.employeeId;
+      return db.$transaction(async (tx) => {
+        const before = await tx.employee.findFirst({ where: { id, deletedAt: null } });
+        if (!before) throw notFound('Employee not found');
+        await tx.employee.update({ where: { id }, data: body });
+        const changed = Object.fromEntries(Object.keys(body).map((k) => [k, { from: (before as Record<string, unknown>)[k] ?? null, to: (body as Record<string, unknown>)[k] }]));
+        await appendAudit(tx, { actorUserId: auth.user.id, action: 'EMPLOYEE_CONTACT_UPDATED', resource: 'employee', resourceId: id, changes: redact(changed), requestId });
+        return fullView(await tx.employee.findUniqueOrThrow({ where: { id }, include: INCLUDE }));
+      });
+    },
+
     /** E10 + D-3: employee, Draft contract, audit and eligibility state in one transaction. Returns identifiers only ([I]). */
     async onboard(auth: AuthContext, body: z.infer<typeof OnboardBody>, requestId?: string) {
       if (body.contractEnd <= body.contractStart) throw unprocessable('CONTRACT_DATES_INVALID', 'Contract end must be after its start (C5)');
@@ -225,8 +267,7 @@ export function createNurseService(db: Db) {
         const data = { ...rest, ...(hireDate !== undefined ? { hireDate: hireDate ? toDbDate(hireDate) : null } : {}) };
         await tx.employee.update({ where: { id }, data });
         const changed = Object.fromEntries(Object.keys(body).map((k) => [k, { from: (before as Record<string, unknown>)[k] ?? null, to: (body as Record<string, unknown>)[k] }]));
-        // The salary value is not copied into the audit trail, only the fact that it changed.
-        if ('salary' in changed) changed.salary = { from: '(redacted)', to: '(redacted)' };
+        redact(changed);
         await appendAudit(tx, { actorUserId: auth.user.id, action: 'EMPLOYEE_UPDATED', resource: 'employee', resourceId: id, changes: changed, requestId });
         // The unit decides which credential requirements apply (§5.1.4): re-evaluate (L6).
         if (body.unitId !== undefined && body.unitId !== before.unitId) await refreshEligibility(tx, id, 'EMPLOYEE_UNIT_CHANGED', { actorUserId: auth.user.id, requestId });

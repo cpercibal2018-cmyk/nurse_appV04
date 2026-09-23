@@ -21,8 +21,8 @@ import { unitScope, type AuthContext } from '../users/access.js';
 import { HR_ROLES, viewerOf, type Viewer } from './access.js';
 import type { FieldDef } from './catalog.js';
 
-/** Spec §5.2: "Subject to Renew" = within 60 days of expiry (also N1's credential window). */
-export const RENEWAL_WINDOW_DAYS = 60;
+/** "Subject to Renew" window: spec §5.2 said 60 days; the owner set 90 (D-39). Also the first reminder milestone. */
+export const RENEWAL_WINDOW_DAYS = 90;
 
 const DateStr = z.string().refine(isIsoDate, 'YYYY-MM-DD');
 const TrackingData = z.record(z.string(), z.union([z.string().max(500), z.number()]));

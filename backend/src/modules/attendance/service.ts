@@ -4,11 +4,12 @@
 // with the published roster ("planned vs actual").
 //
 // Gap rules, as the spec states them:
-//   - MISSING: published for the shift, no CLOCK_IN at or after the shift start,
-//     and at least 30 minutes have passed since the start.
+//   - MISSING: published for the shift, no CLOCK_IN from 30 minutes before the
+//     shift start (owner decision D-38) until its end, and at least 30 minutes
+//     have passed since the start.
 //   - INELIGIBLE_ON_DUTY: clocked in, but the engine blocks the nurse today.
-// The spec counts only clock-ins at or after the shift start; an early
-// arrival therefore shows as MISSING. Kept literal — see the plan's commit 8 notes.
+// The early window only decides presence; pay rules for early arrival belong to
+// payroll, not this module (D-38).
 // This is the on-demand view; jobs/attendance-alerts.ts sends the 15-minute alerts.
 
 import { z } from 'zod';
@@ -21,6 +22,8 @@ import { loadFacts } from '../eligibility/state.service.js';
 import { unitScope, type AuthContext } from '../users/access.js';
 
 export const GAP_MINUTES = 30; // spec §14.2
+/** D-38: a clock-in this many minutes before the start counts for the shift. */
+export const EARLY_CLOCK_IN_MINUTES = 30;
 const READ_ROLES = ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'] as const;
 const IsoDateStr = z.string().refine(isIsoDate, 'YYYY-MM-DD');
 
@@ -46,7 +49,7 @@ export async function classifyShift(db: DbClient, a: { employeeId: number; shift
   const today = riyadhDate(now);
   const { start, end } = shiftWindow(date, a.shiftType as ShiftType);
   const clockIn = await db.attendanceEvent.findFirst({
-    where: { employeeId: a.employeeId, eventType: 'CLOCK_IN', eventTimestamp: { gte: start, lt: end } },
+    where: { employeeId: a.employeeId, eventType: 'CLOCK_IN', eventTimestamp: { gte: new Date(start.getTime() - EARLY_CLOCK_IN_MINUTES * 60_000), lt: end } },
     orderBy: { eventTimestamp: 'asc' }, select: { eventTimestamp: true },
   });
   let status: GapStatus;
@@ -108,7 +111,7 @@ export function createAttendanceService(db: Db) {
       for (const a of shifts) {
         items.push({ assignmentId: a.id, employeeId: a.employeeId, jobNumber: a.employee.jobNumber, fullName: a.employee.fullName, shiftType: a.shiftType, ...(await classifyShift(db, a, now)) });
       }
-      return { unitId: q.unitId, date, gapMinutes: GAP_MINUTES, items };
+      return { unitId: q.unitId, date, gapMinutes: GAP_MINUTES, earlyClockInMinutes: EARLY_CLOCK_IN_MINUTES, items };
     },
   };
 }

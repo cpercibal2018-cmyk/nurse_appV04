@@ -45,7 +45,7 @@ export const useOwnRoster = (from: string, to: string, enabled: boolean) => useQ
 });
 export const useGaps = (unitId: number | undefined, date: string) => useQuery({
   queryKey: ['attendance', 'gaps', unitId, date], enabled: unitId !== undefined, retry: false, refetchInterval: 60_000,
-  queryFn: () => http.get<{ date: string; gapMinutes: number; items: Gap[] }>(`/attendance/gaps?unitId=${unitId}&date=${date}`),
+  queryFn: () => http.get<{ date: string; gapMinutes: number; earlyClockInMinutes: number; items: Gap[] }>(`/attendance/gaps?unitId=${unitId}&date=${date}`),
 });
 export const useOwnEvents = (from: string, to: string, enabled: boolean) => useQuery({
   queryKey: ['attendance', 'me', from, to], enabled, queryFn: () => http.get<Paged<ClockEvent>>(`/attendance/me?from=${from}&to=${to}`),
