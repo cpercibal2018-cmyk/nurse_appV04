@@ -155,6 +155,8 @@ Follows the brief; each commit builds.
 
 `docs/SYSTEM_SPECIFICATION.md` · `ARCHITECTURE.md` · `DATABASE.md` · `RBAC.md` · `CLINICAL_ELIGIBILITY.md` · `WORKFORCE.md` · `API.md` · `DEPLOYMENT.md` · `MIGRATION.md` · `CLEANUP_REPORT.md`, plus `docs/reference/AIGH_Nursing_Workforce_Management_System_v2_8_7.md` (verbatim spec for traceability; every condensed doc cites its sections). The seven analysis reports produced now fold into these and are then retired (they describe V03, not V04).
 
+*Implementation note (commit 11):* written as planned, with an index at [docs/README.md](README.md). `SYSTEM_SPECIFICATION.md` is an **amendment register** over the verbatim reference (amendments, clarifications, open conflicts, not established, deferred) rather than a rewritten specification, so no rule is paraphrased away. `API_MAP.md` became `API.md` (its V03 part moved to an appendix; section numbers kept because code cites them). The actual repository layout, which differs in detail from §2 above (no `validate.ts`, no `ops/db/`, no `components/` beyond three shells), is in `ARCHITECTURE.md`. The stage-1 analysis reports stay until commit 12 decides their fate; `CLEANUP_REPORT.md` is commit 12.
+
 ## 9a. Decision record (2026-09-23)
 
 | ID | Decision | Effect on the spec / plan |
@@ -307,6 +309,20 @@ Totals after commit 10: **backend 260 tests / 17 files** (unit + integration aga
 | Test-data fix | The contract renewal test now reads the renewal picker (max 500 rows) through HR scoped to a unit of its own; the shared test database had grown past 500 employees | Test only; the 500-row cap is noted for commit 11 |
 
 Totals after commit 10b: backend **281 tests / 17 files**, frontend **31 tests / 5 files**; each new rule mutation-checked (HR at 30 days, a 90-day credential window, contract HR from 90 removed, renewal suppression removed, early window removed, next-of-kin shown to Supervisor, next-of-kin not redacted — each made a test fail).
+
+### Implementation notes — commit 11 (documentation)
+
+| Topic | What was done | Status |
+| :--- | :--- | :--- |
+| Doc set | `SYSTEM_SPECIFICATION`, `ARCHITECTURE`, `RBAC`, `CLINICAL_ELIGIBILITY`, `WORKFORCE`, `API` (renamed from `API_MAP`), `DATABASE`, `DEPLOYMENT`, `MIGRATION`, plus the `docs/README.md` index | Done |
+| Guards against drift | `scripts/check-docs.mjs` (`npm run docs:check`, part of `npm test` and CI): every relative link and heading anchor must resolve. `backend/test/docs.test.ts`: RBAC.md §3 must equal `permissions.ts`. Both mutation-checked | Done |
+| Found by the link check | `ops/backup/README.md` linked to `#defects-found-by-running-this-kit`; GitHub's anchor is `#6-defects-found-by-running-this-kit` | Fixed |
+| Found while writing | `API.md` said `/health` returns `{status, db}`; it returns `{status, database}` and 503 when the database is down | Fixed |
+| **Production cannot start** | `assertUploadScanner` refuses both scanner values in production (D-10 as decided): the API will not start with `NODE_ENV=production` until a ClamAV adapter exists | Recorded in DEPLOYMENT.md §6 — by design, but now stated plainly |
+| **Database roles not written** | Plan §2 / DATABASE_CONSOLIDATION §5 promised `ops/db/grants.sql` (spec §10.7); it does not exist. The audit table is append-only by trigger regardless | Recorded as a production gap (DEPLOYMENT.md §6, MIGRATION.md B-05) |
+| **CONFLICT — backup time** | Spec §10.6: nightly backup 22:00 UTC (01:00 Riyadh). Kit `crontab.example` / `aigh-backup.timer`: 02:00 "Riyadh" on the host clock (05:00 Riyadh on a UTC host) | **Owner to confirm**; not changed |
+| Prisma CLI advisories | `npm audit`: 4 high in the Prisma CLI's bundled `mysql2` / `deepmerge-ts`; the runtime API does not load them; npm's fix downgrades to Prisma 6 | Not applied; mitigation in DEPLOYMENT.md §6 |
+| Renewal picker cap | `GET /contracts/renewable` returns at most 500 in-scope employees without search | Recorded (WORKFORCE.md §3, DEPLOYMENT.md §6) |
 
 ### Proposals received with the D-24…D-28 decisions — not adopted yet
 

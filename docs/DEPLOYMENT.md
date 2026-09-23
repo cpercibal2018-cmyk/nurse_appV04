@@ -1,0 +1,97 @@
+# Deployment and operations
+
+How to run V04 and what must be settled before production. The production topology in the reference spec (§2.2, §10) describes containers and blue/green releases; **V04 has no container images yet** (only a development database in `docker-compose.yml`), so this guide describes plain Node processes behind a reverse proxy.
+
+> **Production is not possible yet.** The API refuses to start with `NODE_ENV=production` because no malware scanner exists for uploads (D-10). See [§6](#6-known-gaps-before-production) for this and the other prerequisites.
+
+## 1. Requirements
+
+| Component | Version / note |
+| :--- | :--- |
+| Node.js | 22 LTS or newer (`engines` in `package.json`; CI uses 22) |
+| PostgreSQL | 15 (extensions `btree_gist`, `pgcrypto` — created by the first migration) |
+| Reverse proxy | TLS termination; serves the frontend and forwards `/api/v1` to the API on the **same origin** (the refresh cookie, CSRF and `Origin` checks assume it) |
+| Hosting | Inside the Kingdom (spec §8.3). The API and worker refuse to start outside the configured KSA region allowlist |
+
+## 2. Configuration
+
+Every backend setting is in [`.env.example`](../.env.example) and is validated at start-up (`backend/src/config/env.ts`); a bad value stops the process with a clear message.
+
+| Setting | Default | Production note |
+| :--- | :--- | :--- |
+| `NODE_ENV` | development | `production` |
+| `PORT` | 3001 | Behind the proxy |
+| `CORS_ORIGIN` | http://localhost:5173 | The public app origin |
+| `DATABASE_URL` | — | Required |
+| `JWT_SECRET` | — | Required, ≥ 32 characters of random data (spec §3.4). Rotating it signs everyone out |
+| `ACCESS_TOKEN_TTL_SECONDS` / `SESSION_IDLE_SECONDS` / `SESSION_ABSOLUTE_SECONDS` | 900 / 3600 / 86400 | D-6 |
+| `BCRYPT_ROUNDS` | 12 | 10–15 |
+| `LOGIN_THROTTLE_WINDOW_SECONDS` / `_MAX_PER_ACCOUNT` / `_MAX_PER_CLIENT` | 900 / 5 / 20 | D-23; see the single-instance limit in §6 |
+| `STORAGE_DIR` | ./storage | Persistent, backed-up volume; never served directly |
+| `UPLOAD_MAX_SIZE_BYTES` | 10485760 | Spec §5.1.5 |
+| `UPLOAD_SCANNER` | dev-magic-bytes | Production refuses both current values (§6) |
+| `TRUST_PROXY` | false | `true` behind the proxy, so login limits and session history see the client address |
+| `JOBS_MODE` | in-process | `worker` on the API in production (§3) |
+| `DATA_RESIDENCY_REGION` / `PDPL_ALLOWED_REGIONS` | local / local | A KSA region id and its allowlist; `local` is refused in production. Never `me-south-1` (Bahrain) or `me-central-1` (UAE) |
+| `SEED_DEMO` / `SEED_DEMO_PASSWORD` | false / — | Demo data is refused in production |
+
+## 3. Processes and background jobs
+
+| Process | Command | Notes |
+| :--- | :--- | :--- |
+| API | `npm run start -w backend` (`node dist/server.js`) | Runs the jobs itself only when `JOBS_MODE=in-process` |
+| Worker | `npm run worker -w backend` (`node dist/jobs/worker.js`) | No HTTP listener; runs the scheduler. Start exactly one in production and set `JOBS_MODE=worker` on the API |
+| Frontend | `npm run build -w frontend` → `frontend/dist/` | Static files served by the proxy; the build fails if the bundle budget is exceeded |
+
+| `JOBS_MODE` on the API | Use |
+| :--- | :--- |
+| `in-process` | Development: one process does everything |
+| `worker` | Production: the separate worker runs the jobs (spec §10.2) |
+| `off` | Maintenance; nothing runs. Missed periods run when jobs are next enabled |
+
+**Job schedule (Asia/Riyadh, independent of the server time zone):** `daily-transition` 00:05, `expiry-scan` 06:00, `attendance-alerts` every 15 minutes. Running two workers by mistake is safe (leases and unique run keys), but wasteful. A System Admin sees run history and can start a job from **Administration → Jobs**.
+
+## 4. Release procedure
+
+```bash
+npm ci
+npm run build                       # backend (prisma generate + tsc) and frontend (with bundle gate)
+npm run db:deploy -w backend        # prisma migrate deploy — never db push
+npm run db:seed -w backend          # reference data only; idempotent
+# restart the API and the worker
+curl -fsS https://<host>/api/v1/health   # 200 {"status":"ok","database":"up"}; 503 when the database is down
+```
+
+After a release, a System Admin should open **Audit → Verify chain** (expected: intact) and **Administration → Jobs** (expected: recent runs completed).
+
+**First release after commit 10b:** the reminder job sends each record's current milestone once under the new milestone keys (D-39); contracts that already ended without a renewal get one "Contract ended" notice.
+
+## 5. Backups and restore
+
+The scripts, their environment contract and the verified drill are in [`ops/backup/README.md`](../ops/backup/README.md): WAL archiving, an encrypted nightly base backup, point-in-time restore and a restore drill.
+
+**Schedule conflict — owner to confirm.** Reference spec §10.6 runs the nightly backup at **22:00 UTC (01:00 Asia/Riyadh)**. The kit's `crontab.example` and `aigh-backup.timer` say **02:00 Asia/Riyadh**, and both use the host's clock, so on a UTC host they would run at 02:00 UTC (05:00 Riyadh). Until decided: set the backup host's time zone explicitly, and choose one of the two times. Neither collides with the application jobs (00:05 and 06:00 Riyadh).
+
+## 6. Known gaps before production
+
+| Gap | Effect | What is needed |
+| :--- | :--- | :--- |
+| **No malware scanner** (D-10) | The API will not start in production | A ClamAV adapter behind `UPLOAD_SCANNER=clamav` (spec §5.3) |
+| **Database roles and grants** (spec §10.7) | One owner role is used everywhere; the runtime could alter the schema. The audit table is still append-only by trigger | Write `ops/db/grants.sql` (runtime, migration, backup, audit-reader roles) and connect the API with the runtime role |
+| **Login limits are in memory** (`lib/throttle.ts`) | Correct for one API process. With several API instances, each counts separately, so the limits multiply | Run a single API instance, or move the counters to the database |
+| **Prisma CLI advisories** | `npm audit`: 4 high-severity advisories in the Prisma CLI's bundled dependencies (`mysql2`, `deepmerge-ts`). The CLI is a development/migration tool; the running API uses `@prisma/client` with the PostgreSQL adapter and does not load the MySQL driver. npm's suggested "fix" downgrades to Prisma 6 (breaking) and was **not** applied | Run migrations from the CI/release host rather than installing dev tools on the runtime host; upgrade Prisma when a patched release exists; re-run `npm audit` at every release |
+| **No SMTP / SMS** | Reminders are in-app only; the break-glass alert does not reach the CEO and IT Director (spec §3.6); no password reset or invitation e-mails | An SMTP (and SMS) decision (spec §7.2) |
+| **No badge feed** (D-33) | Attendance gaps and alerts only work once events are loaded into `attendance_events` | The PACS interface contract |
+| **Renewal picker capped at 500** | `GET /contracts/renewable` lists at most 500 in-scope employees, ordered by job number, without search | Add search / pagination before a hospital-wide HR Admin has more than 500 employees in scope |
+| **No container images or blue/green** (spec §10.4) | Deployment is manual (§4) | Dockerfiles and a pipeline, when the hosting decision is made |
+| **Backup time** | See §5 | Owner decision |
+
+## 7. Monitoring
+
+| Signal | Where |
+| :--- | :--- |
+| Liveness and database | `GET /api/v1/health` |
+| Logs | One JSON line per event on stdout with `requestId`; no personal data. Every response carries `X-Request-Id` |
+| Background jobs | `job_runs` (Administration → Jobs); the `worker_lease_status` view shows lease holders and heartbeats |
+| Audit integrity | `GET /api/v1/audit/verify` (Audit page); the `audit_chain_breaks` view must be empty |
+| Break-glass use | CRITICAL in-app notification to every System Admin; `break_glass_events` |

@@ -1,5 +1,5 @@
 // The permission table: which authorization roles may perform which operation
-// (spec §8.1 matrix, docs/API_MAP.md "Permission" column). Default deny (R15):
+// (spec §8.1 matrix, docs/API.md "Permission" column). Default deny (R15):
 // an operation not listed here cannot be authorized. EMPLOYEE is implicit for
 // every active user and is never stored (R1); `EMPLOYEE` below means "any
 // authenticated user", with record scope limited to their own data.
@@ -22,7 +22,7 @@ export const PERMISSIONS = {
   'approvals.decide': ['HR_ADMIN', 'SYSTEM_ADMIN'],
   // Reference data every signed-in user may read.
   'matrix.read': ['EMPLOYEE'],
-  'workforce.read': ['EMPLOYEE'], // departments, units, positions, coverage targets, bed summary (API_MAP §2.4)
+  'workforce.read': ['EMPLOYEE'], // departments, units, positions, coverage targets, bed summary (API.md §2.4)
   // Organisation structure is one hospital-wide configuration: the service
   // limits departments, unit create/move, positions and CSV import to
   // system-wide scope; bed counts and coverage targets follow unit scope.

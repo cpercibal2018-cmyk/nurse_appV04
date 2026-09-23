@@ -6,7 +6,7 @@ This kit exists to replace assertion with evidence: it builds a real PostgreSQL
 cluster, encrypts real WAL, takes a real base backup, restores it to a chosen
 instant, and emits a signed-off evidence record. Everything below was **executed**,
 not just written — including the failures, which are documented in
-[Defects found by running this kit](#defects-found-by-running-this-kit).
+[Defects found by running this kit](#6-defects-found-by-running-this-kit).
 
 ---
 

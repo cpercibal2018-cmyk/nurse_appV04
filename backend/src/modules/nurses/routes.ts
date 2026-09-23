@@ -1,4 +1,4 @@
-// Employee master endpoints (docs/API_MAP.md §2.5). Scope and field views are
+// Employee master endpoints (docs/API.md §2.5). Scope and field views are
 // decided in the service; the route only checks the permission.
 
 import { Router, type Response } from 'express';

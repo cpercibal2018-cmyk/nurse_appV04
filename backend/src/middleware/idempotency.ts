@@ -1,4 +1,4 @@
-// Idempotency-Key for creating operations marked [I] in docs/API_MAP.md.
+// Idempotency-Key for creating operations marked [I] in docs/API.md.
 //
 // - The key is a client-generated UUID, unique per actor.
 // - Same key + same request → the stored response is replayed (no second write).

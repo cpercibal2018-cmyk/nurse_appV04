@@ -1,5 +1,5 @@
 // Workforce: departments, units, bed capacity, positions, coverage targets and
-// the nurse-to-bed KPI (docs/API_MAP.md §2.4; rules W1–W8).
+// the nurse-to-bed KPI (docs/API.md §2.4; rules W1–W8).
 
 import { Router, type Response } from 'express';
 import { z } from 'zod';

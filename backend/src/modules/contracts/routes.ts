@@ -1,4 +1,4 @@
-// Contract endpoints (docs/API_MAP.md §2.6). The status map, scope and views
+// Contract endpoints (docs/API.md §2.6). The status map, scope and views
 // live in the service.
 
 import express, { Router, type Response } from 'express';

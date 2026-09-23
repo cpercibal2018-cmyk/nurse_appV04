@@ -46,7 +46,7 @@ function readCsrfCookie(): string | null {
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export interface RequestOptions {
-  /** For operations marked [I] in API_MAP: a UUID reused on retry so the server applies the write once. */
+  /** For operations marked [I] in API.md: a UUID reused on retry so the server applies the write once. */
   idempotencyKey?: string;
   /** A file sent as the raw body (evidence uploads); its name travels in X-File-Name. */
   file?: File;

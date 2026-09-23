@@ -1,4 +1,4 @@
-// Roster and attendance endpoints (docs/API_MAP.md §2.9, §2.10). Scope,
+// Roster and attendance endpoints (docs/API.md §2.9, §2.10). Scope,
 // home-unit and eligibility rules live in the services.
 
 import { Router, type Response } from 'express';

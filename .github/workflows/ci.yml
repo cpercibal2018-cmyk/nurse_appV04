@@ -41,6 +41,6 @@ jobs:
           npm run db:seed -w backend
           npm run db:seed -w backend
       - run: npm run typecheck
-      - run: npm test
+      - run: npm test    # backend, frontend, documentation links
       - name: Build (frontend build includes the gzipped bundle budget gate)
         run: npm run build

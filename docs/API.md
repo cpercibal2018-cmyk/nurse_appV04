@@ -1,64 +1,10 @@
-# API Map
+# API
 
-## 1. Current state (V03)
+The single V04 HTTP API. Every business rule behind these endpoints is enforced in the backend services and database; the frontend only calls them. Section numbers (§2.x) are cited from code comments, so they stay stable.
 
-### 1.1 Running API — `server/src/index.ts` (Express, port 3001, prefix `/api`)
-
-| Method | Endpoint | Purpose | Auth | Permission | Request | Response | Notes |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| GET | `/api/health` | DB liveness | none | — | — | `{status, db}` / 503 | |
-| POST | `/api/auth/login` | Password login | none | — | `{email, password}` | `{user, token, csrfToken, expiresIn}` + refresh/CSRF cookies | No rate limit; email only |
-| POST | `/api/auth/refresh` | Rotate refresh, new access token | refresh cookie | Origin + CSRF double-submit | — | same as login | Reuse → family revoked |
-| POST | `/api/auth/logout` | Revoke session | refresh cookie | none | — | 204 | Not CSRF-checked (low risk: only revokes) |
-| GET | `/api/auth/me` | Current identity | Bearer | any | — | `{user}` | |
-| GET | `/api/bootstrap` | **Every row of 12 tables** | Bearer | any authenticated | — | `{departments, units, …, auditEntries}` | Exposes salaries, contact emails, all credentials to EMPLOYEE role (violates R15/R16) |
-| GET | `/api/:entity` | List a table | Bearer | any authenticated | — | array | 12 entities: departments, units, positions, employees, contracts, credential-categories, credential-templates, credential-requirements, credentials, shift-assignments, notifications, audit-entries |
-| POST | `/api/:entity` | Create row | Bearer | HR_ADMIN, SYSTEM_ADMIN, DEVELOPER | raw model JSON | row | No validation, no business rules, client-supplied ids. 405 for notifications/audit-entries |
-| PUT | `/api/:entity/:id` | Update row | Bearer | same | partial JSON | row | Any column, incl. `status`, `salary`, `deletedAt` |
-| DELETE | `/api/:entity/:id` | Hard delete row | Bearer | same | — | 204 | Hard delete, whereas the UI soft-deletes |
-
-**Effective route count:** 5 fixed + 12 list + 30 write routes (10 writable entities × 3). Prisma error codes map to 404/409/400; internal errors never echo messages (keep this).
-
-### 1.2 Reference API — `backend/` (NestJS, port 3000, never running)
-
-| Method | Endpoint | Purpose | Permission |
-| :--- | :--- | :--- | :--- |
-| GET | `/api/v1/roles/matrix` | Static role matrix | authenticated |
-| GET | `/api/v1/roles/me` | Own assignments + effective roles | authenticated |
-| GET | `/api/v1/roles/assignments?userId&role&scopeType&isActive&unitId` | List assignments | HR_ADMIN, SYSTEM_ADMIN (+PAM) |
-| GET | `/api/v1/roles/assignments/:id` | One assignment (implemented by filtering the full list) | same |
-| POST | `/api/v1/roles/assignments` + `Idempotency-Key` | Grant → 201, or 202 PENDING_APPROVAL | same |
-| PATCH | `/api/v1/roles/assignments/:id` | Change scope/reason/expiry; → SYSTEM needs approval | same |
-| DELETE | `/api/v1/roles/assignments/:id` `{reason}` | Revoke | same |
-| GET | `'/../admin/approvals'` *(malformed path)* | Pending approvals | same |
-| POST | `'/../admin/approvals/:id/approve'`, `/reject` | Four-eyes decision | same |
-| POST | `'/../admin/pam/elevate'`, GET `/status` | PAM | SYSTEM_ADMIN |
-
-### 1.3 Reference API — `wave1a-kit/` (NestJS, never running)
-
-| Method | Endpoint | Purpose | Permission |
-| :--- | :--- | :--- | :--- |
-| GET | `/api/v1/units?departmentId&includeInactive` | List units | authenticated |
-| GET | `/api/v1/units/summary` | Totals by department | authenticated |
-| PUT | `/api/v1/units/bed-capacity/bulk` + `Idempotency-Key` | Bulk bed update | HR_ADMIN, SYSTEM_ADMIN |
-| POST | `/api/v1/units/import` + `Idempotency-Key` | CSV import, dry-run default | HR_ADMIN, SYSTEM_ADMIN |
-| PUT | `/api/v1/units/:id/bed-capacity` | Single update | HR_ADMIN, SYSTEM_ADMIN |
-| GET | `/api/v1/units/:id/bed-history` | Bed log | HR_ADMIN, SYSTEM_ADMIN, SUPERVISOR |
-
-### 1.4 Specified but never implemented (spec v2.8.7)
-
-`/api/v1/positions` (CRUD), `/api/v1/departments`, `/api/v1/credential-templates` (CRUD), `/api/v1/credential-categories` (CRUD), `/api/v1/credential-requirements` (CRUD + `/bulk`), `/api/v1/workforce/onboard`, `/api/v1/workforce/invitations`, `/api/v1/workforce/publish`, evidence `/:evidenceId/download`, `/api/v1/auth/register`, `/api/v1/push/register|unregister|devices`, `/api/v1/fhir/Practitioner/:id`, `/api/v1/fhir/PractitionerRole/:id`. Tracker B-23 records a route disagreement (`/api/v1/positions` vs `/api/v1/workforce/positions`).
-
-### 1.5 Duplicates and conflicts
-
-| Issue | Detail |
-| :--- | :--- |
-| Two prefixes | Running `/api/…` vs spec/reference `/api/v1/…` |
-| Two unit APIs | Generic `PUT /api/units/:id` (running) vs `/api/v1/units/*` (kit) |
-| Generic vs domain | Every write goes through generic CRUD, so business rules (onboarding atomicity, overlap, publication gate, waiver limits) can be bypassed by calling the API directly |
-| Mock API | `app/src/lib/api/roles.api.ts` simulates the NestJS roles API in localStorage |
-
----
+- Who may call what: [RBAC.md](RBAC.md) (generated from `backend/src/modules/users/permissions.ts` and checked by a test).
+- Owner decisions (D-n) referenced below: [V04_ARCHITECTURE_PLAN.md §9a](V04_ARCHITECTURE_PLAN.md#9a-decision-record-2026-09-23).
+- The V03 endpoints this API replaced: [Appendix A](#appendix-a--v03-api-historical).
 
 ## 2. V04 API (single, authoritative)
 
@@ -80,7 +26,7 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 
 | Method | Endpoint | Purpose | Permission | Request → Response | Source |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| GET | `/api/v1/health` | Liveness + DB | public | → `{status, db}` | server |
+| GET | `/api/v1/health` | Liveness + DB | public | → 200 `{status: ok, database: up}` · 503 `{status: degraded, database: down}` | server |
 | POST | `/api/v1/auth/login` | Login | public (rate-limited per account and per client) | `{email, password}` → `{token, csrfToken, expiresIn}` + `nurseapp_refresh` (HttpOnly, path `/api/v1/auth`) and `nurseapp_csrf` cookies; 429 `TOO_MANY_ATTEMPTS` + `Retry-After` | server |
 | POST | `/api/v1/auth/refresh` | Rotate (atomic consume; replay → family revoked, `SESSION_REVOKED`) | cookie + Origin + CSRF double-submit | → `{token, csrfToken, expiresIn}` | server |
 | POST | `/api/v1/auth/logout` | Revoke | cookie | → 204 | server |
@@ -240,3 +186,67 @@ Eligibility in every response is the **live engine for the shift date** (L7), no
 | localStorage roles mock | `/api/v1/role-assignments`, `/api/v1/approvals` |
 
 Scheduled jobs (no HTTP): contract/credential daily scan (N1), credential status transition by date, contract Active → Expired by end date, eligibility daily transition (L6), grace expiry (L8), waiver expiry, role-assignment expiry (R5), PAM expiry (R13), idempotency cleanup. Each runs under a worker lease.
+
+## Appendix A — V03 API (historical)
+
+Kept from the stage-1 analysis for traceability; none of these endpoints exists in V04.
+
+### A.0 Current state (V03)
+
+### A.1 Running API — `server/src/index.ts` (Express, port 3001, prefix `/api`)
+
+| Method | Endpoint | Purpose | Auth | Permission | Request | Response | Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| GET | `/api/health` | DB liveness | none | — | — | `{status, db}` / 503 | |
+| POST | `/api/auth/login` | Password login | none | — | `{email, password}` | `{user, token, csrfToken, expiresIn}` + refresh/CSRF cookies | No rate limit; email only |
+| POST | `/api/auth/refresh` | Rotate refresh, new access token | refresh cookie | Origin + CSRF double-submit | — | same as login | Reuse → family revoked |
+| POST | `/api/auth/logout` | Revoke session | refresh cookie | none | — | 204 | Not CSRF-checked (low risk: only revokes) |
+| GET | `/api/auth/me` | Current identity | Bearer | any | — | `{user}` | |
+| GET | `/api/bootstrap` | **Every row of 12 tables** | Bearer | any authenticated | — | `{departments, units, …, auditEntries}` | Exposes salaries, contact emails, all credentials to EMPLOYEE role (violates R15/R16) |
+| GET | `/api/:entity` | List a table | Bearer | any authenticated | — | array | 12 entities: departments, units, positions, employees, contracts, credential-categories, credential-templates, credential-requirements, credentials, shift-assignments, notifications, audit-entries |
+| POST | `/api/:entity` | Create row | Bearer | HR_ADMIN, SYSTEM_ADMIN, DEVELOPER | raw model JSON | row | No validation, no business rules, client-supplied ids. 405 for notifications/audit-entries |
+| PUT | `/api/:entity/:id` | Update row | Bearer | same | partial JSON | row | Any column, incl. `status`, `salary`, `deletedAt` |
+| DELETE | `/api/:entity/:id` | Hard delete row | Bearer | same | — | 204 | Hard delete, whereas the UI soft-deletes |
+
+**Effective route count:** 5 fixed + 12 list + 30 write routes (10 writable entities × 3). Prisma error codes map to 404/409/400; internal errors never echo messages (keep this).
+
+### A.2 Reference API — `backend/` (NestJS, port 3000, never running)
+
+| Method | Endpoint | Purpose | Permission |
+| :--- | :--- | :--- | :--- |
+| GET | `/api/v1/roles/matrix` | Static role matrix | authenticated |
+| GET | `/api/v1/roles/me` | Own assignments + effective roles | authenticated |
+| GET | `/api/v1/roles/assignments?userId&role&scopeType&isActive&unitId` | List assignments | HR_ADMIN, SYSTEM_ADMIN (+PAM) |
+| GET | `/api/v1/roles/assignments/:id` | One assignment (implemented by filtering the full list) | same |
+| POST | `/api/v1/roles/assignments` + `Idempotency-Key` | Grant → 201, or 202 PENDING_APPROVAL | same |
+| PATCH | `/api/v1/roles/assignments/:id` | Change scope/reason/expiry; → SYSTEM needs approval | same |
+| DELETE | `/api/v1/roles/assignments/:id` `{reason}` | Revoke | same |
+| GET | `'/../admin/approvals'` *(malformed path)* | Pending approvals | same |
+| POST | `'/../admin/approvals/:id/approve'`, `/reject` | Four-eyes decision | same |
+| POST | `'/../admin/pam/elevate'`, GET `/status` | PAM | SYSTEM_ADMIN |
+
+### A.3 Reference API — `wave1a-kit/` (NestJS, never running)
+
+| Method | Endpoint | Purpose | Permission |
+| :--- | :--- | :--- | :--- |
+| GET | `/api/v1/units?departmentId&includeInactive` | List units | authenticated |
+| GET | `/api/v1/units/summary` | Totals by department | authenticated |
+| PUT | `/api/v1/units/bed-capacity/bulk` + `Idempotency-Key` | Bulk bed update | HR_ADMIN, SYSTEM_ADMIN |
+| POST | `/api/v1/units/import` + `Idempotency-Key` | CSV import, dry-run default | HR_ADMIN, SYSTEM_ADMIN |
+| PUT | `/api/v1/units/:id/bed-capacity` | Single update | HR_ADMIN, SYSTEM_ADMIN |
+| GET | `/api/v1/units/:id/bed-history` | Bed log | HR_ADMIN, SYSTEM_ADMIN, SUPERVISOR |
+
+### A.4 Specified but never implemented (spec v2.8.7)
+
+`/api/v1/positions` (CRUD), `/api/v1/departments`, `/api/v1/credential-templates` (CRUD), `/api/v1/credential-categories` (CRUD), `/api/v1/credential-requirements` (CRUD + `/bulk`), `/api/v1/workforce/onboard`, `/api/v1/workforce/invitations`, `/api/v1/workforce/publish`, evidence `/:evidenceId/download`, `/api/v1/auth/register`, `/api/v1/push/register|unregister|devices`, `/api/v1/fhir/Practitioner/:id`, `/api/v1/fhir/PractitionerRole/:id`. Tracker B-23 records a route disagreement (`/api/v1/positions` vs `/api/v1/workforce/positions`).
+
+### A.5 Duplicates and conflicts
+
+| Issue | Detail |
+| :--- | :--- |
+| Two prefixes | Running `/api/…` vs spec/reference `/api/v1/…` |
+| Two unit APIs | Generic `PUT /api/units/:id` (running) vs `/api/v1/units/*` (kit) |
+| Generic vs domain | Every write goes through generic CRUD, so business rules (onboarding atomicity, overlap, publication gate, waiver limits) can be bypassed by calling the API directly |
+| Mock API | `app/src/lib/api/roles.api.ts` simulates the NestJS roles API in localStorage |
+
+---

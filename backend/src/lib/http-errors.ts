@@ -1,5 +1,5 @@
 // Every error a client sees has the shape {error: {code, message, details?}}
-// (docs/API_MAP.md). `code` is stable and machine-readable; `message` is safe
+// (docs/API.md). `code` is stable and machine-readable; `message` is safe
 // to show a user and never contains SQL, constraint names or row data.
 
 export interface ErrorBody {
