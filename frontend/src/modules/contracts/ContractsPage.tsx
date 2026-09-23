@@ -1,15 +1,151 @@
-import { ModulePlaceholder } from '../../components/ModulePlaceholder';
+// Contracts (spec §4). HR: create, renew, upload the copy, and move a contract
+// along the map of decision D-29 — the creator or submitter cannot approve
+// (D-30). Supervisors get the reduced read view, employees their own.
+
+import { useState } from 'react';
+import { Alert, App, Button, Card, DatePicker, Drawer, Flex, Form, Input, Modal, Select, Space, Table, Tag, Upload } from 'antd';
+import { UploadOutlined } from '@ant-design/icons';
+import dayjs, { type Dayjs } from 'dayjs';
+import { useTranslation } from 'react-i18next';
+import { usePermissions } from '../../hooks/usePermissions';
+import { describeApiError } from '../../lib/errors';
+import { toHijriShort } from '../../lib/hijri';
+import { http } from '../../services/http';
+import {
+  CONTRACT_STATUSES, NEEDS_REASON, TRANSITIONS, useContractAction, useContractDocs, useContracts, useCreatable, useRenewable,
+  type ContractAction, type ContractRow, type ContractStatus,
+} from './api';
+
+const COLOR: Record<ContractStatus, string> = {
+  Draft: 'default', PendingApproval: 'orange', Approved: 'blue', Active: 'green', Expired: 'red', Suspended: 'volcano', Terminated: 'magenta', Superseded: 'purple',
+};
+const covers = (s: ContractStatus) => s === 'Approved' || s === 'Active'; // C1, C3
 
 export default function ContractsPage() {
+  const { t } = useTranslation();
+  const { message } = App.useApp();
+  const { hasRole } = usePermissions();
+  const staff = hasRole('HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR');
+  const hr = hasRole('HR_ADMIN', 'SYSTEM_ADMIN');
+  const [filter, setFilter] = useState<{ status?: ContractStatus; page: number }>({ page: 1 });
+  const contracts = useContracts(filter, staff);
+  const action = useContractAction();
+  const [creating, setCreating] = useState<{ mode: 'new' | 'renew'; key: string } | null>(null);
+  const [pending, setPending] = useState<{ row: ContractRow; action: ContractAction } | null>(null);
+  const [reason, setReason] = useState('');
+  const [docsFor, setDocsFor] = useState<ContractRow | null>(null);
+  const creatable = useCreatable(creating?.mode === 'new');
+  const renewable = useRenewable(creating?.mode === 'renew');
+  const docs = useContractDocs(docsFor?.id ?? null);
+  const [form] = Form.useForm<{ employeeId: number; start: Dayjs; end: Dayjs }>();
+  const start = Form.useWatch('start', form);
+  const end = Form.useWatch('end', form);
+  const chosenRenewal = renewable.data?.items.find((r) => r.employeeId === Form.useWatch('employeeId', form));
+
+  async function run(a: Parameters<typeof action.mutateAsync>[0], ok: string) {
+    try { const out = await action.mutateAsync(a); message.success(ok); return out; } catch (e) { message.error(describeApiError(e)); return undefined; }
+  }
+
+  async function transition(row: ContractRow, act: ContractAction, why?: string) {
+    const out = await run({ kind: 'transition', id: row.id, action: act, reason: why }, t('saved')) as { status: ContractStatus; eligibility: string | null } | undefined;
+    if (out) { message.info(t('contractNowStatus', { status: t(`contract_${out.status}`), eligibility: out.eligibility ?? '—' })); setPending(null); setReason(''); }
+  }
+
+  const actionsFor = (r: ContractRow) => (Object.keys(TRANSITIONS) as ContractAction[]).filter((a) => TRANSITIONS[a].includes(r.status));
+
   return (
-    <ModulePlaceholder
-      titleKey="contracts"
-      deliveredBy="Workforce (commit 7)"
-      planned={[
-        "Create and renew contracts (no overlapping Approved/Active periods)",
-        "Status transitions: Draft, Approved, Active, Suspended, Terminated, Expired, Superseded",
-        "Contract copy upload (PDF only, decision C-17)",
-      ]}
-    />
+    <Card title={t('contracts')} extra={hr && (
+      <Space>
+        <Button type="primary" onClick={() => { form.resetFields(); setCreating({ mode: 'new', key: crypto.randomUUID() }); }}>{t('newContract')}</Button>
+        <Button onClick={() => { form.resetFields(); setCreating({ mode: 'renew', key: crypto.randomUUID() }); }}>{t('renewContract')}</Button>
+      </Space>
+    )}>
+      {staff && (
+        <Select allowClear placeholder={t('status')} style={{ width: 220, marginBottom: 12 }} onChange={(v) => setFilter({ status: v ?? undefined, page: 1 })}
+          options={CONTRACT_STATUSES.map((s) => ({ value: s, label: t(`contract_${s}`) }))} />
+      )}
+      <Table<ContractRow>
+        rowKey="id" loading={contracts.isLoading} dataSource={contracts.data?.items} scroll={{ x: true }}
+        pagination={staff ? { current: filter.page, pageSize: 50, total: contracts.data?.total, onChange: (page) => setFilter({ ...filter, page }) } : false}
+        columns={[
+          { title: '#', dataIndex: 'id', width: 64 },
+          { title: t('employee'), render: (_, r) => `${r.jobNumber} — ${r.employeeName}` },
+          { title: t('unit'), render: (_, r) => r.unitCode ?? t('unassigned') },
+          { title: t('period'), render: (_, r) => <>{r.startDate} → {r.endDate}<div style={{ opacity: 0.65, fontSize: 12 }}>{r.startDateHijri} → {r.endDateHijri} AH</div></> },
+          { title: t('status'), render: (_, r) => <><Tag color={COLOR[r.status]}>{t(`contract_${r.status}`)}</Tag>{!covers(r.status) && <Tag>{t('noCoverage')}</Tag>}</> },
+          {
+            title: '', render: (_, r) => (
+              <Flex gap={4} wrap>
+                {r.view === 'FULL' && <Button size="small" onClick={() => setDocsFor(r)}>{t('contractCopy')}</Button>}
+                {!staff && <Button size="small" onClick={() => setDocsFor(r)}>{t('contractCopy')}</Button>}
+                {hr && r.view === 'FULL' && actionsFor(r).map((a) => (
+                  <Button key={a} size="small" danger={a === 'terminate' || a === 'suspend'} type={a === 'approve' ? 'primary' : 'default'}
+                    onClick={() => (NEEDS_REASON.includes(a) ? setPending({ row: r, action: a }) : void transition(r, a))}>{t(`contractAction_${a}`)}</Button>
+                ))}
+              </Flex>
+            ),
+          },
+        ]}
+      />
+
+      <Modal title={creating?.mode === 'renew' ? t('renewContract') : t('newContract')} open={creating !== null} onCancel={() => setCreating(null)}
+        onOk={() => form.submit()} okText={t('submit')} cancelText={t('cancel')} confirmLoading={action.isPending} forceRender>
+        <Alert type="info" showIcon title={t('contractDraftHint')} style={{ marginBottom: 12 }} />
+        <Form form={form} layout="vertical" onFinish={async (v) => {
+          if (!creating) return;
+          const body = { startDate: v.start.format('YYYY-MM-DD'), endDate: v.end.format('YYYY-MM-DD') };
+          const out = creating.mode === 'new'
+            ? await run({ kind: 'create', body: { employeeId: v.employeeId, ...body }, key: creating.key }, t('saved'))
+            : await run({ kind: 'renew', priorId: chosenRenewal!.prior.id, body, key: creating.key }, t('saved'));
+          if (out !== undefined) setCreating(null);
+        }}>
+          <Form.Item name="employeeId" label={t('employee')} rules={[{ required: true }]}>
+            <Select showSearch optionFilterProp="label"
+              options={(creating?.mode === 'renew' ? renewable.data?.items.map((r) => ({ value: r.employeeId, label: `${r.jobNumber} — ${r.fullName}` }))
+                : creatable.data?.items.map((e) => ({ value: e.id, label: `${e.jobNumber} — ${e.fullName}` }))) ?? []}
+              onChange={(id) => {
+                const r = renewable.data?.items.find((x) => x.employeeId === id);
+                if (creating?.mode === 'renew' && r) form.setFieldsValue({ start: dayjs(r.prefill.start), end: dayjs(r.prefill.end) }); // C8
+              }} />
+          </Form.Item>
+          {creating?.mode === 'renew' && chosenRenewal && (
+            <Alert type="success" style={{ marginBottom: 12 }} title={t('priorContract', {
+              start: chosenRenewal.prior.startDate, end: chosenRenewal.prior.endDate, status: t(`contract_${chosenRenewal.prior.status}`),
+              hstart: chosenRenewal.prior.startDateHijri ?? '', hend: chosenRenewal.prior.endDateHijri ?? '',
+            })} />
+          )}
+          <Flex gap={8}>
+            <Form.Item name="start" label={t('contractStart')} extra={start ? toHijriShort(start) : undefined} rules={[{ required: true }]} style={{ flex: 1 }}><DatePicker style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="end" label={t('contractEnd')} extra={end ? toHijriShort(end) : undefined} rules={[{ required: true }]} style={{ flex: 1 }}><DatePicker style={{ width: '100%' }} /></Form.Item>
+          </Flex>
+        </Form>
+      </Modal>
+
+      <Modal title={pending ? `${t(`contractAction_${pending.action}`)} #${pending.row.id}` : ''} open={pending !== null} onCancel={() => setPending(null)}
+        onOk={() => pending && transition(pending.row, pending.action, reason)} okText={t('submit')} cancelText={t('cancel')}
+        okButtonProps={{ disabled: reason.trim().length < 5, loading: action.isPending, danger: pending?.action !== 'reinstate' }} destroyOnHidden>
+        <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t('decisionReasonHint')} maxLength={500} />
+      </Modal>
+
+      <Drawer title={docsFor ? `${t('contractCopy')} #${docsFor.id}` : ''} open={docsFor !== null} onClose={() => setDocsFor(null)} size={560} destroyOnHidden>
+        {hr && docsFor && (
+          <Upload accept="application/pdf,.pdf" showUploadList={false} beforeUpload={(f) => { void run({ kind: 'upload', id: docsFor.id, file: f }, t('saved')); return false; }}>
+            <Button icon={<UploadOutlined />} loading={action.isPending} style={{ marginBottom: 12 }}>{t('uploadContractCopy')}</Button>
+          </Upload>
+        )}
+        <Table rowKey="id" size="small" pagination={false} loading={docs.isLoading} dataSource={docs.data?.items}
+          columns={[
+            { title: 'v', dataIndex: 'version', width: 48 },
+            { title: t('fileName'), dataIndex: 'fileName', ellipsis: true },
+            { title: t('status'), render: (_, d) => <Tag color={d.scanStatus === 'CLEAN' ? 'default' : 'red'}>{d.scanStatus}</Tag> },
+            { title: t('uploaded'), render: (_, d) => new Date(d.uploadedAt).toLocaleString() },
+            {
+              title: '', render: (_, d) => d.scanStatus === 'CLEAN' && docsFor
+                ? <Button size="small" onClick={() => http.download(`/contracts/${docsFor.id}/documents/${d.id}`, d.fileName).catch((e) => message.error(describeApiError(e)))}>{t('download')}</Button>
+                : null,
+            },
+          ]} />
+      </Drawer>
+    </Card>
   );
 }

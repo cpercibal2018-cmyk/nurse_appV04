@@ -177,6 +177,8 @@ Follows the brief; each commit builds.
 | D-26 (2026-09-23) | **No action on one's own credential** — all five blocked | Verify, approve renewal, reject renewal, suspend/revoke, and waive are refused when the credential belongs to the acting person, whatever their role |
 | D-27 (2026-09-23) | **A nurse with no unit is blocked** (`UNIT_NOT_ASSIGNED`) | Spec §6.1 is silent; confirmed as the V04 rule |
 | D-28 (2026-09-23) | **System Admins cannot issue waivers** (spec §6.1.2 literal) | Supervisor or HR Admin only. The break-glass account acts as System Admin, so it cannot issue waivers either |
+| D-29 (2026-09-23) | **Contract transition map** | Draft → submit → PendingApproval → approve → Approved (future) / Active (covers today), or return → Draft. Approved/Active → suspend or terminate. Suspended → reinstate (Approved/Active by date, overlap re-checked). Terminated is final. Expired only by the daily job; Superseded not set by hand |
+| D-30 (2026-09-23) | **A contract is approved by a different HR person** | The creator and the submitter cannot approve it (`SELF_APPROVAL_FORBIDDEN`); stored in the new `contracts.created_by_id` / `submitted_by_id` columns (migration `20260923120000_contract_actors`) |
 
 ### Implementation notes — commit 5 (authentication and RBAC)
 
@@ -212,6 +214,22 @@ Follows the brief; each commit builds.
 | Waiver authority | Spec §6.1.2 read literally: Supervisor or HR Admin only; **System Admin receives 403** | **Confirmed (D-28)** |
 | Transition deadline | Judged against today (spec: `CURRENT_DATE`), not the shift date | Spec literal |
 | R10 "modifying global eligibility rules" | Four-eyes on every credential-type (catalog) change; unit requirements apply immediately | **Decided (D-24)** — built as a follow-up to commit 6 |
+
+### Implementation notes — commit 7 (workforce, employees, contracts)
+
+| Topic | What was built | Status |
+| :--- | :--- | :--- |
+| Organisation scope | Departments, unit create/move/deactivate, positions and CSV import need **system-wide** HR/SA; bed counts and coverage targets follow **unit scope**; bed history is readable by scoped Supervisors | Interpretation (same principle as D-25) — **owner to confirm** |
+| W1–W8 | Deactivation guards (W1, W2, W6); beds 0–500 with reason and one log row per change (W4); bulk per-row results committed together (W5); schedulability change re-evaluates holders; coverage target `null` = unspecified (W8) | As specified |
+| CSV import | V03 kit behaviour (dry run default, never deletes) plus RFC 4180 quoting, BOM handling and case-insensitive code matching (V03 split on every comma) | Improved port |
+| Onboarding | Employee + Draft contract + HIGH audit + eligibility state in one transaction (D-3, D-17); Hijri dates converted by the server, not taken from the browser | As decided |
+| **REQUIREMENT NOT ESTABLISHED** — Supervisor private fields | The spec says "private fields suppressed" without a list. Suppressed: salary, marital status, nationality, file no., rank/grade, contact email, job post, actual work place. Shown: name, job number, unit, position, job title, specialty, status, hire date | **Owner to confirm the list** |
+| Own contract / own record | Nobody creates, renews, transitions or uploads to their **own** contract, or deletes their own employee record (`SELF_ACTION_FORBIDDEN`) — the D-26 principle applied to contracts | Extension of D-26 — **owner to confirm** |
+| **CONFLICT — renewal timing (C7 vs spec §4.2)** | V03 (`contracts.ts:130-147`, rule C7) allowed renewal only after all Approved/Active coverage had ended, which forces a gap between contracts. Spec §4.2 says an Approved future period may sit next to the current one ("approval does not supersede the current contract"; C12). **V04 follows the spec:** renewal is allowed any time; the approval overlap check (C4) and the database constraint prevent overlap | **Owner to confirm** |
+| C11 contract copy | V03 required the PDF on the create form. V04 creates the Draft first and requires a CLEAN copy before **submit** — the copy is still mandatory before approval | Same rule, different step |
+| Own phone update (spec §3.3) | Not built: the employee schema has no phone column | **REQUIREMENT NOT ESTABLISHED** |
+| KPI (D-11) | Ported engine; response and page state that the Ada'a card is not in the repository. Unit → area map is V03's (by unit code). Beds count **active** units only (V03 counted inactive critical units in KPI A) | Kept per D-11; thresholds unverified |
+| Stored status lag | Approved → Active at start date and Active → Expired at end date need the daily job (commit 9). The engine treats Approved and Active alike for coverage (C12), so eligibility is correct meanwhile | Same pattern as commit 6 |
 
 ### Proposals received with the D-24…D-28 decisions — not adopted yet
 

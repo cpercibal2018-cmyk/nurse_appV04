@@ -1,0 +1,264 @@
+// Employee master (spec §3.1, §8.1 "Employee Master" row; rules E1–E10).
+//
+// Onboarding is contract-first and atomic (E10, D-17: one Prisma transaction):
+// employee + Draft contract (D-3) + audit + eligibility state, or nothing.
+// The contract provides no coverage until a second HR person approves it (C1, D-30).
+//
+// Views (§8.1): scoped HR / System Admin see every field; a scoped Supervisor
+// sees the assigned-unit baseline with private fields suppressed; an employee
+// sees their own profile. The spec does not list the private fields — the
+// suppressed set below is the conservative reading (REQUIREMENT NOT
+// ESTABLISHED: owner to confirm the list).
+
+import { z } from 'zod';
+import type { Employee } from '../../generated/prisma/client.js';
+import { appendAudit } from '../../lib/audit.js';
+import { dbDate, isIsoDate, toDbDate } from '../../lib/dates.js';
+import { toHijriIso } from '../../lib/hijri.js';
+import { conflict, HttpError, notFound, unprocessable } from '../../lib/http-errors.js';
+import { Prisma, type Db, type DbClient } from '../../lib/prisma.js';
+import { refreshEligibility } from '../eligibility/state.service.js';
+import { HR_ROLES, inScope, viewerOf, type Viewer } from '../credentials/access.js';
+import { unitScope, type AuthContext } from '../users/access.js';
+
+const Text = (max: number) => z.string().trim().max(max);
+const Req = (max: number) => z.string().trim().min(1).max(max);
+const IsoDate = z.string().refine(isIsoDate, 'YYYY-MM-DD');
+/** SAR, NUMERIC(12,2), non-negative (E7). */
+const Salary = z.union([z.number(), z.string().trim().regex(/^\d+(\.\d{1,2})?$/)])
+  .transform((v) => new Prisma.Decimal(v))
+  .refine((d) => d.gte(0) && d.lt(1e10) && d.decimalPlaces() <= 2, 'Salary: a non-negative amount with at most 2 decimals');
+
+/** Source fields HR maintains (E1–E8). Position has its own endpoint (E9); full name is derived (E3). */
+const SourceFields = {
+  jobNumber: Req(40), // E1: no format rule
+  firstName: Req(80),
+  middleName: Text(80).nullable(),
+  lastName: Req(80),
+  jobTitle: Text(120).nullable(),
+  fileNo: Text(40).nullable(), // E8: not unique, may be blank
+  rankGrade: Text(40).nullable(),
+  nationality: Text(60).nullable(),
+  jobPostLocation: Text(120).nullable(),
+  actualWorkPlace: Text(120).nullable(),
+  specialty: Text(120).nullable(),
+  maritalStatus: z.enum(['Single', 'Married', 'Others']).nullable(),
+  salary: Salary.nullable(),
+  contactEmail: z.string().trim().toLowerCase().pipe(z.email()),
+  unitId: z.number().int().positive().nullable(), // null = Unassigned (E5)
+  hireDate: IsoDate.nullable(),
+};
+
+export const OnboardBody = z.strictObject({
+  ...SourceFields,
+  middleName: SourceFields.middleName.default(null),
+  jobTitle: SourceFields.jobTitle.default(null),
+  fileNo: SourceFields.fileNo.default(null),
+  rankGrade: SourceFields.rankGrade.default(null),
+  nationality: SourceFields.nationality.default(null),
+  jobPostLocation: SourceFields.jobPostLocation.default(null),
+  actualWorkPlace: SourceFields.actualWorkPlace.default(null),
+  specialty: SourceFields.specialty.default(null),
+  maritalStatus: SourceFields.maritalStatus.default(null),
+  salary: SourceFields.salary.default(null),
+  unitId: SourceFields.unitId.default(null), // E6: Unassigned
+  hireDate: SourceFields.hireDate.default(null),
+  positionCode: z.string().min(1).max(20).default('SN'), // E6
+  contractStart: IsoDate,
+  contractEnd: IsoDate,
+});
+// Written out without defaults so a partial update never overwrites omitted fields.
+export const UpdateBody = z.strictObject({
+  jobNumber: SourceFields.jobNumber.optional(),
+  firstName: SourceFields.firstName.optional(),
+  middleName: SourceFields.middleName.optional(),
+  lastName: SourceFields.lastName.optional(),
+  jobTitle: SourceFields.jobTitle.optional(),
+  fileNo: SourceFields.fileNo.optional(),
+  rankGrade: SourceFields.rankGrade.optional(),
+  nationality: SourceFields.nationality.optional(),
+  jobPostLocation: SourceFields.jobPostLocation.optional(),
+  actualWorkPlace: SourceFields.actualWorkPlace.optional(),
+  specialty: SourceFields.specialty.optional(),
+  maritalStatus: SourceFields.maritalStatus.optional(),
+  salary: SourceFields.salary.optional(),
+  contactEmail: SourceFields.contactEmail.optional(),
+  unitId: SourceFields.unitId.optional(),
+  hireDate: SourceFields.hireDate.optional(),
+});
+export const PositionBody = z.strictObject({ positionCode: z.string().min(1).max(20), reason: z.string().trim().min(3).max(500) });
+export const DeleteBody = z.strictObject({ reason: z.string().trim().min(10, 'Deleting an employee needs a reason of at least 10 characters').max(500) });
+export const ListQuery = z.object({
+  unitId: z.coerce.number().int().positive().optional(),
+  unassigned: z.enum(['true', 'false']).optional(),
+  positionCode: z.string().min(1).optional(),
+  q: z.string().trim().min(1).max(80).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+type WithRefs = Employee & { unit: { code: string; name: string } | null; position: { code: string; title: string } };
+const INCLUDE = { unit: { select: { code: true, name: true } }, position: { select: { code: true, title: true } } } as const;
+
+/** Every field (HR, own profile). Dates as YYYY-MM-DD, salary as a string. */
+function fullView(e: WithRefs) {
+  return {
+    ...e,
+    salary: e.salary === null ? null : e.salary.toFixed(2),
+    hireDate: e.hireDate ? dbDate(e.hireDate) : null,
+    view: 'FULL' as const,
+  };
+}
+
+/** Supervisor baseline (§8.1): identity, placement and role only. */
+function baselineView(e: WithRefs) {
+  return {
+    id: e.id, jobNumber: e.jobNumber, firstName: e.firstName, middleName: e.middleName, lastName: e.lastName, fullName: e.fullName,
+    jobTitle: e.jobTitle, specialty: e.specialty, unitId: e.unitId, unit: e.unit, positionCode: e.positionCode, position: e.position,
+    status: e.status, hireDate: e.hireDate ? dbDate(e.hireDate) : null, view: 'BASELINE' as const,
+  };
+}
+
+const shape = (e: WithRefs, viewer: Viewer) => (viewer === 'SUPERVISOR' ? baselineView(e) : fullView(e));
+
+export function createNurseService(db: Db) {
+  const hrScope = (tx: DbClient, auth: AuthContext) => unitScope(tx, auth, HR_ROLES);
+
+  /** HR may place an employee only in a unit it covers; Unassigned needs system-wide scope. */
+  async function assertPlaceable(tx: DbClient, auth: AuthContext, unitId: number | null) {
+    const scope = await hrScope(tx, auth);
+    if (!inScope(scope, unitId)) {
+      throw new HttpError(403, 'SCOPE_NOT_COVERED', unitId === null ? 'Only system-wide HR can leave an employee Unassigned' : 'This unit is outside your assigned scope');
+    }
+    if (unitId !== null) {
+      const unit = await tx.unit.findUnique({ where: { id: unitId }, select: { isActive: true } });
+      if (!unit || !unit.isActive) throw unprocessable('UNIT_NOT_ACTIVE', 'The unit does not exist or is inactive (E5)');
+    }
+  }
+
+  async function assertPosition(tx: DbClient, code: string) {
+    const p = await tx.position.findUnique({ where: { code }, select: { isActive: true } });
+    if (!p) throw unprocessable('POSITION_NOT_FOUND', 'The position does not exist (E4)');
+    if (!p.isActive) throw unprocessable('POSITION_NOT_ACTIVE', 'The position is not active (E4)');
+  }
+
+  /** E1: unique regardless of case (the database index employees_job_number_ci_key is final). */
+  async function assertJobNumberFree(tx: DbClient, jobNumber: string, exceptId?: number) {
+    const clash = await tx.employee.findFirst({ where: { jobNumber: { equals: jobNumber, mode: 'insensitive' }, ...(exceptId ? { id: { not: exceptId } } : {}) }, select: { id: true } });
+    if (clash) throw conflict('JOB_NUMBER_TAKEN', 'An employee with this job number already exists');
+  }
+
+  async function loadForHr(tx: DbClient, auth: AuthContext, id: number) {
+    const e = await tx.employee.findFirst({ where: { id, deletedAt: null } });
+    if (!e) throw notFound('Employee not found');
+    if (!inScope(await hrScope(tx, auth), e.unitId)) throw new HttpError(403, 'SCOPE_NOT_COVERED', 'This employee is outside your assigned scope');
+    return e;
+  }
+
+  return {
+    async list(auth: AuthContext, q: z.infer<typeof ListQuery>) {
+      const [hr, sup] = await Promise.all([hrScope(db, auth), unitScope(db, auth, ['SUPERVISOR'])]);
+      const unitFilter = (s: typeof hr) => (s.all ? {} : { unitId: { in: [...s.unitIds] } });
+      const scopes = [hr, sup].filter((s) => s.all || s.unitIds.size > 0);
+      if (scopes.length === 0) return { items: [], total: 0, page: q.page, pageSize: q.pageSize };
+      const and: Prisma.EmployeeWhereInput[] = [{ deletedAt: null }, { OR: scopes.map(unitFilter) }];
+      if (q.unitId) and.push({ unitId: q.unitId });
+      if (q.unassigned === 'true') and.push({ unitId: null });
+      if (q.positionCode) and.push({ positionCode: q.positionCode });
+      if (q.q) and.push({ OR: [{ jobNumber: { contains: q.q, mode: 'insensitive' } }, { fullName: { contains: q.q, mode: 'insensitive' } }] });
+      const where: Prisma.EmployeeWhereInput = { AND: and };
+      const [rows, total] = await Promise.all([
+        db.employee.findMany({ where, include: INCLUDE, orderBy: { jobNumber: 'asc' }, skip: (q.page - 1) * q.pageSize, take: q.pageSize }),
+        db.employee.count({ where }),
+      ]);
+      return { items: rows.map((e) => shape(e, inScope(hr, e.unitId) ? 'HR' : 'SUPERVISOR')), total, page: q.page, pageSize: q.pageSize };
+    },
+
+    async get(auth: AuthContext, id: number) {
+      const { viewer } = await viewerOf(db, auth, id, ['OWN', 'HR', 'SUPERVISOR']);
+      return shape(await db.employee.findUniqueOrThrow({ where: { id }, include: INCLUDE }), viewer);
+    },
+
+    async me(auth: AuthContext) {
+      if (auth.user.employeeId === null) throw new HttpError(404, 'NO_EMPLOYEE_RECORD', 'Your account is not linked to an employee record');
+      const e = await db.employee.findFirst({ where: { id: auth.user.employeeId, deletedAt: null }, include: INCLUDE });
+      if (!e) throw notFound('Employee not found');
+      return fullView(e);
+    },
+
+    /** E10 + D-3: employee, Draft contract, audit and eligibility state in one transaction. Returns identifiers only ([I]). */
+    async onboard(auth: AuthContext, body: z.infer<typeof OnboardBody>, requestId?: string) {
+      if (body.contractEnd <= body.contractStart) throw unprocessable('CONTRACT_DATES_INVALID', 'Contract end must be after its start (C5)');
+      return db.$transaction(async (tx) => {
+        await assertPlaceable(tx, auth, body.unitId);
+        await assertPosition(tx, body.positionCode);
+        await assertJobNumberFree(tx, body.jobNumber);
+        const { contractStart, contractEnd, hireDate, ...fields } = body;
+        const emp = await tx.employee.create({
+          // full_name is composed by the database trigger (E3); the placeholder never survives the insert.
+          data: { ...fields, fullName: '', hireDate: hireDate ? toDbDate(hireDate) : null },
+        });
+        const contract = await tx.contract.create({
+          data: {
+            employeeId: emp.id, jobNumber: emp.jobNumber, status: 'Draft', createdById: auth.user.id,
+            startDate: toDbDate(contractStart), endDate: toDbDate(contractEnd),
+            startDateHijri: toHijriIso(contractStart), endDateHijri: toHijriIso(contractEnd),
+          },
+        });
+        await appendAudit(tx, {
+          actorUserId: auth.user.id, action: 'EMPLOYEE_ONBOARDED', resource: 'employee', resourceId: emp.id,
+          changes: { jobNumber: emp.jobNumber, unitId: emp.unitId, positionCode: emp.positionCode, contractId: contract.id, contractStart, contractEnd, contractStatus: 'Draft' },
+          requestId, priority: 'HIGH',
+        });
+        await refreshEligibility(tx, emp.id, 'EMPLOYEE_ONBOARDED', { actorUserId: auth.user.id, requestId });
+        return { employeeId: emp.id, contractId: contract.id };
+      });
+    },
+
+    async update(auth: AuthContext, id: number, body: z.infer<typeof UpdateBody>, requestId?: string) {
+      if (Object.keys(body).length === 0) throw new HttpError(400, 'NO_CHANGES', 'Nothing to update');
+      return db.$transaction(async (tx) => {
+        const before = await loadForHr(tx, auth, id);
+        if (body.unitId !== undefined && body.unitId !== before.unitId) await assertPlaceable(tx, auth, body.unitId);
+        if (body.jobNumber !== undefined && body.jobNumber !== before.jobNumber) await assertJobNumberFree(tx, body.jobNumber, id);
+        const { hireDate, ...rest } = body;
+        const data = { ...rest, ...(hireDate !== undefined ? { hireDate: hireDate ? toDbDate(hireDate) : null } : {}) };
+        await tx.employee.update({ where: { id }, data });
+        const changed = Object.fromEntries(Object.keys(body).map((k) => [k, { from: (before as Record<string, unknown>)[k] ?? null, to: (body as Record<string, unknown>)[k] }]));
+        // The salary value is not copied into the audit trail, only the fact that it changed.
+        if ('salary' in changed) changed.salary = { from: '(redacted)', to: '(redacted)' };
+        await appendAudit(tx, { actorUserId: auth.user.id, action: 'EMPLOYEE_UPDATED', resource: 'employee', resourceId: id, changes: changed, requestId });
+        // The unit decides which credential requirements apply (§5.1.4): re-evaluate (L6).
+        if (body.unitId !== undefined && body.unitId !== before.unitId) await refreshEligibility(tx, id, 'EMPLOYEE_UNIT_CHANGED', { actorUserId: auth.user.id, requestId });
+        return fullView(await tx.employee.findUniqueOrThrow({ where: { id }, include: INCLUDE }));
+      });
+    },
+
+    /** E9: HR_ADMIN only (route permission); rejects inactive or unchanged positions; audited from → to. */
+    async assignPosition(auth: AuthContext, id: number, body: z.infer<typeof PositionBody>, requestId?: string) {
+      return db.$transaction(async (tx) => {
+        const before = await loadForHr(tx, auth, id);
+        if (before.positionCode === body.positionCode) throw unprocessable('POSITION_UNCHANGED', 'The employee already holds this position');
+        await assertPosition(tx, body.positionCode);
+        await tx.employee.update({ where: { id }, data: { positionCode: body.positionCode } });
+        await appendAudit(tx, { actorUserId: auth.user.id, action: 'EMPLOYEE_POSITION_CHANGED', resource: 'employee', resourceId: id, changes: { from: before.positionCode, to: body.positionCode, reason: body.reason }, requestId, priority: 'HIGH' });
+        await refreshEligibility(tx, id, 'EMPLOYEE_POSITION_CHANGED', { actorUserId: auth.user.id, requestId });
+        return { id, positionCode: body.positionCode };
+      });
+    },
+
+    /** Soft delete (deletedAt). The record, its contracts and credentials stay for history; eligibility becomes INELIGIBLE. */
+    async remove(auth: AuthContext, id: number, reason: string, requestId?: string) {
+      return db.$transaction(async (tx) => {
+        const e = await loadForHr(tx, auth, id);
+        if (auth.user.employeeId === id) throw new HttpError(403, 'SELF_ACTION_FORBIDDEN', 'You cannot delete your own employee record');
+        await tx.employee.update({ where: { id }, data: { deletedAt: new Date() } });
+        await appendAudit(tx, { actorUserId: auth.user.id, action: 'EMPLOYEE_DELETED', resource: 'employee', resourceId: id, changes: { jobNumber: e.jobNumber, reason }, requestId, priority: 'HIGH' });
+        await refreshEligibility(tx, id, 'EMPLOYEE_DELETED', { actorUserId: auth.user.id, requestId });
+        return { id, deleted: true };
+      });
+    },
+  };
+}
+
+export type NurseService = ReturnType<typeof createNurseService>;

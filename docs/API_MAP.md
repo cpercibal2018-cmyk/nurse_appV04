@@ -110,47 +110,50 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 - `[I]` responses carry identifiers only (`POST /users` → `{id}`; `POST /role-assignments` → `{status:'GRANTED', id}` or 202 `{status:'PENDING_APPROVAL', requestId}`), so stored idempotent responses hold no personal data.
 - Four-eyes approval executes the stored action **as the approver**: every grant rule (R2–R6) is re-checked for them, inside the approval's transaction.
 
-### 2.4 Workforce (`modules/workforce`)
+### 2.4 Workforce (`modules/workforce`) — implemented in commit 7
+
+"System-wide" = an HR_ADMIN / SYSTEM_ADMIN assignment with SYSTEM scope. The organisation structure is one hospital-wide configuration (same principle as the credential catalog, D-25); bed counts and coverage targets follow unit scope.
 
 | Method | Endpoint | Purpose | Permission / scope | Source |
 | :--- | :--- | :--- | :--- | :--- |
-| GET | `/api/v1/departments` | List | EMP | server generic → domain |
-| POST · PATCH | `/api/v1/departments`, `/:id` | Create / update / deactivate (W1) | HR, SA | server generic + store guard |
-| GET | `/api/v1/units?departmentId&includeInactive` | List | EMP | kit |
-| POST · PATCH | `/api/v1/units`, `/:id` | Create / update / deactivate (W2) | HR, SA | server generic + store |
-| GET | `/api/v1/units/summary` | Bed totals by department | EMP | kit |
-| PUT | `/api/v1/units/:id/bed-capacity` | Single change `{bedCount, reason}` (W4) | HR, SA | kit |
-| PUT | `/api/v1/units/bed-capacity/bulk` **[I]** | Bulk (W5) → per-row results | HR, SA | kit |
-| POST | `/api/v1/units/import` **[I]** | CSV `{csv, dryRun=true}` | HR, SA | kit |
-| GET | `/api/v1/units/:id/bed-history` | Log | HR, SA, SUP (scoped) | kit |
-| GET | `/api/v1/positions` · `/:code` | Directory | EMP | spec |
-| POST · PATCH | `/api/v1/positions`, `/:code` | Create / update / deactivate (W6) | HR, SA | spec + store |
-| GET · PUT | `/api/v1/coverage-targets?unitId` | Configured minimums (W8) | read EMP; write HR, SA | spec §6.3 (new) |
-| GET | `/api/v1/kpi/nurse-to-bed?date&shift` | Ada'a KPI A/B | HR, SA, SUP | app `kpi.ts` — **K1 decision** |
+| GET | `/api/v1/departments?includeInactive` | List (active by default) | EMP | spec §2.9 |
+| POST · PATCH | `/api/v1/departments`, `/:id` | Create / update / deactivate — refused while it has active units (W1) | HR, SA — system-wide | W1 |
+| GET | `/api/v1/units?departmentId&includeInactive` | List | EMP | spec §2.9 |
+| GET | `/api/v1/units/summary` | Live bed totals by department, active units (W3: the seeded 582 is not a constant) | EMP | kit |
+| POST · PATCH | `/api/v1/units`, `/:id` | Create (initial beds logged) / rename / move department / deactivate — refused while it has active employees (W2) | HR, SA — system-wide | W2 |
+| PUT | `/api/v1/units/:id/bed-capacity` | `{bedCount 0–500, reason}` → `UPDATED`/`UNCHANGED`; one log row per change (W4) | HR, SA — unit in scope | W4 |
+| PUT | `/api/v1/units/bed-capacity/bulk` **[I]** | `{rows:[{unitCode, bedCount}], reason}` → per-row `UPDATED`/`UNCHANGED`/`REJECTED` (unknown code, out of scope, bad value, duplicate); applied rows commit together (W5) | HR, SA — rows outside scope rejected | W5 |
+| POST | `/api/v1/units/import` **[I]** | `{csv, dryRun=true}`; header `unit_code,name,department_code,beds[,description]`; RFC 4180 quotes; ≤ 500 rows; never deletes or deactivates | HR, SA — system-wide | kit |
+| GET | `/api/v1/units/:id/bed-history` | Log with actor name | HR, SA, SUP — unit in scope | W4 |
+| GET | `/api/v1/positions?includeInactive` · `/:code` | Directory | EMP | spec §3.1.1 |
+| POST · PATCH | `/api/v1/positions`, `/:code` | Create / update (tier from the §3.1.1 list) / deactivate — refused while held by active employees (W6). A schedulability change re-evaluates holders (L6) | HR, SA — system-wide | W6, W7 |
+| GET · PUT | `/api/v1/coverage-targets?unitId` | `{unitId, shiftType, minimumStaff 0–999 \| null}`; `null` removes the target ("unspecified", never zero — W8) | read EMP; write HR, SA — unit in scope | spec §6.3 |
+| GET | `/api/v1/kpi/nurse-to-bed?date&shift` | KPI A (ICU/ER/OR codes 1–4, averaged) and B (hospital-wide). Nurses = Published assignments on that date/shift; beds = active units. Response carries `thresholdSource` (card not in repository) | HR, SA, SUP | V03 `kpi.ts` — **D-11** |
 
-### 2.5 Nurses (`modules/nurses`)
-
-| Method | Endpoint | Purpose | Permission / scope | Source |
-| :--- | :--- | :--- | :--- | :--- |
-| GET | `/api/v1/employees?unitId&positionCode&q` | List | HR (scoped, all fields); SUP (assigned units, private fields suppressed: salary, marital status, nationality… — list in RBAC.md); EMP → own only | spec §8.1 |
-| GET | `/api/v1/employees/:id` | Detail | same field rules | spec §8.1 |
-| POST | `/api/v1/employees/onboard` **[I]** | Contract-first atomic onboarding: employee + contract + (optional) contract copy + audit | HR (scoped), SA | store `addEmployee` + V36b — **C-1** |
-| PATCH | `/api/v1/employees/:id` | Update source fields (E1–E8) | HR (scoped), SA | store |
-| PATCH | `/api/v1/employees/me` | Own phone (spec §3.3) | EMP | spec |
-| POST | `/api/v1/employees/:id/position` | Position assignment (E9) | HR (scoped). SA? (store allowed DEVELOPER only) | store |
-| DELETE | `/api/v1/employees/:id` | Soft delete (`deletedAt`) | HR, SA | store |
-
-### 2.6 Contracts (`modules/contracts`)
+### 2.5 Nurses (`modules/nurses`) — implemented in commit 7
 
 | Method | Endpoint | Purpose | Permission / scope | Source |
 | :--- | :--- | :--- | :--- | :--- |
-| GET | `/api/v1/contracts?employeeId&status` | List | HR (full); SUP (reduced view, scoped); EMP own (reduced) | spec §4.1 |
-| GET | `/api/v1/contracts/renewable` · `/creatable` | Employee pickers (C7, C10) | HR | ContractsPage filters |
-| POST | `/api/v1/contracts` **[I]** | Create (C4, C5, C9, C11) — multipart with PDF | HR | store `addContract` + page |
-| POST | `/api/v1/contracts/:id/renew` **[I]** | Renewal from prior (C7, C8) | HR | ContractsPage |
-| POST | `/api/v1/contracts/:id/transition` | `{to, reason}` via transition map (C1–C3) | HR | new (V03 had free dropdown) |
-| POST | `/api/v1/contracts/:id/documents` | Add contract-copy version (D1–D3) | HR | store `attachContractCopy` |
-| GET | `/api/v1/contracts/:id/documents/:version/download` | Stream if CLEAN (D4) | HR; EMP own | store getter |
+| GET | `/api/v1/employees?unitId&unassigned&positionCode&q&page&pageSize` | List | HR/SA scoped → `view: FULL`; SUP scoped → `view: BASELINE` (identity, unit, position, job title, specialty, status, hire date — salary, marital status, nationality, file no., rank, contact email, job post and work place suppressed) | spec §8.1 |
+| GET | `/api/v1/employees/me` · `/:id` | Own profile (FULL) · one record, shaped by viewer | EMP own; HR, SUP scoped | spec §8.1 |
+| POST | `/api/v1/employees/onboard` **[I]** | Employee + **Draft** contract (Hijri dates converted by the server) + HIGH audit + eligibility state in one transaction → `{employeeId, contractId}`. Defaults: Unassigned, position SN (E6). Job number unique regardless of case (E1) | HR, SA — unit in scope; Unassigned needs system-wide | spec §3.1, **D-3**, D-17 |
+| PATCH | `/api/v1/employees/:id` | Source fields E1–E8 (not position); a unit move re-evaluates eligibility; salary values are not copied into the audit trail | HR, SA — old and new unit in scope | spec §3.1 |
+| POST | `/api/v1/employees/:id/position` | `{positionCode, reason}`; rejects inactive/unchanged; HIGH audit from → to; re-evaluates eligibility | **HR_ADMIN only** (E9), scoped | E9 |
+| DELETE | `/api/v1/employees/:id` | Soft delete, body `{reason ≥ 10}`; history kept; eligibility becomes INELIGIBLE; not on one's own record | HR, SA — scoped | spec |
+| — | `PATCH /api/v1/employees/me` (own phone, spec §3.3) | **Not built:** the schema has no phone column | — | REQUIREMENT NOT ESTABLISHED |
+
+### 2.6 Contracts (`modules/contracts`) — implemented in commit 7
+
+| Method | Endpoint | Purpose | Permission / scope | Source |
+| :--- | :--- | :--- | :--- | :--- |
+| GET | `/api/v1/contracts?employeeId&status&page&pageSize` | List | HR/SA scoped → FULL; SUP scoped → REDUCED (identifiers, employee/position, unit, status, dates) | spec §4.1 |
+| GET | `/api/v1/contracts/me` · `/:id` | Own (REDUCED) · one, shaped by viewer | EMP own; HR, SUP scoped | spec §4.1 |
+| GET | `/api/v1/contracts/creatable` · `/renewable` | New-contract picker (no Approved/Active contract, C10) · renewal picker with the C8 prefill | HR, SA scoped | C8, C10 |
+| POST | `/api/v1/contracts` **[I]** | `{employeeId, startDate, endDate}` → Draft; refused if the employee already has an Approved/Active contract (use renewal) | HR, SA scoped; not own | C5, C6, C10 |
+| POST | `/api/v1/contracts/:id/renew` **[I]** | From the employee's latest contract; dates default to the C8 prefill → Draft | HR, SA scoped; not own | C8 |
+| POST | `/api/v1/contracts/:id/transition` | `{action, reason?}` per the D-29 map: `submit` (needs a CLEAN copy, C11), `return`\*, `approve` (Active if it covers today, else Approved; overlap checked, C4), `suspend`\*, `reinstate`\*, `terminate`\*. \* reason required. Expired only by the daily job; Superseded never by hand. Returns `{status, eligibility}` | HR, SA scoped; not own; **approver ≠ creator and ≠ submitter (D-30)** | spec §4.2, D-29, D-30 |
+| POST | `/api/v1/contracts/:id/documents` | Contract copy: raw PDF body, `X-File-Name`; ≤ 10 MB; magic bytes (D1–D3) | HR, SA scoped; not own | D1–D3 |
+| GET | `/api/v1/contracts/:id/documents` · `/:docId` | Versions · download (CLEAN only, audited, `nosniff`) | HR scoped; EMP own; **never SUP** (D5) | D4, D5 |
 
 ### 2.7 Credentials (`modules/credentials`) — implemented in commit 6
 

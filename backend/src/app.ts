@@ -20,6 +20,11 @@ import { createCredentialsRouter } from './modules/credentials/routes.js';
 import { createEligibilityService } from './modules/eligibility/service.js';
 import { createStorage } from './lib/uploads.js';
 import { createWorkforceRouter } from './modules/workforce/routes.js';
+import { createOrgService } from './modules/workforce/org.js';
+import { createNurseService } from './modules/nurses/service.js';
+import { createNursesRouter } from './modules/nurses/routes.js';
+import { createContractService } from './modules/contracts/service.js';
+import { createContractsRouter } from './modules/contracts/routes.js';
 
 export interface AppDeps {
   env: Env;
@@ -66,7 +71,9 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   api.use(authenticate);
   const catalog = createCatalogService(db);
   api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db), catalog));
-  api.use(createWorkforceRouter(db));
+  api.use(createWorkforceRouter(db, createOrgService(db)));
+  api.use(createNursesRouter(db, createNurseService(db)));
+  api.use(createContractsRouter(db, createContractService(db, createStorage(env.STORAGE_DIR), env.UPLOAD_MAX_SIZE_BYTES), env.UPLOAD_MAX_SIZE_BYTES));
   api.use(createCredentialsRouter(
     catalog,
     createRecordService(db, createStorage(env.STORAGE_DIR), env.UPLOAD_MAX_SIZE_BYTES),

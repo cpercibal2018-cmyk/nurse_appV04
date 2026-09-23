@@ -22,7 +22,25 @@ export const PERMISSIONS = {
   'approvals.decide': ['HR_ADMIN', 'SYSTEM_ADMIN'],
   // Reference data every signed-in user may read.
   'matrix.read': ['EMPLOYEE'],
-  'workforce.read': ['EMPLOYEE'], // departments, units (API_MAP §2.4)
+  'workforce.read': ['EMPLOYEE'], // departments, units, positions, coverage targets, bed summary (API_MAP §2.4)
+  // Organisation structure is one hospital-wide configuration: the service
+  // limits departments, unit create/move, positions and CSV import to
+  // system-wide scope; bed counts and coverage targets follow unit scope.
+  'workforce.write': ['HR_ADMIN', 'SYSTEM_ADMIN'],
+  'workforce.bedHistory': ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'],
+  'kpi.read': ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'],
+
+  // Employee master — spec §8.1 row: HR maintains within scope; Supervisor
+  // assigned-unit view with private fields suppressed; Employee own profile.
+  'employees.read': ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'],
+  'employees.write': ['HR_ADMIN', 'SYSTEM_ADMIN'],
+  // Rule E9: position assignment is HR_ADMIN only.
+  'employees.position': ['HR_ADMIN'],
+
+  // Contracts — spec §4.1: HR/System Admin scoped create, approval, renewal,
+  // termination; Supervisor scoped reduced view; Employee own reduced view.
+  'contracts.read': ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'],
+  'contracts.manage': ['HR_ADMIN', 'SYSTEM_ADMIN'],
 
   // Credentials and eligibility — spec §8.1 Credentials row, §5.1.4, §6.1.
   'credentials.catalog.read': ['EMPLOYEE'],

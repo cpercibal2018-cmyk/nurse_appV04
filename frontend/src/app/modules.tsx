@@ -31,13 +31,13 @@ const STAFF: AppRole[] = ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'];
 
 export const MODULES: AppModule[] = [
   page('/', 'dashboard', <DashboardOutlined />, () => import('../modules/dashboard/DashboardPage')),
-  page('/nurses', 'nurses', <TeamOutlined />, () => import('../modules/nurses/NursesPage')),
+  page('/nurses', 'nurses', <TeamOutlined />, () => import('../modules/nurses/NursesPage'), { requires: STAFF }),
   page('/contracts', 'contracts', <FileProtectOutlined />, () => import('../modules/contracts/ContractsPage')),
   page('/credentials', 'credentials', <SafetyCertificateOutlined />, () => import('../modules/credentials/CredentialsPage'), { requires: STAFF }),
   page('/my-credentials', 'myCredentials', <IdcardOutlined />, () => import('../modules/credentials/MyCredentialsPage'), { employeeOnly: true }),
   page('/eligibility', 'eligibility', <CheckCircleOutlined />, () => import('../modules/eligibility/EligibilityPage'), { requires: STAFF }),
   page('/workforce', 'workforce', <ApartmentOutlined />, () => import('../modules/workforce/WorkforcePage')),
-  page('/kpi', 'kpi', <FundOutlined />, () => import('../modules/workforce/KpiPage')),
+  page('/kpi', 'kpi', <FundOutlined />, () => import('../modules/workforce/KpiPage'), { requires: STAFF }),
   page('/scheduling', 'scheduling', <ScheduleOutlined />, () => import('../modules/scheduling/SchedulingPage')),
   page('/attendance', 'attendance', <ClockCircleOutlined />, () => import('../modules/attendance/AttendancePage')),
   page('/notifications', 'notifications', <BellOutlined />, () => import('../modules/notifications/NotificationsPage')),

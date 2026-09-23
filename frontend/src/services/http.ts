@@ -138,9 +138,10 @@ async function request<T>(method: Method, path: string, body?: unknown, opts?: R
 export const http = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown, opts?: RequestOptions) => request<T>('POST', path, body, opts),
-  put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
+  put: <T>(path: string, body?: unknown, opts?: RequestOptions) => request<T>('PUT', path, body, opts),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
-  delete: <T = void>(path: string) => request<T>('DELETE', path),
+  /** A body is allowed where the API asks for a reason (e.g. soft-deleting an employee). */
+  delete: <T = void>(path: string, body?: unknown) => request<T>('DELETE', path, body),
   /** Uploads a file as the raw request body. */
   upload: <T>(path: string, file: File) => request<T>('POST', path, undefined, { file }),
   /** Downloads a protected file and hands it to the browser as a save. */

@@ -348,6 +348,9 @@ model Contract {
   startDateHijri String?        @map("start_date_hijri") @db.VarChar(10)
   endDateHijri   String?        @map("end_date_hijri") @db.VarChar(10)
   status         ContractStatus @default(Draft)
+  /// Who created and who submitted it: neither may approve it (owner decision D-30).
+  createdById    Int?           @map("created_by_id")
+  submittedById  Int?           @map("submitted_by_id")
   approvedById   Int?           @map("approved_by_id")
   approvedAt     DateTime?      @map("approved_at") @db.Timestamptz
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
