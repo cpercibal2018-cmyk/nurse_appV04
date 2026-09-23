@@ -31,7 +31,7 @@ How V04 stopped defining hospital data in TypeScript and made PostgreSQL the onl
 | 6 | `4eb5901` | Frontend: categories, unit KPI area, positions chosen from the database |
 | 7 | `2dc0d7b` | Demo data as a fixture; CI without seed |
 | 8 | this document | Documentation |
-| 9 | cleanup | Seed files, seed configuration and `SEED_DEMO*` settings removed |
+| 9 | cleanup | `seed.ts`, `seed-data/*`, the Prisma seed setting, the `db:seed` script and the `SEED_DEMO*` settings removed (replaced by `DEMO_PASSWORD` for fixtures) |
 
 ## 3. Data mapping
 
@@ -75,4 +75,21 @@ The import never changes an existing record — conflicts are resolved through t
 | Empty database through the API alone | Administrators create a department, unit, position, category, credential type; HR onboards a nurse (position required without SN), a second person approves the contract, a verified credential makes the nurse eligible, RBAC denies the audit log to HR, audit chain intact (`database-first.test.ts` A) |
 | Baseline import | Reproduces 5 / 47 / 582 / 16 / 5 / 16 / 68 exactly, 47 bed-log rows, 11 KPI areas, 2 replacements; self-approval refused; second run creates nothing; bad files and invalid rows write nothing; a conflict arising after the request rolls the whole import back (mutation-checked) |
 | Demo fixtures | Load only into an empty development database; statuses follow dates; only 2004 and 3005 eligible; the demo login works |
-| Final regression | Recorded in the cleanup commit's message and the final report |
+| Final regression (after the seed was removed) | `npm ci` ✓ · `prisma generate` ✓ · `prisma validate` ✓ · `prisma format --check` ✓ · `migrate deploy` on both databases: no pending ✓ · drift: none ✓ · `npx prisma db seed`: "No seed command configured" ✓ · typecheck ✓ · backend **313 / 313** (21 files, including the three brand-new-database suites) · frontend **35 / 35** · build ✓ · bundle **173.37 KB gz** / 200 · documentation links **107 / 107** · built API: health 200, anonymous import 401 |
+
+## 7. Remaining references to the old seed values
+
+Final search for `SEED_DEMO`, `DEMO_*`, `DEPARTMENTS`, `UNITS`, `POSITIONS`, `CREDENTIAL_CATEGORIES`, `CREDENTIAL_TEMPLATES`, `ER_MAIN`, `ICU_MAIN`, `INP_WARDS`, `admin@aigh.sa`, `breakglass@aigh.sa`, `demo1234` (application code, tests, docs, ops; `node_modules`, builds and the generated client excluded):
+
+| Where | Classification | Why it stays |
+| :--- | :--- | :--- |
+| `backend/prisma/baseline/aigh-baseline.json` | **MIGRATION / import reference file** | Hospital data as a data file, loaded only through the four-eyes import |
+| `backend/prisma/migrations/20260924100000_database_first_master_data/migration.sql` | **MIGRATION** | Carries the former KPI unit-code map onto existing databases; applied migrations never change |
+| `backend/test/fixtures/demo/*` | **TEST FIXTURE** | Development-only demo data and its guarded loader |
+| `ops/backup/sql/20_org_structure.sql` | **TEST FIXTURE** (backup drill) | Synthetic tables of the backup/PITR drill's own throwaway cluster; the application never reads it |
+| `.env.example` | **DOCUMENTATION** | Names the demo logins the fixture creates |
+| `docs/SEED_DATA_INVENTORY.md`, this document, `docs/V04_ARCHITECTURE_PLAN.md` §2 | **DOCUMENTATION** | Record of the original seed and the original design |
+| `docs/history/*`, `docs/reference/*` | **LEGACY** | V03 analysis and the verbatim specification |
+| Application code (`backend/src`, `frontend/src`) | — | **No occurrence.** `demo1234` occurs nowhere except V03 history. Nothing must be removed |
+
+The JSON column `credential_templates.field_defs_legacy` is deliberately **kept** (unread) as a rollback reference; dropping it is a separate, owner-approved migration once the database-first setup has been accepted in the hospital environment.
