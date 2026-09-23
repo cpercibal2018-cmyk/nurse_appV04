@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { usePermissions } from '../../hooks/usePermissions';
 import { AccountsTab } from './AccountsTab';
 import { ApprovalsTab } from './ApprovalsTab';
+import { BaselineImportTab } from './BaselineImportTab';
 import { useMatrix } from './api';
 import { PamTab } from './PamTab';
 import { JobsTab } from './JobsTab';
@@ -41,6 +42,7 @@ export default function AdministrationPage() {
       { key: 'accounts', label: t('accounts'), children: <AccountsTab /> },
       { key: 'roles', label: t('roleAssignments'), children: <RoleAssignmentsTab /> },
       { key: 'approvals', label: t('approvals'), children: <ApprovalsTab /> },
+      { key: 'baseline', label: t('baselineImport'), children: <BaselineImportTab /> },
     ] : []),
     ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'pam', label: t('privilegedAccess'), children: <PamTab /> }] : []),
     ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'jobs', label: t('backgroundJobs'), children: <JobsTab /> }] : []),

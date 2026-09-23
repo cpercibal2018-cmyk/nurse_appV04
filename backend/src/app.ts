@@ -14,6 +14,7 @@ import { createAuthService } from './modules/auth/service.js';
 import { createAccountService } from './modules/users/accounts.js';
 import { createRoleAssignmentService } from './modules/users/role-assignments.js';
 import { createUsersRouter } from './modules/users/routes.js';
+import { createBaselineImportService } from './modules/administration/baseline-import.js';
 import { createCatalogService } from './modules/credentials/catalog.js';
 import { createRecordService } from './modules/credentials/records.js';
 import { createCredentialsRouter } from './modules/credentials/routes.js';
@@ -75,7 +76,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   const api = Router();
   api.use(authenticate);
   const catalog = createCatalogService(db);
-  api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db), catalog));
+  api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db), catalog, createBaselineImportService(db)));
   api.use(createWorkforceRouter(db, createOrgService(db)));
   api.use(createNursesRouter(db, createNurseService(db)));
   api.use(createSchedulingRouter(db, createSchedulingService(db), createAttendanceService(db)));

@@ -43,6 +43,8 @@ const FAMILIES: Record<string, string[]> = {
   life_: ['Active', 'SubjectToRenew', 'OnProcess', 'Expired'],
   gap_: ['UPCOMING', 'PENDING', 'MISSING', 'PRESENT', 'INELIGIBLE_ON_DUTY'],
   priority_: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'],
+  baselineSection_: ['departments', 'units', 'positions', 'credentialCategories', 'credentialTemplates'],
+  baselineStatus_: ['CREATE', 'UNCHANGED', 'CONFLICT', 'REJECTED'],
 };
 
 describe('translations', () => {

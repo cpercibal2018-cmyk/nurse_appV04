@@ -1,0 +1,1271 @@
+{
+  "format": "aigh-hospital-baseline",
+  "version": 1,
+  "description": "AIGH hospital baseline carried over from the V04 seed (tag pre-db-first): organisation from V03 app/src/data/seed.ts, credential catalogue per spec §5.1.2–5.1.3. Grace days are 0 until the hospital credential policy (U2) sets them. Editable configuration, not policy.",
+  "departments": [
+    {
+      "code": "EMAC",
+      "name": "Emergency & Acute Care",
+      "description": "Emergency departments, urgent care and clinical decision units"
+    },
+    {
+      "code": "SURG",
+      "name": "Surgical & Perioperative Services",
+      "description": "Operating rooms, recovery and day surgery"
+    },
+    {
+      "code": "CRIT",
+      "name": "Critical Care & Intensive Services",
+      "description": "ICU, NICU, PICU, CCU and high-dependency units"
+    },
+    {
+      "code": "GNSP",
+      "name": "General & Specialty Services",
+      "description": "Inpatient wards, outpatient clinics and specialty units"
+    },
+    {
+      "code": "CORP",
+      "name": "Administrative & Corporate Services",
+      "description": "Nursing admin, HR, infection control and support services"
+    }
+  ],
+  "units": [
+    {
+      "code": "ER_MAIN",
+      "name": "ER Main / Adult",
+      "description": "Primary triage and emergency care for adults",
+      "departmentCode": "EMAC",
+      "bedCount": 39,
+      "criticalArea": "ER"
+    },
+    {
+      "code": "ER_MC",
+      "name": "ER M&C",
+      "description": "Emergency care for Mothers and Children",
+      "departmentCode": "EMAC",
+      "bedCount": 32,
+      "criticalArea": "ER"
+    },
+    {
+      "code": "UCC",
+      "name": "Urgent Care Center",
+      "description": "Urgent care for non-life-threatening needs",
+      "departmentCode": "EMAC",
+      "bedCount": 15,
+      "criticalArea": "ER"
+    },
+    {
+      "code": "CDU",
+      "name": "Clinical Decision Unit",
+      "description": "Observation unit for clinical decisions",
+      "departmentCode": "EMAC",
+      "bedCount": 32,
+      "criticalArea": "ER"
+    },
+    {
+      "code": "ER_COORD",
+      "name": "ER Coordinator",
+      "description": "Patient flow and resource management",
+      "departmentCode": "EMAC",
+      "bedCount": 0
+    },
+    {
+      "code": "ED_NAV",
+      "name": "ED Navigation",
+      "description": "Patient routing and intake",
+      "departmentCode": "EMAC",
+      "bedCount": 8
+    },
+    {
+      "code": "ED_ADMIN",
+      "name": "ED Admin",
+      "description": "Clerical support for Emergency Department",
+      "departmentCode": "EMAC",
+      "bedCount": 7
+    },
+    {
+      "code": "OR",
+      "name": "Operating Room",
+      "description": "Sterile surgical suites",
+      "departmentCode": "SURG",
+      "bedCount": 12,
+      "criticalArea": "OR"
+    },
+    {
+      "code": "OR_COORD",
+      "name": "OR Coordinator",
+      "description": "Surgical scheduling and theater flow",
+      "departmentCode": "SURG",
+      "bedCount": 0
+    },
+    {
+      "code": "PACU",
+      "name": "Recovery / PACU",
+      "description": "Post-Anesthesia Care Unit",
+      "departmentCode": "SURG",
+      "bedCount": 8
+    },
+    {
+      "code": "DAY_SURG",
+      "name": "Day Surgery",
+      "description": "Same-day surgical procedures",
+      "departmentCode": "SURG",
+      "bedCount": 9
+    },
+    {
+      "code": "PLASTER",
+      "name": "Plaster Unit",
+      "description": "Orthopedic casting and splinting",
+      "departmentCode": "SURG",
+      "bedCount": 9
+    },
+    {
+      "code": "ICU_MAIN",
+      "name": "ICU Main",
+      "description": "Intensive care for critically ill adults",
+      "departmentCode": "CRIT",
+      "bedCount": 79,
+      "criticalArea": "ICU"
+    },
+    {
+      "code": "ICU_EXT",
+      "name": "ICU Extension",
+      "description": "Overflow critical care capacity",
+      "departmentCode": "CRIT",
+      "bedCount": 28,
+      "criticalArea": "ICU"
+    },
+    {
+      "code": "NICU",
+      "name": "Neonatal Intensive Care",
+      "description": "Neonatal intensive care",
+      "departmentCode": "CRIT",
+      "bedCount": 15,
+      "criticalArea": "ICU"
+    },
+    {
+      "code": "PICU",
+      "name": "Pediatric Intensive Care",
+      "description": "Pediatric intensive care",
+      "departmentCode": "CRIT",
+      "bedCount": 15,
+      "criticalArea": "ICU"
+    },
+    {
+      "code": "CCU",
+      "name": "Coronary Care Unit",
+      "description": "Cardiac intensive care",
+      "departmentCode": "CRIT",
+      "bedCount": 10,
+      "criticalArea": "ICU"
+    },
+    {
+      "code": "BURN_ICU",
+      "name": "Burn ICU",
+      "description": "Specialized care for burn trauma",
+      "departmentCode": "CRIT",
+      "bedCount": 6,
+      "criticalArea": "ICU"
+    },
+    {
+      "code": "ASU",
+      "name": "Acute Stabilization Unit",
+      "description": "Acute stabilization",
+      "departmentCode": "CRIT",
+      "bedCount": 6
+    },
+    {
+      "code": "HDU",
+      "name": "High Dependency Unit",
+      "description": "Step-down unit",
+      "departmentCode": "CRIT",
+      "bedCount": 6
+    },
+    {
+      "code": "INP_WARDS",
+      "name": "Inpatient Wards",
+      "description": "General and specialized acute care (3A–5B)",
+      "departmentCode": "GNSP",
+      "bedCount": 98
+    },
+    {
+      "code": "AKU",
+      "name": "Allergy and Kidney Unit",
+      "description": "Allergy and kidney unit",
+      "departmentCode": "GNSP",
+      "bedCount": 14
+    },
+    {
+      "code": "REHAB",
+      "name": "Rehabilitation",
+      "description": "Rehabilitation and physical therapy",
+      "departmentCode": "GNSP",
+      "bedCount": 17
+    },
+    {
+      "code": "PEDIA",
+      "name": "Pediatric Inpatient",
+      "description": "Inpatient pediatric care",
+      "departmentCode": "GNSP",
+      "bedCount": 15
+    },
+    {
+      "code": "LND",
+      "name": "Labor and Delivery",
+      "description": "Labor and delivery",
+      "departmentCode": "GNSP",
+      "bedCount": 15
+    },
+    {
+      "code": "OBGYNE",
+      "name": "Obstetrics & Gynecology",
+      "description": "Obstetrics and gynecology",
+      "departmentCode": "GNSP",
+      "bedCount": 17
+    },
+    {
+      "code": "NBS",
+      "name": "Newborn Screening",
+      "description": "Newborn screening unit",
+      "departmentCode": "GNSP",
+      "bedCount": 3
+    },
+    {
+      "code": "OPD_DENTAL",
+      "name": "OPD / Dental",
+      "description": "Outpatient clinics",
+      "departmentCode": "GNSP",
+      "bedCount": 23
+    },
+    {
+      "code": "JAIL",
+      "name": "Jail Ward",
+      "description": "Secured unit for incarcerated patients",
+      "departmentCode": "GNSP",
+      "bedCount": 12
+    },
+    {
+      "code": "RRT",
+      "name": "Respiratory Rehab",
+      "description": "Respiratory rehabilitation therapy",
+      "departmentCode": "GNSP",
+      "bedCount": 5
+    },
+    {
+      "code": "ECHO_EEG",
+      "name": "ECHO / EEG",
+      "description": "Diagnostic electrical testing",
+      "departmentCode": "GNSP",
+      "bedCount": 2
+    },
+    {
+      "code": "ENDO",
+      "name": "Endoscopy",
+      "description": "GI visual diagnostics",
+      "departmentCode": "GNSP",
+      "bedCount": 5
+    },
+    {
+      "code": "RADIOLOGY",
+      "name": "Radiology",
+      "description": "Imaging services (X-Ray/CT/MRI)",
+      "departmentCode": "GNSP",
+      "bedCount": 6
+    },
+    {
+      "code": "BLOOD_BANK",
+      "name": "Blood Bank",
+      "description": "Blood storage and donation",
+      "departmentCode": "GNSP",
+      "bedCount": 2
+    },
+    {
+      "code": "LAB",
+      "name": "Laboratory",
+      "description": "Clinical pathology diagnostics",
+      "departmentCode": "GNSP",
+      "bedCount": 0
+    },
+    {
+      "code": "DIABETIC",
+      "name": "Diabetic Center",
+      "description": "Specialized diabetes management",
+      "departmentCode": "GNSP",
+      "bedCount": 10
+    },
+    {
+      "code": "DISCHARGE",
+      "name": "Discharge Lounge",
+      "description": "Transition area for departing patients",
+      "departmentCode": "GNSP",
+      "bedCount": 2
+    },
+    {
+      "code": "NURS_ADMIN",
+      "name": "Nursing Admin",
+      "description": "Nursing staff management",
+      "departmentCode": "CORP",
+      "bedCount": 0
+    },
+    {
+      "code": "HR",
+      "name": "Human Resources",
+      "description": "Human resources and payroll",
+      "departmentCode": "CORP",
+      "bedCount": 0
+    },
+    {
+      "code": "IC",
+      "name": "Infection Control",
+      "description": "Infection control",
+      "departmentCode": "CORP",
+      "bedCount": 0
+    },
+    {
+      "code": "PAT_EXP",
+      "name": "Patient Experience",
+      "description": "Patient satisfaction and feedback",
+      "departmentCode": "CORP",
+      "bedCount": 0
+    },
+    {
+      "code": "PAT_AFFAIRS",
+      "name": "Patient Affairs",
+      "description": "Admissions and patient rights",
+      "departmentCode": "CORP",
+      "bedCount": 0
+    },
+    {
+      "code": "ACADEMIC",
+      "name": "Academic Affairs",
+      "description": "Medical education and training",
+      "departmentCode": "CORP",
+      "bedCount": 0
+    },
+    {
+      "code": "BIZ_CENTER",
+      "name": "Business Center",
+      "description": "Finance and billing",
+      "departmentCode": "CORP",
+      "bedCount": 0
+    },
+    {
+      "code": "IDARA",
+      "name": "Idara",
+      "description": "General management office",
+      "departmentCode": "CORP",
+      "bedCount": 0
+    },
+    {
+      "code": "STORE",
+      "name": "Store",
+      "description": "Supply chain and inventory",
+      "departmentCode": "CORP",
+      "bedCount": 0
+    },
+    {
+      "code": "HOME_CARE",
+      "name": "Home Care",
+      "description": "Coordination of home-based medical care",
+      "departmentCode": "CORP",
+      "bedCount": 0
+    }
+  ],
+  "positions": [
+    {
+      "code": "DON",
+      "title": "Director of Nursing",
+      "tier": "Executive",
+      "description": "Executive leadership, strategic planning, and overall clinical governance.",
+      "isSchedulable": false,
+      "isActive": true,
+      "displayOrder": 1
+    },
+    {
+      "code": "DEPUTY_DON",
+      "title": "Deputy Director of Nursing",
+      "tier": "Executive",
+      "description": "Operational management and implementation of nursing standards.",
+      "isSchedulable": false,
+      "isActive": true,
+      "displayOrder": 2
+    },
+    {
+      "code": "ADMIN",
+      "title": "Administrator",
+      "tier": "Administrative",
+      "description": "Non-clinical operations, budgeting, staffing schedules, and procurement.",
+      "isSchedulable": false,
+      "isActive": true,
+      "displayOrder": 3
+    },
+    {
+      "code": "NS",
+      "title": "Nursing Supervisor",
+      "tier": "Management",
+      "description": "Multi-unit shift coordination and resource allocation.",
+      "isSchedulable": true,
+      "isActive": true,
+      "displayOrder": 4
+    },
+    {
+      "code": "ACTING_HEAD",
+      "title": "Acting Head Nurse",
+      "tier": "Management",
+      "description": "Temporary leadership of a unit to ensure continuity of care and management.",
+      "isSchedulable": true,
+      "isActive": true,
+      "displayOrder": 5
+    },
+    {
+      "code": "NURSE_EDUCATOR",
+      "title": "Clinical Nurse Educator",
+      "tier": "Specialist",
+      "description": "Staff training, onboarding, and maintaining clinical competency.",
+      "isSchedulable": true,
+      "isActive": true,
+      "displayOrder": 6
+    },
+    {
+      "code": "PRACTITIONER",
+      "title": "Nurse Practitioner",
+      "tier": "Advanced Practice",
+      "description": "Advanced practice nurse capable of diagnostics and prescribing.",
+      "isSchedulable": true,
+      "isActive": true,
+      "displayOrder": 7
+    },
+    {
+      "code": "HN",
+      "title": "Head Nurse",
+      "tier": "Management",
+      "description": "Unit-specific management, staff oversight, and quality control.",
+      "isSchedulable": true,
+      "isActive": true,
+      "displayOrder": 8
+    },
+    {
+      "code": "CN",
+      "title": "Charge Nurse",
+      "tier": "Clinical Lead",
+      "description": "Shift-lead responsible for patient assignments and immediate unit needs.",
+      "isSchedulable": true,
+      "isActive": true,
+      "displayOrder": 9
+    },
+    {
+      "code": "SN",
+      "title": "Staff Nurse",
+      "tier": "Clinical",
+      "description": "Frontline registered nurse providing direct bedside patient care.",
+      "isSchedulable": true,
+      "isActive": true,
+      "displayOrder": 10
+    },
+    {
+      "code": "PCT",
+      "title": "Patient Care Technician",
+      "tier": "Support",
+      "description": "Support staff providing basic patient care, vitals, and hygiene.",
+      "isSchedulable": true,
+      "isActive": true,
+      "displayOrder": 11
+    },
+    {
+      "code": "TEC",
+      "title": "Technician",
+      "tier": "Support",
+      "description": "Technical support staff. Legacy position retained for existing records.",
+      "isSchedulable": true,
+      "isActive": true,
+      "displayOrder": 12
+    },
+    {
+      "code": "HCA",
+      "title": "Healthcare Assistant",
+      "tier": "Support",
+      "description": "Healthcare support assistant. Legacy position retained for existing records.",
+      "isSchedulable": true,
+      "isActive": true,
+      "displayOrder": 13
+    },
+    {
+      "code": "MW",
+      "title": "Midwife",
+      "tier": "Clinical Specialist",
+      "description": "Specialist midwifery practitioner. Legacy position retained for existing records.",
+      "isSchedulable": true,
+      "isActive": true,
+      "displayOrder": 14
+    },
+    {
+      "code": "AHN",
+      "title": "Acting/Assistant Head Nurse",
+      "tier": "Management",
+      "description": "Deprecated — migrate to ACTING_HEAD.",
+      "isSchedulable": true,
+      "isActive": false,
+      "displayOrder": 99,
+      "replacedBy": "ACTING_HEAD"
+    },
+    {
+      "code": "CI",
+      "title": "Clinical Instructor",
+      "tier": "Specialist",
+      "description": "Deprecated — migrate to NURSE_EDUCATOR.",
+      "isSchedulable": true,
+      "isActive": false,
+      "displayOrder": 98,
+      "replacedBy": "NURSE_EDUCATOR"
+    }
+  ],
+  "credentialCategories": [
+    {
+      "code": "IDENTITY",
+      "name": "Identity & Legal",
+      "description": "Government-issued identification and legal residency documents",
+      "displayOrder": 1
+    },
+    {
+      "code": "LICENSURE",
+      "name": "Licensure",
+      "description": "Professional and national practice licenses",
+      "displayOrder": 2
+    },
+    {
+      "code": "LIABILITY",
+      "name": "Liability & Clearance",
+      "description": "Employment contracts, insurance and background clearances",
+      "displayOrder": 3
+    },
+    {
+      "code": "COMPETENCY",
+      "name": "Clinical Competency",
+      "description": "Clinical skills assessments and specialized certifications",
+      "displayOrder": 4
+    },
+    {
+      "code": "LIFE_SUPPORT",
+      "name": "Life Support",
+      "description": "Emergency and life-saving certifications",
+      "displayOrder": 5
+    }
+  ],
+  "credentialTemplates": [
+    {
+      "code": "PASSPORT",
+      "name": "Passport",
+      "categoryCode": "IDENTITY",
+      "description": "International passport",
+      "hasExpiry": true,
+      "requiresUpload": true,
+      "gracePeriodDays": 0,
+      "displayOrder": 1,
+      "isActive": true,
+      "fields": [
+        {
+          "key": "passport_number",
+          "label": "Passport Number",
+          "type": "text",
+          "required": true,
+          "displayOrder": 1
+        },
+        {
+          "key": "issuing_country",
+          "label": "Issuing Country",
+          "type": "country",
+          "required": true,
+          "displayOrder": 2
+        },
+        {
+          "key": "issue_date",
+          "label": "Issue Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 3,
+          "isIssueDate": true
+        },
+        {
+          "key": "expiry_date",
+          "label": "Expiry Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 4,
+          "isExpiryDate": true
+        }
+      ]
+    },
+    {
+      "code": "IQAMA",
+      "name": "Resident ID (Iqama)",
+      "categoryCode": "IDENTITY",
+      "description": "Saudi residency permit",
+      "hasExpiry": true,
+      "requiresUpload": true,
+      "gracePeriodDays": 0,
+      "displayOrder": 2,
+      "isActive": true,
+      "fields": [
+        {
+          "key": "iqama_number",
+          "label": "Iqama Number",
+          "type": "text",
+          "required": true,
+          "displayOrder": 1
+        },
+        {
+          "key": "sponsor",
+          "label": "Sponsor/Employer Name",
+          "type": "text",
+          "required": true,
+          "displayOrder": 2
+        },
+        {
+          "key": "issue_date",
+          "label": "Issue Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 3,
+          "isIssueDate": true
+        },
+        {
+          "key": "expiry_date",
+          "label": "Expiry Date (Gregorian/Hijri)",
+          "type": "date_hijri",
+          "required": true,
+          "displayOrder": 4,
+          "isExpiryDate": true
+        },
+        {
+          "key": "job_title",
+          "label": "Job Title",
+          "type": "text",
+          "required": true,
+          "displayOrder": 5
+        }
+      ]
+    },
+    {
+      "code": "HOSPITAL_ID",
+      "name": "Hospital ID",
+      "categoryCode": "IDENTITY",
+      "description": "Hospital ID card",
+      "hasExpiry": true,
+      "requiresUpload": true,
+      "gracePeriodDays": 0,
+      "displayOrder": 3,
+      "isActive": true,
+      "fields": [
+        {
+          "key": "employee_id_number",
+          "label": "Employee ID Number",
+          "type": "text",
+          "required": true,
+          "displayOrder": 1
+        },
+        {
+          "key": "department",
+          "label": "Department/Cost Center",
+          "type": "text",
+          "required": true,
+          "displayOrder": 2
+        },
+        {
+          "key": "issue_date",
+          "label": "Issue Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 3,
+          "isIssueDate": true
+        },
+        {
+          "key": "expiry_date",
+          "label": "Expiry Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 4,
+          "isExpiryDate": true
+        }
+      ]
+    },
+    {
+      "code": "PROF_LICENSE",
+      "name": "Professional License",
+      "categoryCode": "LICENSURE",
+      "description": "Professional practice license",
+      "hasExpiry": true,
+      "requiresUpload": true,
+      "gracePeriodDays": 0,
+      "displayOrder": 4,
+      "isActive": true,
+      "fields": [
+        {
+          "key": "license_number",
+          "label": "License Number",
+          "type": "text",
+          "required": true,
+          "displayOrder": 1
+        },
+        {
+          "key": "issuing_board",
+          "label": "Issuing Board",
+          "type": "text",
+          "required": true,
+          "displayOrder": 2
+        },
+        {
+          "key": "issuing_country",
+          "label": "Issuing Country",
+          "type": "country",
+          "required": true,
+          "displayOrder": 3
+        },
+        {
+          "key": "issue_date",
+          "label": "Issue Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 4,
+          "isIssueDate": true
+        },
+        {
+          "key": "expiry_date",
+          "label": "Expiry Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 5,
+          "isExpiryDate": true
+        }
+      ]
+    },
+    {
+      "code": "SCFHS",
+      "name": "Saudi Council License (SCFHS)",
+      "categoryCode": "LICENSURE",
+      "description": "Saudi Commission for Health Specialties registration",
+      "hasExpiry": true,
+      "requiresUpload": true,
+      "gracePeriodDays": 0,
+      "displayOrder": 5,
+      "isActive": true,
+      "fields": [
+        {
+          "key": "scfhs_number",
+          "label": "SCFHS Registration Number",
+          "type": "text",
+          "required": true,
+          "displayOrder": 1
+        },
+        {
+          "key": "classification",
+          "label": "Professional Classification",
+          "type": "select",
+          "required": true,
+          "displayOrder": 2
+        },
+        {
+          "key": "issue_date",
+          "label": "Issue Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 3,
+          "isIssueDate": true
+        },
+        {
+          "key": "expiry_date",
+          "label": "Expiry Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 4,
+          "isExpiryDate": true
+        }
+      ]
+    },
+    {
+      "code": "EMP_CONTRACT",
+      "name": "Employment Contract",
+      "categoryCode": "LIABILITY",
+      "description": "Employment contract document (eligibility comes from the Contract Master)",
+      "hasExpiry": true,
+      "requiresUpload": true,
+      "gracePeriodDays": 0,
+      "displayOrder": 6,
+      "isActive": true,
+      "fields": [
+        {
+          "key": "contract_reference",
+          "label": "Contract ID/Reference No.",
+          "type": "text",
+          "required": true,
+          "displayOrder": 1
+        },
+        {
+          "key": "contracting_agency",
+          "label": "Contracting Agency",
+          "type": "text",
+          "required": true,
+          "displayOrder": 2
+        },
+        {
+          "key": "start_date",
+          "label": "Start Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 3,
+          "isIssueDate": true
+        },
+        {
+          "key": "expiry_date",
+          "label": "Expiry Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 4,
+          "isExpiryDate": true
+        }
+      ]
+    },
+    {
+      "code": "MALPRACTICE",
+      "name": "Medical Malpractice Insurance",
+      "categoryCode": "LIABILITY",
+      "description": "Professional liability insurance",
+      "hasExpiry": true,
+      "requiresUpload": true,
+      "gracePeriodDays": 0,
+      "displayOrder": 7,
+      "isActive": true,
+      "fields": [
+        {
+          "key": "policy_number",
+          "label": "Policy Number",
+          "type": "text",
+          "required": true,
+          "displayOrder": 1
+        },
+        {
+          "key": "insurance_provider",
+          "label": "Insurance Provider",
+          "type": "text",
+          "required": true,
+          "displayOrder": 2
+        },
+        {
+          "key": "effective_date",
+          "label": "Effective Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 3,
+          "isIssueDate": true
+        },
+        {
+          "key": "expiry_date",
+          "label": "Expiry Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 4,
+          "isExpiryDate": true
+        }
+      ]
+    },
+    {
+      "code": "CLEARANCE",
+      "name": "Staff Clearance",
+      "categoryCode": "LIABILITY",
+      "description": "Medical fitness and background clearance",
+      "hasExpiry": false,
+      "requiresUpload": true,
+      "gracePeriodDays": 0,
+      "displayOrder": 8,
+      "isActive": true,
+      "fields": [
+        {
+          "key": "clearance_form_id",
+          "label": "Clearance Form ID",
+          "type": "text",
+          "required": true,
+          "displayOrder": 1
+        },
+        {
+          "key": "medical_fitness_status",
+          "label": "Medical Fitness Status",
+          "type": "select",
+          "required": true,
+          "displayOrder": 2
+        },
+        {
+          "key": "background_check_status",
+          "label": "Background Check Status",
+          "type": "select",
+          "required": true,
+          "displayOrder": 3
+        },
+        {
+          "key": "approval_date",
+          "label": "Approval Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 4,
+          "isIssueDate": true
+        }
+      ]
+    },
+    {
+      "code": "CORE_COMP",
+      "name": "Core Generic Competency",
+      "categoryCode": "COMPETENCY",
+      "description": "Core competency assessment (expiry = next reassessment)",
+      "hasExpiry": true,
+      "requiresUpload": true,
+      "gracePeriodDays": 0,
+      "displayOrder": 9,
+      "isActive": true,
+      "fields": [
+        {
+          "key": "assessment_date",
+          "label": "Assessment Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 1,
+          "isIssueDate": true
+        },
+        {
+          "key": "evaluator_name",
+          "label": "Evaluator Name",
+          "type": "text",
+          "required": true,
+          "displayOrder": 2
+        },
+        {
+          "key": "result",
+          "label": "Pass/Fail Status",
+          "type": "select",
+          "required": true,
+          "displayOrder": 3
+        },
+        {
+          "key": "next_reassessment_date",
+          "label": "Next Reassessment Due Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 4,
+          "isExpiryDate": true
+        }
+      ]
+    },
+    {
+      "code": "UNIT_COMP",
+      "name": "Unit Specific Competency",
+      "categoryCode": "COMPETENCY",
+      "description": "Unit competency assessment (expiry = next reassessment)",
+      "hasExpiry": true,
+      "requiresUpload": true,
+      "gracePeriodDays": 0,
+      "displayOrder": 10,
+      "isActive": true,
+      "fields": [
+        {
+          "key": "assigned_unit",
+          "label": "Assigned Unit",
+          "type": "reference",
+          "required": true,
+          "displayOrder": 1
+        },
+        {
+          "key": "assessment_date",
+          "label": "Assessment Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 2,
+          "isIssueDate": true
+        },
+        {
+          "key": "evaluator_name",
+          "label": "Evaluator Name",
+          "type": "text",
+          "required": true,
+          "displayOrder": 3
+        },
+        {
+          "key": "result",
+          "label": "Pass/Fail Status",
+          "type": "select",
+          "required": true,
+          "displayOrder": 4
+        },
+        {
+          "key": "next_reassessment_date",
+          "label": "Next Reassessment Due Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 5,
+          "isExpiryDate": true
+        }
+      ]
+    },
+    {
+      "code": "SEDATION",
+      "name": "Conscious Sedation",
+      "categoryCode": "COMPETENCY",
+      "description": "Conscious sedation certification",
+      "hasExpiry": true,
+      "requiresUpload": true,
+      "gracePeriodDays": 0,
+      "displayOrder": 11,
+      "isActive": true,
+      "fields": [
+        {
+          "key": "certificate_number",
+          "label": "Certificate Number",
+          "type": "text",
+          "required": true,
+          "displayOrder": 1
+        },
+        {
+          "key": "certifying_department",
+          "label": "Certifying Department",
+          "type": "reference",
+          "required": true,
+          "displayOrder": 2
+        },
+        {
+          "key": "issue_date",
+          "label": "Issue Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 3,
+          "isIssueDate": true
+        },
+        {
+          "key": "expiry_date",
+          "label": "Expiry Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 4,
+          "isExpiryDate": true
+        },
+        {
+          "key": "supervised_cases",
+          "label": "Supervised Cases Count",
+          "type": "number",
+          "required": true,
+          "displayOrder": 5
+        }
+      ]
+    },
+    {
+      "code": "BLS",
+      "name": "Basic Life Support (BLS)",
+      "categoryCode": "LIFE_SUPPORT",
+      "description": "CPR and airway basics",
+      "hasExpiry": true,
+      "requiresUpload": true,
+      "gracePeriodDays": 0,
+      "displayOrder": 12,
+      "isActive": true,
+      "fields": [
+        {
+          "key": "certificate_number",
+          "label": "Certificate Number",
+          "type": "text",
+          "required": true,
+          "displayOrder": 1
+        },
+        {
+          "key": "training_provider",
+          "label": "Training Provider",
+          "type": "text",
+          "required": true,
+          "displayOrder": 2
+        },
+        {
+          "key": "issue_date",
+          "label": "Issue Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 3,
+          "isIssueDate": true
+        },
+        {
+          "key": "expiry_date",
+          "label": "Expiry Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 4,
+          "isExpiryDate": true
+        }
+      ]
+    },
+    {
+      "code": "ACLS",
+      "name": "Advanced Cardiac Life Support (ACLS)",
+      "categoryCode": "LIFE_SUPPORT",
+      "description": "Adult cardiac emergencies",
+      "hasExpiry": true,
+      "requiresUpload": true,
+      "gracePeriodDays": 0,
+      "displayOrder": 13,
+      "isActive": true,
+      "fields": [
+        {
+          "key": "certificate_number",
+          "label": "Certificate Number",
+          "type": "text",
+          "required": true,
+          "displayOrder": 1
+        },
+        {
+          "key": "training_provider",
+          "label": "Training Provider",
+          "type": "text",
+          "required": true,
+          "displayOrder": 2
+        },
+        {
+          "key": "issue_date",
+          "label": "Issue Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 3,
+          "isIssueDate": true
+        },
+        {
+          "key": "expiry_date",
+          "label": "Expiry Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 4,
+          "isExpiryDate": true
+        }
+      ]
+    },
+    {
+      "code": "PALS",
+      "name": "Pediatric Advanced Life Support (PALS)",
+      "categoryCode": "LIFE_SUPPORT",
+      "description": "Pediatric emergencies",
+      "hasExpiry": true,
+      "requiresUpload": true,
+      "gracePeriodDays": 0,
+      "displayOrder": 14,
+      "isActive": true,
+      "fields": [
+        {
+          "key": "certificate_number",
+          "label": "Certificate Number",
+          "type": "text",
+          "required": true,
+          "displayOrder": 1
+        },
+        {
+          "key": "training_provider",
+          "label": "Training Provider",
+          "type": "text",
+          "required": true,
+          "displayOrder": 2
+        },
+        {
+          "key": "issue_date",
+          "label": "Issue Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 3,
+          "isIssueDate": true
+        },
+        {
+          "key": "expiry_date",
+          "label": "Expiry Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 4,
+          "isExpiryDate": true
+        }
+      ]
+    },
+    {
+      "code": "NRP",
+      "name": "Neonatal Resuscitation Program (NRP)",
+      "categoryCode": "LIFE_SUPPORT",
+      "description": "Newborn resuscitation",
+      "hasExpiry": true,
+      "requiresUpload": true,
+      "gracePeriodDays": 0,
+      "displayOrder": 15,
+      "isActive": true,
+      "fields": [
+        {
+          "key": "certificate_number",
+          "label": "Certificate Number",
+          "type": "text",
+          "required": true,
+          "displayOrder": 1
+        },
+        {
+          "key": "training_provider",
+          "label": "Training Provider",
+          "type": "text",
+          "required": true,
+          "displayOrder": 2
+        },
+        {
+          "key": "issue_date",
+          "label": "Issue Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 3,
+          "isIssueDate": true
+        },
+        {
+          "key": "expiry_date",
+          "label": "Expiry Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 4,
+          "isExpiryDate": true
+        }
+      ]
+    },
+    {
+      "code": "BICSL",
+      "name": "Basic Infection Control Skills License (BICSL)",
+      "categoryCode": "LIFE_SUPPORT",
+      "description": "Basic infection control",
+      "hasExpiry": true,
+      "requiresUpload": true,
+      "gracePeriodDays": 0,
+      "displayOrder": 16,
+      "isActive": true,
+      "fields": [
+        {
+          "key": "certificate_number",
+          "label": "Certificate Number",
+          "type": "text",
+          "required": true,
+          "displayOrder": 1
+        },
+        {
+          "key": "training_provider",
+          "label": "Training Facility",
+          "type": "text",
+          "required": true,
+          "displayOrder": 2
+        },
+        {
+          "key": "issue_date",
+          "label": "Issue Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 3,
+          "isIssueDate": true
+        },
+        {
+          "key": "expiry_date",
+          "label": "Expiry Date",
+          "type": "date",
+          "required": true,
+          "displayOrder": 4,
+          "isExpiryDate": true
+        }
+      ]
+    }
+  ]
+}

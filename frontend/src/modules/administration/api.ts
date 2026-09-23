@@ -40,7 +40,8 @@ export interface ApprovalRequest {
     | { kind: 'TEMPLATE_CREATE'; template: { code: string; name: string }; reason: string }
     | { kind: 'TEMPLATE_UPDATE'; templateId: number; code: string; change: Record<string, unknown>; before: Record<string, unknown>; reason: string }
     | { kind: 'CATEGORY_CREATE'; category: { code: string; name: string }; reason: string }
-    | { kind: 'CATEGORY_UPDATE'; code: string; change: Record<string, unknown>; before: Record<string, unknown>; reason: string };
+    | { kind: 'CATEGORY_UPDATE'; code: string; change: Record<string, unknown>; before: Record<string, unknown>; reason: string }
+    | { kind: 'BASELINE_IMPORT'; fileHash: string; totals: BaselineReport['totals']; reason: string };
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXECUTED';
   createdAt: string;
   initiator: { displayName: string; email: string };
@@ -131,4 +132,27 @@ export function usePamActions() {
     elevate: useMutation({ mutationFn: (body: { reason: string; durationHours: number }) => http.post('/pam/elevate', body), onSuccess: done }),
     end: useMutation({ mutationFn: () => http.post('/pam/end'), onSuccess: done }),
   };
+}
+
+// ── Hospital baseline import (P7) ─────────────────────────────────────────────
+export interface BaselineRow { section: string; code: string; status: 'CREATE' | 'UNCHANGED' | 'CONFLICT' | 'REJECTED'; issues: string[] }
+export interface BaselineReport {
+  fileHash: string;
+  counts: Record<string, Record<BaselineRow['status'], number>>;
+  totals: Record<BaselineRow['status'], number> & { beds: number; fields: number };
+  rows: BaselineRow[];
+  canImport: boolean;
+}
+
+export const useBaselinePreview = () => useMutation({
+  mutationFn: (file: unknown) => http.post<BaselineReport>('/admin/baseline-import/preview', { file }),
+});
+
+export function useBaselineRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { file: unknown; reason: string }) =>
+      http.post<{ status: 'PENDING_APPROVAL'; requestId: number } | { status: 'APPLIED' }>('/admin/baseline-import', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['approvals'] }),
+  });
 }

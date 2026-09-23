@@ -17,12 +17,12 @@ const HR_ROLES = ['HR_ADMIN', 'SYSTEM_ADMIN'] as const;
 /** W4, and the chk bed_count BETWEEN 0 AND 500 constraint. */
 export const MAX_BEDS = 500;
 
-const Code = z.string().trim().toUpperCase().pipe(z.string().regex(/^[A-Z][A-Z0-9_]{0,19}$/, 'Code: letters, digits and _ (max 20), starting with a letter'));
-const Name = z.string().trim().min(1).max(120);
-const NameAr = z.string().trim().max(120);
-const Description = z.string().trim().max(500);
+export const Code = z.string().trim().toUpperCase().pipe(z.string().regex(/^[A-Z][A-Z0-9_]{0,19}$/, 'Code: letters, digits and _ (max 20), starting with a letter'));
+export const Name = z.string().trim().min(1).max(120);
+export const NameAr = z.string().trim().max(120);
+export const Description = z.string().trim().max(500);
 const Reason = z.string().trim().min(3, 'A reason is required for every bed-capacity change (W4)').max(200);
-const Beds = z.number().int().min(0).max(MAX_BEDS);
+export const Beds = z.number().int().min(0).max(MAX_BEDS);
 
 export const DepartmentCreateBody = z.strictObject({ code: Code, name: Name, nameAr: NameAr.optional(), description: Description.optional() });
 export const DepartmentUpdateBody = z.strictObject({ name: Name.optional(), nameAr: NameAr.nullable().optional(), description: Description.nullable().optional(), isActive: z.boolean().optional() });

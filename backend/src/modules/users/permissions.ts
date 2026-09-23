@@ -20,6 +20,8 @@ export const PERMISSIONS = {
   'roles.write': ['HR_ADMIN', 'SYSTEM_ADMIN'],
   'approvals.read': ['HR_ADMIN', 'SYSTEM_ADMIN'],
   'approvals.decide': ['HR_ADMIN', 'SYSTEM_ADMIN'],
+  // Hospital master-data import (P7): hospital-wide scope and four-eyes enforced in the service.
+  'baseline.import': ['HR_ADMIN', 'SYSTEM_ADMIN'],
   // Reference data every signed-in user may read.
   'matrix.read': ['EMPLOYEE'],
   'workforce.read': ['EMPLOYEE'], // departments, units, positions, coverage targets, bed summary (API.md §2.4)

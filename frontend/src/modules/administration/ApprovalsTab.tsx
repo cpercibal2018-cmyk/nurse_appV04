@@ -13,6 +13,7 @@ function describe(r: ApprovalRequest): string {
     const diff = Object.keys(p.change).map((k) => `${k}: ${show(p.before[k])} → ${show(p.change[k])}`).join('; ');
     return `Change credential type ${p.code}: ${diff} — “${p.reason}”`;
   }
+  if (p.kind === 'BASELINE_IMPORT') return `Hospital baseline import — ${p.totals.CREATE} new records (${p.totals.beds} beds, ${p.totals.fields} credential fields), ${p.totals.UNCHANGED} unchanged; file ${p.fileHash.slice(0, 12)} — “${p.reason}”`;
   if (p.kind === 'CATEGORY_CREATE') return `New credential category ${p.category.code} — ${p.category.name} — “${p.reason}”`;
   if (p.kind === 'CATEGORY_UPDATE') {
     const diff = Object.keys(p.change).map((k) => `${k}: ${show(p.before[k])} → ${show(p.change[k])}`).join('; ');

@@ -4,6 +4,7 @@ import type { Db } from '../../lib/prisma.js';
 import { authOf, authorize } from '../../middleware/authorize.js';
 import { idempotent } from '../../middleware/idempotency.js';
 import { createApprovalService, DecideBody, ListApprovalsQuery } from '../administration/approvals.js';
+import { BaselinePreviewBody, BaselineRequestBody, type BaselineImportService } from '../administration/baseline-import.js';
 import { createPamService, ElevateBody } from '../administration/pam.js';
 import { CreateAccountBody, ListAccountsQuery, UpdateAccountBody, type createAccountService } from './accounts.js';
 import { ACCESS_MATRIX, PERMISSIONS } from './permissions.js';
@@ -18,9 +19,10 @@ export function createUsersRouter(
   accounts: ReturnType<typeof createAccountService>,
   roles: RoleAssignmentService,
   catalog: CatalogService,
+  baseline: BaselineImportService,
 ) {
   const router = Router();
-  const approvals = createApprovalService(db, roles, catalog);
+  const approvals = createApprovalService(db, roles, catalog, baseline);
   const pam = createPamService(db);
 
   // ── Accounts ──────────────────────────────────────────────────────────────
@@ -55,6 +57,16 @@ export function createUsersRouter(
     const { id } = IdParam.parse(req.params);
     await roles.revoke(authOf(res), id, RevokeBody.parse(req.body).reason, res.locals.requestId);
     res.status(204).end();
+  });
+
+  // ── Hospital baseline import (P7): preview, then a four-eyes request ──────
+  router.post('/admin/baseline-import/preview', authorize('baseline.import'), async (req, res) => {
+    res.json(await baseline.preview(authOf(res), BaselinePreviewBody.parse(req.body).file));
+  });
+  router.post('/admin/baseline-import', authorize('baseline.import'), async (req, res) => {
+    const body = BaselineRequestBody.parse(req.body);
+    const out = await baseline.request(authOf(res), body.file, body.reason, res.locals.requestId);
+    res.status(out.status === 'PENDING_APPROVAL' ? 202 : 201).json(out);
   });
 
   // ── Four-eyes approvals ───────────────────────────────────────────────────

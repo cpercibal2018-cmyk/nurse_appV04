@@ -26,7 +26,7 @@ export const FieldDefSchema = z.strictObject({
 });
 export type FieldDef = z.infer<typeof FieldDefSchema>;
 
-const FieldDefs = z.array(FieldDefSchema).max(30).superRefine((defs, ctx) => {
+export const FieldDefs = z.array(FieldDefSchema).max(30).superRefine((defs, ctx) => {
   const keys = new Set<string>();
   for (const d of defs) {
     if (keys.has(d.key)) ctx.addIssue({ code: 'custom', message: `Duplicate field key ${d.key}` });

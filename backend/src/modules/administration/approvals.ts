@@ -11,9 +11,10 @@ import { HttpError, notFound } from '../../lib/http-errors.js';
 import type { Db } from '../../lib/prisma.js';
 import { scopeCovers, unitScope, type AuthContext, type UnitScope } from '../users/access.js';
 import { isCatalogPayload, type CatalogApprovalPayload, type CatalogService } from '../credentials/catalog.js';
+import { isBaselinePayload, type BaselineApprovalPayload, type BaselineImportService } from './baseline-import.js';
 import type { ApprovalPayload as RolePayload, RoleAssignmentService } from '../users/role-assignments.js';
 
-type ApprovalPayload = RolePayload | CatalogApprovalPayload;
+type ApprovalPayload = RolePayload | CatalogApprovalPayload | BaselineApprovalPayload;
 const isCatalog = (p: ApprovalPayload): p is CatalogApprovalPayload => isCatalogPayload(p);
 
 export const DecideBody = z.strictObject({
@@ -28,7 +29,7 @@ interface LockedRow { id: number; initiator_id: number; status: string; action_t
 /** The same scope rule guards both the queue and decisions (including rejection).
  * A UNIT grant cannot cover a DEPARTMENT grant: future units would expand it. */
 function canDecide(auth: AuthContext, scope: UnitScope, p: ApprovalPayload): boolean {
-  if (isCatalog(p)) return scope.all; // the catalog is hospital-wide (D-25)
+  if (isCatalog(p) || isBaselinePayload(p)) return scope.all; // hospital-wide configuration (D-25, P7)
   const type = p.kind === 'GRANT' ? p.grant.scopeType : p.update.scopeType ?? 'SYSTEM';
   const ids = p.kind === 'GRANT' ? p.grant.scopeIds : p.update.scopeIds ?? [];
   if (type === 'SYSTEM') return scope.all && ids.length === 0;
@@ -40,7 +41,7 @@ function canDecide(auth: AuthContext, scope: UnitScope, p: ApprovalPayload): boo
   return scopeCovers(scope, ids);
 }
 
-export function createApprovalService(db: Db, roles: RoleAssignmentService, catalog: CatalogService) {
+export function createApprovalService(db: Db, roles: RoleAssignmentService, catalog: CatalogService, baseline: BaselineImportService) {
   async function assertDecisionScope(tx: Parameters<Parameters<Db['$transaction']>[0]>[0], auth: AuthContext, p: ApprovalPayload) {
     if (!canDecide(auth, await unitScope(tx, auth, ADMIN_ROLES), p)) {
       throw new HttpError(403, 'SCOPE_NOT_COVERED', 'This approval request is outside your assigned scope');
@@ -75,9 +76,10 @@ export function createApprovalService(db: Db, roles: RoleAssignmentService, cata
       const req = await lockPending(tx, id, auth.user.id);
       await assertDecisionScope(tx, auth, req.payload);
       // The action runs as the approver: every rule is checked again for them.
-      const resultId = isCatalog(req.payload)
-        ? await catalog.executeApproved(tx, auth, req.payload, id, requestId)
-        : await roles.executeApproved(tx, auth, req.payload, id, requestId);
+      const p = req.payload;
+      const resultId = isBaselinePayload(p) ? await baseline.executeApproved(tx, auth, p, id, requestId)
+        : isCatalog(p) ? await catalog.executeApproved(tx, auth, p, id, requestId)
+        : await roles.executeApproved(tx, auth, p, id, requestId);
       const now = new Date();
       await tx.approvalRequest.update({ where: { id }, data: { status: 'EXECUTED', approverId: auth.user.id, reason, decidedAt: now, executedAt: now } });
       await appendAudit(tx, {
@@ -85,7 +87,7 @@ export function createApprovalService(db: Db, roles: RoleAssignmentService, cata
         changes: { initiatorId: req.initiator_id, approverId: auth.user.id, actionType: req.action_type, reason, resultId }, requestId, priority: 'HIGH',
       });
       return { id, status: 'EXECUTED' as const, resultId };
-    });
+    }, { timeout: 120_000 }); // a baseline import creates a few hundred rows
   }
 
   async function reject(auth: AuthContext, id: number, reason: string, requestId?: string) {

@@ -46,6 +46,7 @@ Generated from `backend/src/modules/users/permissions.ts`. **`backend/test/docs.
 | `roles.write` | HR_ADMIN, SYSTEM_ADMIN | Grant, update, revoke role assignments |
 | `approvals.read` | HR_ADMIN, SYSTEM_ADMIN | Four-eyes queue |
 | `approvals.decide` | HR_ADMIN, SYSTEM_ADMIN | Approve / reject a request |
+| `baseline.import` | HR_ADMIN, SYSTEM_ADMIN | Preview and request a hospital baseline import (hospital-wide scope and a second approver enforced in the service) |
 | `matrix.read` | EMPLOYEE | The §8.1 access matrix (read-only) |
 | `workforce.read` | EMPLOYEE | Departments, units, positions, coverage targets, bed summary |
 | `workforce.write` | HR_ADMIN, SYSTEM_ADMIN | Organisation changes (system-wide scope in the service except beds and targets) |
