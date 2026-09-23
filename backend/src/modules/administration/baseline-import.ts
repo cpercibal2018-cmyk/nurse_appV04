@@ -197,7 +197,7 @@ export async function previewBaseline(tx: DbClient, file: BaselineFile): Promise
 
 // ── Apply (inside the approval's transaction) ───────────────────────────────
 
-async function applyBaseline(tx: DbClient, actorUserId: number, file: BaselineFile, reason: string, approvalRequestId: number | null, requestId?: string) {
+export async function applyBaseline(tx: DbClient, actorUserId: number, file: BaselineFile, reason: string, approvalRequestId: number | null, requestId?: string) {
   const report = await previewBaseline(tx, file);
   if (report.totals.REJECTED || report.totals.CONFLICT) {
     throw new HttpError(409, 'BASELINE_CHANGED_SINCE_REQUEST', 'The database has changed since this import was requested — reject it and preview the file again', report.rows.filter((r) => r.status === 'REJECTED' || r.status === 'CONFLICT'));
