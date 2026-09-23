@@ -9,7 +9,7 @@ import { findChainBreaks } from '../src/lib/audit.js';
 import { addDays, riyadhDate } from '../src/lib/dates.js';
 import { toHijriIso } from '../src/lib/hijri.js';
 import type { Db } from '../src/lib/prisma.js';
-import { FILES, makeNurse, makeOrg, makeTemplate, makeUser, openDb, signIn, TEST_URL, testApp, uniq } from './helpers.js';
+import { FILES, loadTemplate, makeNurse, makeOrg, makeTemplate, makeUser, openDb, signIn, TEST_URL, testApp, uniq } from './helpers.js';
 
 const describeDb = TEST_URL ? describe : describe.skip;
 const today = () => riyadhDate();
@@ -451,13 +451,21 @@ describeDb('credentials and eligibility', () => {
       expect((await (await signIn(app, (await makeUser(db)).email)).get('/credential-templates')).status).toBe(200);
     });
 
+    it('field definitions come back in the order they were given, from the relational table (P1)', async () => {
+      const tpl = await makeTemplate(db);
+      const listed = (await hr.get('/credential-templates')).body.items.find((t: { id: number }) => t.id === tpl.id);
+      expect(listed.fieldDefs.map((f: { key: string }) => f.key)).toEqual(['licence_number', 'issue_date', 'expiry_date']);
+      expect(listed.fieldDefs[1]).toEqual({ key: 'issue_date', label: 'Issue date', type: 'date', required: true, displayOrder: 2, isIssueDate: true });
+      expect(listed).not.toHaveProperty('fieldDefsLegacy');
+    });
+
     it('a partial change leaves the other fields as stored', async () => {
       const tpl = await makeTemplate(db);
       const hr2 = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] })).email);
       const change = await hr.patch(`/credential-templates/${tpl.id}`, { gracePeriodDays: 30, reason });
       expect(change.body.status).toBe('PENDING_APPROVAL');
       await approve(hr2, change.body.requestId);
-      const after = await db.credentialTemplate.findUniqueOrThrow({ where: { id: tpl.id } });
+      const after = await loadTemplate(db, tpl.id);
       expect(after.gracePeriodDays).toBe(30);
       expect(after.fieldDefs).toEqual(tpl.fieldDefs);
       expect([after.hasExpiry, after.requiresUpload, after.displayOrder]).toEqual([tpl.hasExpiry, tpl.requiresUpload, tpl.displayOrder]);

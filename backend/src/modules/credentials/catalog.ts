@@ -4,7 +4,6 @@
 // eligibility for employees who lack that credential."
 
 import { z } from 'zod';
-import type { CredentialTemplate } from '../../generated/prisma/client.js';
 import { appendAudit } from '../../lib/audit.js';
 import { isIsoDate, toDbDate } from '../../lib/dates.js';
 import { HttpError, notFound } from '../../lib/http-errors.js';
@@ -12,6 +11,7 @@ import { Prisma, type Db, type DbClient } from '../../lib/prisma.js';
 import { refreshEligibility, refreshUnit } from '../eligibility/state.service.js';
 import { unitScope, type AuthContext } from '../users/access.js';
 import { HR_ROLES, REVIEW_ROLES } from './access.js';
+import { canonicalField, fieldRows, presentTemplate, WITH_FIELDS, type TemplateView } from './fields.js';
 
 const FieldType = z.enum(['text', 'date', 'date_hijri', 'select', 'number', 'country', 'reference']);
 export const FieldDefSchema = z.strictObject({
@@ -36,7 +36,7 @@ const FieldDefs = z.array(FieldDefSchema).max(30).superRefine((defs, ctx) => {
   }
   if (defs.filter((d) => d.isIssueDate).length > 1) ctx.addIssue({ code: 'custom', message: 'At most one issue-date field' });
   if (defs.filter((d) => d.isExpiryDate).length > 1) ctx.addIssue({ code: 'custom', message: 'At most one expiry-date field' });
-});
+}).transform((defs) => defs.map(canonicalField)); // same shape as stored rows, so comparisons are exact
 
 /** Every catalog change goes to a second administrator (D-24), who needs to know why. */
 const ChangeReason = z.string().trim().min(10, 'A catalog change needs a reason of at least 10 characters').max(1000);
@@ -83,7 +83,7 @@ export type CatalogApprovalPayload =
   /** `before` holds the stored values of the changed fields, to refuse a stale approval. */
   | { kind: 'TEMPLATE_UPDATE'; templateId: number; code: string; change: TemplateChange; before: ChangedValues; reason: string };
 
-export type CatalogOutcome = { status: 'APPLIED'; template: CredentialTemplate } | { status: 'PENDING_APPROVAL'; requestId: number };
+export type CatalogOutcome = { status: 'APPLIED'; template: TemplateView } | { status: 'PENDING_APPROVAL'; requestId: number };
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
@@ -125,9 +125,14 @@ export function createCatalogService(db: Db) {
     if (await tx.credentialTemplate.findUnique({ where: { code: t.code }, select: { id: true } })) throw new HttpError(409, 'TEMPLATE_EXISTS', `A credential type with code ${t.code} already exists`);
   }
 
+  async function loadTemplate(tx: DbClient, id: number): Promise<TemplateView | null> {
+    const t = await tx.credentialTemplate.findUnique({ where: { id }, include: WITH_FIELDS });
+    return t ? presentTemplate(t) : null;
+  }
+
   /** The fields the change really alters, with their stored values. */
   async function changedFields(tx: DbClient, id: number, change: TemplateChange) {
-    const current = await tx.credentialTemplate.findUnique({ where: { id } });
+    const current = await loadTemplate(tx, id);
     if (!current) throw notFound('Template not found');
     const before: ChangedValues = {};
     for (const [k, v] of Object.entries(change) as Array<[keyof TemplateChange, unknown]>) {
@@ -143,7 +148,10 @@ export function createCatalogService(db: Db) {
   async function createNow(tx: DbClient, auth: AuthContext, t: TemplateData, reason: string, approvalRequestId: number | null, requestId?: string) {
     await assertSystemWide(tx, auth);
     await validateCreate(tx, t);
-    const row = await tx.credentialTemplate.create({ data: t });
+    const { fieldDefs, ...columns } = t;
+    const created = await tx.credentialTemplate.create({ data: columns });
+    await tx.credentialTemplateField.createMany({ data: fieldRows(created.id, fieldDefs) });
+    const row = (await loadTemplate(tx, created.id))!;
     await appendAudit(tx, { actorUserId: auth.user.id, action: 'TEMPLATE_CREATED', resource: 'credential_template', resourceId: row.id, changes: { template: t, reason, approvalRequestId }, requestId, priority: 'HIGH' });
     return row;
   }
@@ -157,7 +165,14 @@ export function createCatalogService(db: Db) {
         if (!same(current[k], v)) throw new HttpError(409, 'TEMPLATE_CHANGED_SINCE_REQUEST', 'The credential type has changed since this request was made — reject it and submit a new one');
       }
     }
-    const row = await tx.credentialTemplate.update({ where: { id }, data: change });
+    const { fieldDefs, ...columns } = change;
+    if (Object.keys(columns).length) await tx.credentialTemplate.update({ where: { id }, data: columns });
+    // Field definitions are replaced as a set; the audit entry keeps before → after.
+    if (fieldDefs !== undefined) {
+      await tx.credentialTemplateField.deleteMany({ where: { templateId: id } });
+      await tx.credentialTemplateField.createMany({ data: fieldRows(id, fieldDefs) });
+    }
+    const row = (await loadTemplate(tx, id))!;
     await appendAudit(tx, { actorUserId: auth.user.id, action: 'TEMPLATE_UPDATED', resource: 'credential_template', resourceId: id, changes: { before, after: change, reason, approvalRequestId }, requestId, priority: 'HIGH' });
     // Grace, expiry handling or activity changed: re-evaluate everyone who holds it.
     if (change.gracePeriodDays !== undefined || change.hasExpiry !== undefined || change.isActive !== undefined) {
@@ -200,7 +215,9 @@ export function createCatalogService(db: Db) {
 
   return {
     listCategories: () => db.credentialCategory.findMany({ orderBy: { displayOrder: 'asc' } }),
-    listTemplates: (includeInactive: boolean) => db.credentialTemplate.findMany({ where: includeInactive ? {} : { isActive: true }, orderBy: [{ categoryCode: 'asc' }, { displayOrder: 'asc' }] }),
+    listTemplates: async (includeInactive: boolean) => (await db.credentialTemplate.findMany({
+      where: includeInactive ? {} : { isActive: true }, orderBy: [{ categoryCode: 'asc' }, { displayOrder: 'asc' }], include: WITH_FIELDS,
+    })).map(presentTemplate),
 
     // R10 as decided in D-24: every catalog change needs a second system-wide
     // administrator. Break-glass bypasses four-eyes (spec §3.6), as for roles.

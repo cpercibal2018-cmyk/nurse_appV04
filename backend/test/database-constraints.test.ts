@@ -36,6 +36,34 @@ describeDb('database constraints', () => {
 
   const day = (iso: string) => new Date(`${iso}T00:00:00Z`);
 
+  it('credential fields: one row per key, valid keys, date flags only on dates, one issue and one expiry field (P1)', async () => {
+    const code = (s: string) => `F${Date.now()}${s}`;
+    const base = { ordinal: 0, label: 'L', type: 'text' as const, required: true };
+    const violates = async (make: (tx: Prisma.TransactionClient, templateId: number) => Promise<unknown>) => inRollback(async (tx) => {
+      await tx.credentialCategory.upsert({ where: { code: 'LICENSURE' }, update: {}, create: { code: 'LICENSURE', name: 'Licensure' } });
+      const t = await tx.credentialTemplate.create({ data: { code: code('T'), name: 'T', categoryCode: 'LICENSURE' } });
+      await expect(make(tx, t.id)).rejects.toThrow();
+    });
+    await violates((tx, templateId) => tx.credentialTemplateField.createMany({ data: [{ ...base, templateId, key: 'a' }, { ...base, templateId, key: 'a', ordinal: 1 }] }));
+    await violates((tx, templateId) => tx.credentialTemplateField.create({ data: { ...base, templateId, key: 'Bad Key' } }));
+    await violates((tx, templateId) => tx.credentialTemplateField.create({ data: { ...base, templateId, key: 'x', isExpiryDate: true } }));
+    await violates((tx, templateId) => tx.credentialTemplateField.createMany({ data: [
+      { ...base, templateId, key: 'e1', type: 'date', isExpiryDate: true }, { ...base, templateId, key: 'e2', ordinal: 1, type: 'date_hijri', isExpiryDate: true },
+    ] }));
+  });
+
+  it('a deprecated position names an existing, different successor (P1)', async () => {
+    const pos = { title: 'P', tier: 'Clinical', isSchedulable: true };
+    await inRollback(async (tx) => {
+      await expect(tx.position.create({ data: { ...pos, code: `Q${Date.now()}`, replacedBy: 'NO_SUCH_POSITION' } })).rejects.toThrow();
+    });
+    await inRollback(async (tx) => {
+      const c = `S${Date.now()}`;
+      await tx.position.create({ data: { ...pos, code: c } });
+      await expect(tx.position.update({ where: { code: c }, data: { replacedBy: c } })).rejects.toThrow();
+    });
+  });
+
   it('C4: rejects overlapping Approved/Active contracts, allows an overlapping Draft', async () => {
     await inRollback(async (tx) => {
       const { emp } = await fixture(tx);

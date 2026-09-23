@@ -10,6 +10,8 @@ import { loadEnv, type Env } from '../src/config/env.js';
 import { createPasswordService } from '../src/lib/passwords.js';
 import { createPrisma, type Db } from '../src/lib/prisma.js';
 import type { AppRole, ScopeType } from '../src/generated/prisma/client.js';
+import type { FieldDef } from '../src/modules/credentials/catalog.js';
+import { fieldRows, presentTemplate, WITH_FIELDS } from '../src/modules/credentials/fields.js';
 
 export const TEST_URL = process.env.TEST_DATABASE_URL;
 export const ORIGIN = 'http://localhost:5173';
@@ -115,17 +117,24 @@ export async function makeNurse(db: Db, unitId: number, opts: { account?: boolea
 /** A credential template with one number field and issue/expiry date fields (spec §5.1.3 shape). */
 export async function makeTemplate(db: Db, opts: { gracePeriodDays?: number; requiresUpload?: boolean; hasExpiry?: boolean } = {}) {
   await db.credentialCategory.upsert({ where: { code: 'LICENSURE' }, update: {}, create: { code: 'LICENSURE', name: 'Licensure' } });
-  return db.credentialTemplate.create({
+  const fieldDefs: FieldDef[] = [
+    { key: 'licence_number', label: 'Licence number', type: 'text', required: true, displayOrder: 1 },
+    { key: 'issue_date', label: 'Issue date', type: 'date', required: true, displayOrder: 2, isIssueDate: true },
+    { key: 'expiry_date', label: 'Expiry date', type: 'date', required: true, displayOrder: 3, isExpiryDate: true },
+  ];
+  const t = await db.credentialTemplate.create({
     data: {
       code: uniq('T').toUpperCase(), name: 'Test licence', categoryCode: 'LICENSURE',
       hasExpiry: opts.hasExpiry ?? true, requiresUpload: opts.requiresUpload ?? true, gracePeriodDays: opts.gracePeriodDays ?? 0,
-      fieldDefs: [
-        { key: 'licence_number', label: 'Licence number', type: 'text', required: true, displayOrder: 1 },
-        { key: 'issue_date', label: 'Issue date', type: 'date', required: true, displayOrder: 2, isIssueDate: true },
-        { key: 'expiry_date', label: 'Expiry date', type: 'date', required: true, displayOrder: 3, isExpiryDate: true },
-      ],
     },
   });
+  await db.credentialTemplateField.createMany({ data: fieldRows(t.id, fieldDefs) });
+  return presentTemplate(await db.credentialTemplate.findUniqueOrThrow({ where: { id: t.id }, include: WITH_FIELDS }));
+}
+
+/** A credential type as the API presents it (fields as `fieldDefs`). */
+export async function loadTemplate(db: Db, id: number) {
+  return presentTemplate(await db.credentialTemplate.findUniqueOrThrow({ where: { id }, include: WITH_FIELDS }));
 }
 
 /** Minimal valid files for the magic-byte checks. */

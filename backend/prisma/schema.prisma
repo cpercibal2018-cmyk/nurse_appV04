@@ -188,16 +188,18 @@ model Department {
 
 /// SQL: CHECK (bed_count BETWEEN 0 AND 500)  (rule W4)
 model Unit {
-  id           Int      @id @default(autoincrement())
-  code         String   @unique
+  id           Int           @id @default(autoincrement())
+  code         String        @unique
   name         String
-  nameAr       String?  @map("name_ar")
+  nameAr       String?       @map("name_ar")
   description  String?
-  departmentId Int      @map("department_id")
-  bedCount     Int      @default(0) @map("bed_count")
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  departmentId Int           @map("department_id")
+  bedCount     Int           @default(0) @map("bed_count")
+  /// KPI A area (MoH Ada'a critical areas) — set by HR; replaces the unit-code map that was in kpi.ts.
+  criticalArea CriticalArea? @map("critical_area")
+  isActive     Boolean       @default(true) @map("is_active")
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz
 
   department             Department              @relation(fields: [departmentId], references: [id])
   employees              Employee[]
@@ -235,14 +237,24 @@ model Position {
   isSchedulable Boolean  @map("is_schedulable")
   isActive      Boolean  @default(true) @map("is_active")
   displayOrder  Int      @default(0) @map("display_order")
-  replacedBy    String?  @map("replaced_by") // deprecated codes: AHN -> ACTING_HEAD, CI -> NURSE_EDUCATOR
+  /// A deprecated position names its successor (e.g. AHN -> ACTING_HEAD); history keeps the old code.
+  replacedBy    String?  @map("replaced_by")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
+  replacement            Position?               @relation("PositionReplacement", fields: [replacedBy], references: [code], onDelete: Restrict)
+  replaces               Position[]              @relation("PositionReplacement")
   employees              Employee[]
   credentialRequirements CredentialRequirement[]
 
   @@map("positions")
+}
+
+/// MoH Ada'a critical areas used by nurse-to-bed KPI A.
+enum CriticalArea {
+  ICU
+  ER
+  OR
 }
 
 enum ShiftType {
@@ -280,35 +292,35 @@ enum MaritalStatus {
 
 /// SQL: trigger trg_employees_compose_full_name (rule E3); CHECK salary >= 0.
 model Employee {
-  id              Int            @id @default(autoincrement())
-  jobNumber       String         @unique @map("job_number") // no format rule (E1)
-  firstName       String         @map("first_name")
-  middleName      String?        @map("middle_name")
-  lastName        String         @map("last_name")
-  fullName        String         @map("full_name") // derived by trigger — never supplied
-  jobTitle        String?        @map("job_title")
-  fileNo          String?        @map("file_no") // not unique (E8)
-  rankGrade       String?        @map("rank_grade")
-  nationality     String?
-  jobPostLocation String?        @map("job_post_location")
-  actualWorkPlace String?        @map("actual_work_place")
-  specialty       String?
-  maritalStatus   MaritalStatus? @map("marital_status")
-  salary          Decimal?       @db.Decimal(12, 2) // SAR
-  contactEmail    String         @map("contact_email")
+  id                    Int            @id @default(autoincrement())
+  jobNumber             String         @unique @map("job_number") // no format rule (E1)
+  firstName             String         @map("first_name")
+  middleName            String?        @map("middle_name")
+  lastName              String         @map("last_name")
+  fullName              String         @map("full_name") // derived by trigger — never supplied
+  jobTitle              String?        @map("job_title")
+  fileNo                String?        @map("file_no") // not unique (E8)
+  rankGrade             String?        @map("rank_grade")
+  nationality           String?
+  jobPostLocation       String?        @map("job_post_location")
+  actualWorkPlace       String?        @map("actual_work_place")
+  specialty             String?
+  maritalStatus         MaritalStatus? @map("marital_status")
+  salary                Decimal?       @db.Decimal(12, 2) // SAR
+  contactEmail          String         @map("contact_email")
   /// E.164, "+" and 8–15 digits (D-35). The employee may update both (self-service).
-  primaryPhone          String? @map("primary_phone") @db.VarChar(16)
+  primaryPhone          String?        @map("primary_phone") @db.VarChar(16)
   /// Next-of-kin number — third-party data: the employee and HR only, never the supervisor view (D-35).
-  emergencyContactPhone String? @map("emergency_contact_phone") @db.VarChar(16)
+  emergencyContactPhone String?        @map("emergency_contact_phone") @db.VarChar(16)
   /// null = Unassigned (replaces the V03 sentinel unit id 0).
-  unitId          Int?           @map("unit_id")
-  positionCode    String         @map("position_code")
+  unitId                Int?           @map("unit_id")
+  positionCode          String         @map("position_code")
   /// Employment status values beyond "Active" are REQUIREMENT NOT ESTABLISHED.
-  status          String         @default("Active")
-  hireDate        DateTime?      @map("hire_date") @db.Date
-  deletedAt       DateTime?      @map("deleted_at") @db.Timestamptz
-  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  status                String         @default("Active")
+  hireDate              DateTime?      @map("hire_date") @db.Date
+  deletedAt             DateTime?      @map("deleted_at") @db.Timestamptz
+  createdAt             DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime       @updatedAt @map("updated_at") @db.Timestamptz
 
   unit             Unit?              @relation(fields: [unitId], references: [id])
   position         Position           @relation(fields: [positionCode], references: [code])
@@ -417,19 +429,52 @@ model CredentialTemplate {
   description     String?
   hasExpiry       Boolean  @default(true) @map("has_expiry")
   requiresUpload  Boolean  @default(true) @map("requires_upload")
-  /// [{key,label,type,required,isIssueDate?,isExpiryDate?}] — spec §5.1
-  fieldDefs       Json     @default("[]") @map("field_defs")
+  /// Pre-migration JSON copy of the field definitions, kept only as a rollback
+  /// reference; nothing reads it. The fields live in credential_template_fields.
+  fieldDefsLegacy Json?    @map("field_defs_legacy")
   gracePeriodDays Int      @default(0) @map("grace_period_days")
   displayOrder    Int      @default(0) @map("display_order")
   isActive        Boolean  @default(true) @map("is_active")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  category     CredentialCategory      @relation(fields: [categoryCode], references: [code])
+  category     CredentialCategory        @relation(fields: [categoryCode], references: [code])
+  fields       CredentialTemplateField[]
   requirements CredentialRequirement[]
   credentials  Credential[]
   waivers      CredentialWaiver[]
 
   @@map("credential_templates")
+}
+
+enum CredentialFieldType {
+  text
+  date
+  date_hijri
+  select
+  number
+  country
+  reference
+}
+
+/// One tracked field of a credential type (spec §5.1.3). `ordinal` keeps the
+/// order the administrator gave; `key` is what credentials.tracking_data uses.
+model CredentialTemplateField {
+  id           Int                 @id @default(autoincrement())
+  templateId   Int                 @map("template_id")
+  ordinal      Int
+  key          String
+  label        String
+  type         CredentialFieldType
+  required     Boolean
+  displayOrder Int                 @default(0) @map("display_order")
+  isIssueDate  Boolean             @default(false) @map("is_issue_date")
+  isExpiryDate Boolean             @default(false) @map("is_expiry_date")
+
+  template CredentialTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+
+  @@unique([templateId, key])
+  @@unique([templateId, ordinal])
+  @@map("credential_template_fields")
 }
 
 /// A credential rule for a unit (spec §5.1.4: unit required); positionCode null =

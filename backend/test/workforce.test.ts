@@ -141,6 +141,15 @@ describeDb('workforce, employees and contracts', () => {
       expect(res.status).toBe(200);
       expect(res.body.kpiA.areas).toHaveLength(3);
       expect(res.body.thresholdSource).toMatch(/not in the repository/);
+
+      // KPI A areas come from units.critical_area, set by system-wide HR — not from unit codes in the code.
+      const icu = await hr.post('/units', { code: uniq('KICU').toUpperCase().slice(0, 20), name: 'KPI ICU', departmentId: org.dept.id, bedCount: 4, criticalArea: 'ICU' });
+      expect(icu.body.criticalArea).toBe('ICU');
+      const withIcu = await sup.get(`/kpi/nurse-to-bed?date=${today()}&shift=Morning`);
+      expect(withIcu.body.areaUnits[icu.body.code]).toBe('ICU');
+      expect(withIcu.body.kpiA.areas.find((a: { area: string }) => a.area === 'ICU').beds).toBe(res.body.kpiA.areas.find((a: { area: string }) => a.area === 'ICU').beds + 4);
+      expect((await hr.patch(`/units/${icu.body.id}`, { criticalArea: null })).body.criticalArea).toBeNull();
+      expect((await sup.get(`/kpi/nurse-to-bed?date=${today()}&shift=Morning`)).body.areaUnits[icu.body.code]).toBeUndefined();
       expect((await (await signIn(app, (await makeUser(db)).email)).get(`/kpi/nurse-to-bed?date=${today()}&shift=Morning`)).status).toBe(403);
     });
   });

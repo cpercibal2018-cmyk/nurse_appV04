@@ -13,6 +13,7 @@ import { refreshEligibility } from '../src/modules/eligibility/state.service.js'
 import { createPrisma, type Db } from '../src/lib/prisma.js';
 import { appendAudit } from '../src/lib/audit.js';
 import { toHijriIso } from '../src/lib/hijri.js';
+import { fieldRows } from '../src/modules/credentials/fields.js';
 import { DEPARTMENTS, UNITS } from './seed-data/organisation.js';
 import { POSITIONS } from './seed-data/positions.js';
 import { CREDENTIAL_CATEGORIES, CREDENTIAL_TEMPLATES } from './seed-data/credential-catalog.js';
@@ -46,7 +47,10 @@ async function seedReference(db: Db) {
     await db.credentialCategory.upsert({ where: { code: c.code }, update: {}, create: c });
   }
   for (const t of CREDENTIAL_TEMPLATES) {
-    await db.credentialTemplate.upsert({ where: { code: t.code }, update: {}, create: { ...t, fieldDefs: t.fieldDefs as object[] } });
+    if (await db.credentialTemplate.findUnique({ where: { code: t.code }, select: { id: true } })) continue;
+    const { fieldDefs, ...columns } = t;
+    const created = await db.credentialTemplate.create({ data: columns });
+    await db.credentialTemplateField.createMany({ data: fieldRows(created.id, fieldDefs) });
   }
 }
 

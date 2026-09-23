@@ -31,13 +31,15 @@ export const UnitsQuery = z.object({
   departmentId: z.coerce.number().int().positive().optional(),
   includeInactive: z.enum(['true', 'false']).default('false'),
 });
+/** MoH Ada'a critical area for nurse-to-bed KPI A (D-11); null = not a critical area. */
+export const CriticalAreaValue = z.enum(['ICU', 'ER', 'OR']);
 export const UnitCreateBody = z.strictObject({
   code: Code, name: Name, nameAr: NameAr.optional(), description: Description.optional(),
-  departmentId: z.number().int().positive(), bedCount: Beds.default(0),
+  departmentId: z.number().int().positive(), bedCount: Beds.default(0), criticalArea: CriticalAreaValue.nullable().default(null),
 });
 export const UnitUpdateBody = z.strictObject({
   name: Name.optional(), nameAr: NameAr.nullable().optional(), description: Description.nullable().optional(),
-  departmentId: z.number().int().positive().optional(), isActive: z.boolean().optional(),
+  departmentId: z.number().int().positive().optional(), isActive: z.boolean().optional(), criticalArea: CriticalAreaValue.nullable().optional(),
 });
 export const BedCountBody = z.strictObject({ bedCount: Beds, reason: Reason });
 // Row values are checked per row (W5 reports REJECTED rows instead of failing the batch).

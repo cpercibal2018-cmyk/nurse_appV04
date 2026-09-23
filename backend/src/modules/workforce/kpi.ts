@@ -5,9 +5,10 @@
 //
 // THRESHOLD SOURCE: NOT IN REPOSITORY. The cut-lines below are V03's reading of
 // the Ada'a indicator card; the card itself was never committed. Every response
-// carries `thresholdSource` so the page can say so (D-11). The unit → area map
-// is V03's classification of the seeded unit codes; units not listed count
-// only towards KPI B.
+// carries `thresholdSource` so the page can say so (D-11). Which units belong
+// to ICU / ER / OR is hospital data: units.critical_area, set by HR (it was a
+// unit-code map in this file until the database-first migration). Units with no
+// critical area count only towards KPI B.
 
 import { z } from 'zod';
 import { isIsoDate, toDbDate } from '../../lib/dates.js';
@@ -18,11 +19,6 @@ export type CriticalArea = 'ICU' | 'ER' | 'OR';
 
 export const THRESHOLD_SOURCE = 'V03 reading of the MoH Ada\'a indicator card — the card is not in the repository; verify before relying on the bands (D-11)';
 
-export const CRITICAL_AREA_BY_UNIT_CODE: Readonly<Record<string, CriticalArea>> = {
-  ICU_MAIN: 'ICU', ICU_EXT: 'ICU', NICU: 'ICU', PICU: 'ICU', CCU: 'ICU', BURN_ICU: 'ICU',
-  ER_MAIN: 'ER', ER_MC: 'ER', UCC: 'ER', CDU: 'ER',
-  OR: 'OR',
-};
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -70,13 +66,13 @@ export const KpiQuery = z.object({
 /** Nurses = Published assignments on that date and shift (V03 definition); beds = active units. */
 export async function nurseToBed(db: Db, q: z.infer<typeof KpiQuery>) {
   const [units, assignments] = await Promise.all([
-    db.unit.findMany({ where: { isActive: true }, select: { id: true, code: true, bedCount: true } }),
+    db.unit.findMany({ where: { isActive: true }, select: { id: true, code: true, bedCount: true, criticalArea: true } }),
     db.shiftAssignment.groupBy({ by: ['unitId'], where: { shiftDate: toDbDate(q.date), shiftType: q.shift, status: 'Published' }, _count: { _all: true } }),
   ]);
   const onDuty = new Map(assignments.map((a) => [a.unitId, a._count._all]));
   const areas: Record<CriticalArea, { nurses: number; beds: number }> = { ICU: { nurses: 0, beds: 0 }, ER: { nurses: 0, beds: 0 }, OR: { nurses: 0, beds: 0 } };
   for (const u of units) {
-    const area = CRITICAL_AREA_BY_UNIT_CODE[u.code];
+    const area = u.criticalArea;
     if (area) { areas[area].beds += u.bedCount; areas[area].nurses += onDuty.get(u.id) ?? 0; }
   }
   const beds = units.reduce((s, u) => s + u.bedCount, 0);
@@ -84,7 +80,8 @@ export async function nurseToBed(db: Db, q: z.infer<typeof KpiQuery>) {
   return {
     date: q.date, shift: q.shift,
     kpiA: computeKpiA(areas), kpiB: computeKpiB(nurses, beds),
-    areaUnits: CRITICAL_AREA_BY_UNIT_CODE,
+    // Which units count towards each area — set per unit by HR (units.critical_area).
+    areaUnits: Object.fromEntries(units.filter((u) => u.criticalArea).map((u) => [u.code, u.criticalArea!])),
     thresholdSource: THRESHOLD_SOURCE,
   };
 }

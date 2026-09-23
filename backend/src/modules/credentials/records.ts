@@ -20,6 +20,7 @@ import { refreshEligibility } from '../eligibility/state.service.js';
 import { unitScope, type AuthContext } from '../users/access.js';
 import { HR_ROLES, viewerOf, type Viewer } from './access.js';
 import type { FieldDef } from './catalog.js';
+import { presentTemplate, toFieldDefs, WITH_FIELDS } from './fields.js';
 
 /** Spec §5.2: "Subject to Renew" = within 60 days of expiry (confirmed by the owner, D-39). Also the first credential reminder milestone. */
 export const RENEWAL_WINDOW_DAYS = 60;
@@ -63,8 +64,8 @@ export function lifecycleLabel(c: { status: string; expiryDate: Date | null; pen
 }
 
 /** Validates tracking data against the template's field definitions and extracts issue/expiry dates. */
-export function readTrackingData(tpl: Pick<CredentialTemplate, 'fieldDefs' | 'hasExpiry'>, data: Record<string, string | number>, explicit: { issueDate?: string; expiryDate?: string }) {
-  const defs = (tpl.fieldDefs ?? []) as unknown as FieldDef[];
+export function readTrackingData(tpl: { fieldDefs: FieldDef[]; hasExpiry: boolean }, data: Record<string, string | number>, explicit: { issueDate?: string; expiryDate?: string }) {
+  const defs = tpl.fieldDefs;
   const known = new Set(defs.map((d) => d.key));
   const problems: string[] = [];
   const hijriDates = new Map<string, string>();
@@ -178,9 +179,10 @@ export function createRecordService(db: Db, storage: Storage, maxUploadBytes: nu
       if (!emp?.unitId) return { items: [], total: 0 };
       const rows = await db.credentialRequirement.findMany({
         where: { unitId: emp.unitId, OR: [{ positionCode: null }, { positionCode: emp.positionCode }] },
-        include: { template: { select: { id: true, code: true, name: true, fieldDefs: true, requiresUpload: true } } },
+        include: { template: { select: { id: true, code: true, name: true, requiresUpload: true, ...WITH_FIELDS } } },
       });
-      return { items: rows, total: rows.length };
+      const items = rows.map(({ template: { fields, ...t }, ...r }) => ({ ...r, template: { ...t, fieldDefs: toFieldDefs(fields) } }));
+      return { items, total: items.length };
     },
 
     async get(auth: AuthContext, id: number) {
@@ -192,7 +194,8 @@ export function createRecordService(db: Db, storage: Storage, maxUploadBytes: nu
     /** Records a credential as PendingVerification (HR for a scoped employee, or the employee themselves). */
     async record(auth: AuthContext, body: z.infer<typeof RecordBody>, selfService: boolean, requestId?: string) {
       await viewerOf(db, auth, body.employeeId, selfService ? ['OWN'] : ['HR']);
-      const tpl = await db.credentialTemplate.findUnique({ where: { id: body.templateId } });
+      const found = await db.credentialTemplate.findUnique({ where: { id: body.templateId }, include: WITH_FIELDS });
+      const tpl = found ? presentTemplate(found) : null;
       if (!tpl) throw new HttpError(422, 'TEMPLATE_NOT_FOUND', 'The credential template does not exist');
       if (!tpl.isActive) throw new HttpError(422, 'TEMPLATE_INACTIVE', 'The credential template is inactive');
       const dates = readTrackingData(tpl, body.trackingData, body);
@@ -251,7 +254,7 @@ export function createRecordService(db: Db, storage: Storage, maxUploadBytes: nu
         const c = await load(tx, id);
         await viewerOf(tx, auth, c.employeeId, ['OWN', 'HR']);
         if (!['Valid', 'ExpiringSoon', 'Expired'].includes(c.status)) throw new HttpError(409, 'RENEWAL_NOT_ALLOWED', `A ${c.status} credential cannot be renewed`);
-        const tpl = await tx.credentialTemplate.findUniqueOrThrow({ where: { id: c.templateId } });
+        const tpl = presentTemplate(await tx.credentialTemplate.findUniqueOrThrow({ where: { id: c.templateId }, include: WITH_FIELDS }));
         const dates = readTrackingData(tpl, body.trackingData, body);
         if (tpl.hasExpiry && !dates.expiryDate) throw new HttpError(422, 'EXPIRY_DATE_REQUIRED', 'A renewal must state the new expiry date');
         const pendingData = { trackingData: body.trackingData, ...dates, submittedById: auth.user.id, submittedAt: new Date().toISOString() };
