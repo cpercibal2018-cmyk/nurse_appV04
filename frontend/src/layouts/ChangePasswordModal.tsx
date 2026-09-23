@@ -1,10 +1,9 @@
 import { App, Form, Input, Modal } from 'antd';
-import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../hooks/useAuth';
 import { describeApiError } from '../lib/errors';
-import { http, setTokens } from '../services/http';
+import { http } from '../services/http';
 
 interface Values { currentPassword: string; newPassword: string; confirm: string }
 
@@ -14,16 +13,13 @@ export function ChangePasswordModal({ open, onClose }: { open: boolean; onClose:
   const { message } = App.useApp();
   const [form] = Form.useForm<Values>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
   async function submit() {
     const v = await form.validateFields();
     try {
       await http.post('/auth/password', { currentPassword: v.currentPassword, newPassword: v.newPassword });
       message.success(t('passwordChanged'), 6);
-      setTokens(null);
-      useAuth.setState({ status: 'anonymous', user: null, roles: [], effectiveRoles: [], pam: null, breakGlass: null });
-      queryClient.clear();
+      useAuth.getState().endLocalSession();
       navigate('/login', { replace: true });
     } catch (e) {
       message.error(describeApiError(e));

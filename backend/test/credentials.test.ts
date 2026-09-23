@@ -7,8 +7,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Express } from 'express';
 import { findChainBreaks } from '../src/lib/audit.js';
 import { addDays, riyadhDate } from '../src/lib/dates.js';
+import { toHijriIso } from '../src/lib/hijri.js';
 import type { Db } from '../src/lib/prisma.js';
-import { FILES, makeNurse, makeOrg, makeTemplate, makeUser, openDb, signIn, TEST_URL, testApp } from './helpers.js';
+import { FILES, makeNurse, makeOrg, makeTemplate, makeUser, openDb, signIn, TEST_URL, testApp, uniq } from './helpers.js';
 
 const describeDb = TEST_URL ? describe : describe.skip;
 const today = () => riyadhDate();
@@ -75,10 +76,20 @@ describeDb('credentials and eligibility', () => {
       const tpl = await makeTemplate(db);
       const scoped = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
       expect((await scoped.post('/credential-requirements', { templateId: tpl.id, unitId: org.unitB.id })).body.error.code).toBe('SCOPE_NOT_COVERED');
-      expect((await scoped.post('/credential-requirements', { templateId: tpl.id, unitId: org.unitA.id })).status).toBe(201);
+      const inside = await scoped.post('/credential-requirements', { templateId: tpl.id, unitId: org.unitA.id });
+      expect(inside.status).toBe(201);
+      const outside = await hr.post('/credential-requirements', { templateId: tpl.id, unitId: org.unitB.id });
+      expect(outside.status).toBe(201);
       const sup = await signIn(app, (await makeUser(db, { roles: [{ role: 'SUPERVISOR', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
       expect((await sup.post('/credential-requirements', { templateId: tpl.id, unitId: org.unitB.id })).body.error.code).toBe('FORBIDDEN');
-      expect((await sup.get('/credential-requirements')).status).toBe(200);
+      for (const client of [scoped, sup]) {
+        const all = await client.get('/credential-requirements');
+        expect(all.status).toBe(200);
+        expect(all.body.items.map((r: { id: number }) => r.id)).toContain(inside.body.id);
+        expect(all.body.items.every((r: { unitId: number }) => r.unitId === org.unitA.id)).toBe(true);
+        expect((await client.get(`/credential-requirements?unitId=${org.unitB.id}`)).body).toMatchObject({ items: [], total: 0 });
+      }
+      expect((await hr.get(`/credential-requirements?unitId=${org.unitB.id}`)).body.items.map((r: { id: number }) => r.id)).toContain(outside.body.id);
     });
 
     it('bulk set applies all entries in one transaction and refreshes the units', async () => {
@@ -122,6 +133,52 @@ describeDb('credentials and eligibility', () => {
       const bad = await hr.post('/credentials', { employeeId: emp.id, templateId: tpl.id, trackingData: { licence_number: '', issue_date: 'nope', expiry_date: '2020-01-01', extra: 'x' } });
       expect(bad.body.error.code).toBe('TRACKING_DATA_INVALID');
       expect(bad.body.error.details).toEqual(expect.arrayContaining(['extra: not a field of this template', 'licence_number: required', 'issue_date: must be YYYY-MM-DD']));
+    });
+
+    it('uses Gregorian clinical dates for Hijri Iqama expiry, including renewal, and rejects conflicting or invalid dates', async () => {
+      await db.credentialCategory.upsert({ where: { code: 'IDENTITY' }, update: {}, create: { code: 'IDENTITY', name: 'Identity' } });
+      const pendingTemplate = await hr.post('/credential-templates', {
+        code: uniq('IQ').toUpperCase(), name: 'Test Iqama', categoryCode: 'IDENTITY', hasExpiry: true, requiresUpload: false,
+        fieldDefs: [
+          { key: 'issue_date', label: 'Issue date', type: 'date', required: true, displayOrder: 1, isIssueDate: true },
+          { key: 'expiry_date', label: 'Expiry date (Hijri)', type: 'date_hijri', required: true, displayOrder: 2, isExpiryDate: true },
+        ],
+        reason: 'Validate Iqama expiry in the Umm al-Qura calendar',
+      });
+      expect(pendingTemplate.status).toBe(202);
+      const secondHr = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] })).email);
+      const approvedTemplate = await secondHr.post(`/approvals/${pendingTemplate.body.requestId}/approve`, { reason: 'Calendar policy reviewed' });
+      expect(approvedTemplate.status).toBe(200);
+      const templateId = approvedTemplate.body.resultId as number;
+      const { emp } = await makeNurse(db, org.unitA.id);
+      const expiry = addDays(today(), 365);
+      const trackingData = { issue_date: addDays(today(), -30), expiry_date: toHijriIso(expiry) };
+      const body = { employeeId: emp.id, templateId, trackingData };
+      const conflict = await hr.post('/credentials', { ...body, expiryDate: addDays(expiry, 1) });
+      expect(conflict.status).toBe(400);
+      expect(conflict.body.error.details).toContain('expiryDate: disagrees with expiry_date');
+      const invalid = await hr.post('/credentials', { ...body, trackingData: { ...trackingData, expiry_date: '1448-13-01' } });
+      expect(invalid.status).toBe(400);
+      expect(invalid.body.error.code).toBe('TRACKING_DATA_INVALID');
+
+      const recorded = await hr.post('/credentials', body);
+      expect(recorded.status).toBe(201);
+      const id = recorded.body.id as number;
+      const stored = await db.credential.findUniqueOrThrow({ where: { id } });
+      expect(stored.expiryDate?.toISOString().slice(0, 10)).toBe(expiry);
+      expect(stored.expiryDateHijri).toBe(trackingData.expiry_date);
+      expect((await hr.post(`/credentials/${id}/verify`)).body.status).toBe('Valid');
+
+      const renewalExpiry = addDays(today(), 500);
+      const staged = await hr.post(`/credentials/${id}/renewal`, { trackingData: { ...trackingData, expiry_date: toHijriIso(renewalExpiry) } });
+      expect(staged.status).toBe(200);
+      const during = await db.credential.findUniqueOrThrow({ where: { id } });
+      expect((during.pendingData as { expiryDate: string }).expiryDate).toBe(renewalExpiry);
+      expect(during.expiryDate?.toISOString().slice(0, 10)).toBe(expiry);
+      expect((await hr.post(`/credentials/${id}/renewal/approve`)).body.status).toBe('Valid');
+      const after = await db.credential.findUniqueOrThrow({ where: { id } });
+      expect(after.expiryDate?.toISOString().slice(0, 10)).toBe(renewalExpiry);
+      expect(after.expiryDateHijri).toBe(toHijriIso(renewalExpiry));
     });
 
     it('suspension and revocation make the nurse INELIGIBLE immediately (L3); revoked is final', async () => {

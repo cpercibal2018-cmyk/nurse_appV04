@@ -11,7 +11,7 @@ import { HttpError, notFound } from '../../lib/http-errors.js';
 import { Prisma, type Db, type DbClient } from '../../lib/prisma.js';
 import { refreshEligibility, refreshUnit } from '../eligibility/state.service.js';
 import { unitScope, type AuthContext } from '../users/access.js';
-import { HR_ROLES } from './access.js';
+import { HR_ROLES, REVIEW_ROLES } from './access.js';
 
 const FieldType = z.enum(['text', 'date', 'date_hijri', 'select', 'number', 'country', 'reference']);
 export const FieldDefSchema = z.strictObject({
@@ -30,7 +30,9 @@ const FieldDefs = z.array(FieldDefSchema).max(30).superRefine((defs, ctx) => {
   for (const d of defs) {
     if (keys.has(d.key)) ctx.addIssue({ code: 'custom', message: `Duplicate field key ${d.key}` });
     keys.add(d.key);
-    if ((d.isIssueDate || d.isExpiryDate) && d.type !== 'date') ctx.addIssue({ code: 'custom', message: `${d.key}: issue/expiry fields must be of type date` });
+    if ((d.isIssueDate || d.isExpiryDate) && d.type !== 'date' && d.type !== 'date_hijri') {
+      ctx.addIssue({ code: 'custom', message: `${d.key}: issue/expiry fields must be Gregorian or Umm al-Qura dates` });
+    }
   }
   if (defs.filter((d) => d.isIssueDate).length > 1) ctx.addIssue({ code: 'custom', message: 'At most one issue-date field' });
   if (defs.filter((d) => d.isExpiryDate).length > 1) ctx.addIssue({ code: 'custom', message: 'At most one expiry-date field' });
@@ -226,9 +228,14 @@ export function createCatalogService(db: Db) {
       return (await updateNow(tx, approver, payload.templateId, payload.change, payload.reason, payload.before, approvalRequestId, requestId)).id;
     },
 
-    async listRequirements(q: z.infer<typeof RequirementQuery>) {
+    async listRequirements(auth: AuthContext, q: z.infer<typeof RequirementQuery>) {
+      const scope = await unitScope(db, auth, REVIEW_ROLES);
+      // The caller's unit scope must constrain even an explicitly requested
+      // unitId; otherwise a supervisor could read the hospital's other rules.
+      if (q.unitId && !scope.all && !scope.unitIds.has(q.unitId)) return { items: [], total: 0 };
+      const unitId = q.unitId ?? (scope.all ? undefined : { in: [...scope.unitIds] });
       const rows = await db.credentialRequirement.findMany({
-        where: { ...(q.unitId ? { unitId: q.unitId } : {}), ...(q.position ? { positionCode: q.position } : {}), ...(q.templateId ? { templateId: q.templateId } : {}) },
+        where: { ...(unitId === undefined ? {} : { unitId }), ...(q.position ? { positionCode: q.position } : {}), ...(q.templateId ? { templateId: q.templateId } : {}) },
         include: { template: { select: { code: true, name: true } }, unit: { select: { code: true, name: true } } },
         orderBy: [{ unitId: 'asc' }, { templateId: 'asc' }, { positionCode: 'asc' }],
       });

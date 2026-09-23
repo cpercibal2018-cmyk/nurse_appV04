@@ -4,6 +4,7 @@
 
 import { create } from 'zustand';
 import { http, refreshSession, setSessionExpiredHandler, setTokens } from '../services/http';
+import { queryClient } from '../services/queryClient';
 import type { EffectiveRole, MeResponse, RoleGrant, SessionUser, TokenResponse } from '../types/api';
 
 type Status = 'checking' | 'anonymous' | 'authenticated';
@@ -21,12 +22,22 @@ interface AuthState {
   restore: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Local teardown after server-side invalidation (e.g. a password change). */
+  endLocalSession: () => void;
 }
 
 const signedOut = { status: 'anonymous' as const, user: null, roles: [], effectiveRoles: [], pam: null, breakGlass: null };
 const fromMe = (me: MeResponse) => ({
   status: 'authenticated' as const, user: me.user, roles: me.roles, effectiveRoles: me.effectiveRoles, pam: me.pam, breakGlass: me.breakGlass,
 });
+
+function discardSession() {
+  // Cancel in-flight reads and discard every identity-bound result before
+  // another account can reuse an unscoped React Query key in the same tab.
+  setTokens(null);
+  queryClient.clear();
+  useAuth.setState(signedOut);
+}
 
 export const useAuth = create<AuthState>()((set) => ({
   status: 'checking',
@@ -37,31 +48,41 @@ export const useAuth = create<AuthState>()((set) => ({
   breakGlass: null,
 
   reload: async () => {
-    set(fromMe(await http.get<MeResponse>('/auth/me')));
+    const me = await http.get<MeResponse>('/auth/me');
+    queryClient.clear(); // scope/PAM may have changed while this session was active
+    set(fromMe(me));
   },
 
   restore: async () => {
-    if (!(await refreshSession())) return set(signedOut);
+    if (!(await refreshSession())) return discardSession();
     try {
-      set(fromMe(await http.get<MeResponse>('/auth/me')));
+      const me = await http.get<MeResponse>('/auth/me');
+      queryClient.clear();
+      set(fromMe(me));
     } catch {
-      setTokens(null);
-      set(signedOut);
+      discardSession();
     }
   },
 
   login: async (email, password) => {
     const tokens = await http.post<TokenResponse>('/auth/login', { email, password });
     setTokens(tokens);
-    set(fromMe(await http.get<MeResponse>('/auth/me')));
+    try {
+      const me = await http.get<MeResponse>('/auth/me');
+      queryClient.clear();
+      set(fromMe(me));
+    } catch (err) {
+      discardSession();
+      throw err;
+    }
   },
 
   logout: async () => {
     try { await http.post('/auth/logout'); } catch { /* the local session ends regardless */ }
-    setTokens(null);
-    set(signedOut);
+    discardSession();
   },
+  endLocalSession: discardSession,
 }));
 
-// A refresh that fails mid-session signs the user out locally.
-setSessionExpiredHandler(() => useAuth.setState(signedOut));
+// A refresh that fails mid-session must also discard protected server data.
+setSessionExpiredHandler(discardSession);

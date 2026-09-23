@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Express } from 'express';
 import { findChainBreaks } from '../src/lib/audit.js';
 import type { Db } from '../src/lib/prisma.js';
-import { makeEmployee, makeOrg, makeUser, openDb, signIn, TEST_URL, testApp } from './helpers.js';
+import { makeEmployee, makeOrg, makeTemplate, makeUser, openDb, signIn, TEST_URL, testApp } from './helpers.js';
 
 const describeDb = TEST_URL ? describe : describe.skip;
 const REASON = 'Assigned as unit supervisor for the rota';
@@ -187,6 +187,42 @@ describeDb('access control', () => {
       expect(up.status).toBe(202);
       await b.post(`/approvals/${up.body.requestId}/approve`, { reason: 'Approved by DON' });
       expect((await db.roleAssignment.findUniqueOrThrow({ where: { id: asg.id } })).scopeType).toBe('SYSTEM');
+    });
+
+    it('refuses out-of-scope approval decisions without changing the request or audit trail', async () => {
+      const initiator = await signIn(app, (await hrSystem()).email);
+      const scoped = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'DEPARTMENT', scopeIds: [org.dept.id] }] })).email);
+      const approver = await signIn(app, (await hrSystem()).email);
+      const target = await makeUser(db);
+      const pending = await grant(initiator, { userId: target.id, role: 'SYSTEM_ADMIN', scopeType: 'SYSTEM', scopeIds: [], reason: REASON });
+      expect(pending.status).toBe(202);
+      const id = pending.body.requestId as number;
+      expect((await scoped.get('/approvals')).body.items.map((r: { id: number }) => r.id)).not.toContain(id);
+
+      for (const decision of ['approve', 'reject']) {
+        const result = await scoped.post(`/approvals/${id}/${decision}`, { reason: 'Outside my assigned department' });
+        expect(result.status).toBe(403);
+        expect(result.body.error.code).toBe('SCOPE_NOT_COVERED');
+      }
+      expect((await db.approvalRequest.findUniqueOrThrow({ where: { id } })).status).toBe('PENDING');
+      expect(await db.auditEntry.count({ where: { resource: 'approval_request', resourceId: String(id), action: { in: ['APPROVAL_EXECUTED', 'APPROVAL_REJECTED'] } } })).toBe(0);
+      expect((await approver.post(`/approvals/${id}/reject`, { reason: 'Second admin rejected it' })).body.status).toBe('REJECTED');
+    });
+
+    it('only a system-wide admin can reject a hospital-wide catalog change', async () => {
+      const initiator = await signIn(app, (await hrSystem()).email);
+      const scoped = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
+      const approver = await signIn(app, (await hrSystem()).email);
+      const tpl = await makeTemplate(db);
+      const pending = await initiator.patch(`/credential-templates/${tpl.id}`, { name: 'Revised credential', reason: 'Hospital-wide catalog change' });
+      expect(pending.status).toBe(202);
+      const id = pending.body.requestId as number;
+      expect((await scoped.get('/approvals')).body.items.map((r: { id: number }) => r.id)).not.toContain(id);
+      const rejected = await scoped.post(`/approvals/${id}/reject`, { reason: 'Outside hospital-wide scope' });
+      expect(rejected.status).toBe(403);
+      expect(rejected.body.error.code).toBe('SCOPE_NOT_COVERED');
+      expect((await db.approvalRequest.findUniqueOrThrow({ where: { id } })).status).toBe('PENDING');
+      expect((await approver.post(`/approvals/${id}/approve`, { reason: 'Approved by system-wide HR' })).body.status).toBe('EXECUTED');
     });
 
     it('the approver cannot approve a grant to themselves (rules re-checked as the approver)', async () => {

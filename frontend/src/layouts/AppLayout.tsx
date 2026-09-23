@@ -9,7 +9,6 @@ import { App as AntApp, Avatar, Badge, Button, Dropdown, Flex, Layout, Menu, Tag
 import {
   BellOutlined, BulbOutlined, GlobalOutlined, HistoryOutlined, KeyOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MoonOutlined,
 } from '@ant-design/icons';
-import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { MODULES } from '../app/modules';
@@ -38,7 +37,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const breakGlass = useAuth((s) => s.breakGlass);
   const location = useLocation();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const user = useAuth((s) => s.user);
   const roles = useAuth((s) => s.roles);
   const logout = useAuth((s) => s.logout);
@@ -48,8 +46,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const sidebarWidth = collapsed ? 64 : 244;
 
   async function signOut() {
-    await logout();
-    queryClient.clear(); // no cached data survives into the next session
+    await logout(); // session store clears identity-bound queries on every sign-out
     navigate('/login', { replace: true });
   }
 

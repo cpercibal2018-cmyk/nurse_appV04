@@ -79,7 +79,7 @@ Values kept out of the audit trail on purpose: salary and the emergency contact 
 **Rules**
 
 - Development: `npm run db:migrate -w backend` (`prisma migrate dev`) after editing `schema.prisma`. Hand-written SQL goes at the end of the generated file, under a comment explaining the rule.
-- CI and production: `npm run db:deploy -w backend` (`prisma migrate deploy`). CI runs it twice to prove there is no drift.
+- CI and production: `npm run db:deploy -w backend` (`prisma migrate deploy`). CI runs it twice to check repeatable deployment; this does **not** detect drift in a manually changed database. CI generates the custom-output Prisma client before seeding a fresh checkout.
 - `prisma db push` is never used. A migration that has been applied anywhere is never edited; fix forward with a new one.
 - Status: `npm run db:status -w backend`.
 
