@@ -45,7 +45,7 @@ Generated from `backend/src/modules/users/permissions.ts`. **`backend/test/docs.
 | `roles.read` | HR_ADMIN, SYSTEM_ADMIN | List role assignments |
 | `roles.write` | HR_ADMIN, SYSTEM_ADMIN | Grant, update, revoke role assignments |
 | `approvals.read` | HR_ADMIN, SYSTEM_ADMIN | Four-eyes queue |
-| `approvals.decide` | HR_ADMIN, SYSTEM_ADMIN | Approve / reject a request |
+| `approvals.decide` | HR_ADMIN, SYSTEM_ADMIN | Approve / reject requests; initiators may withdraw their own pending request |
 | `baseline.import` | HR_ADMIN, SYSTEM_ADMIN | Preview and request a hospital baseline import (hospital-wide scope and a second approver enforced in the service) |
 | `matrix.read` | EMPLOYEE | The §8.1 access matrix (read-only) |
 | `workforce.read` | EMPLOYEE | Departments, units, positions, coverage targets, bed summary |
@@ -101,7 +101,7 @@ These routes are open to any signed-in user; the service limits them to the call
 
 | Control | Rule | Enforced in |
 | :--- | :--- | :--- |
-| Four-eyes (R10–R12) | Promoting to System Admin, granting HR Admin with `SYSTEM` scope, upgrading an HR scope to `SYSTEM`, and **every credential type change** (D-24) are queued as `PENDING`; a **different** administrator approves; the action executes as the approver, re-checked, in the approval's transaction. Catalog requests are visible to system-wide admins only; **both approval and rejection** enforce the request's scope in the transaction, including a department grant's future-unit boundary | `administration/approvals.ts`, `users/role-assignments.ts`, `credentials/catalog.ts` |
+| Four-eyes (R10–R12) | Promoting to System Admin, granting HR Admin with `SYSTEM` scope, upgrading an HR scope to `SYSTEM`, and **every credential type change** (D-24) are queued as `PENDING`; a **different** administrator approves; the action executes as the approver, re-checked, in the approval's transaction. Catalog requests are visible to system-wide admins only; **both approval and rejection** enforce the request's scope in the transaction, including a department grant's future-unit boundary. The initiator may withdraw only their own `PENDING` request; withdrawal is a separate audited terminal action and never executes the payload. Row locking makes withdrawal race-safe with approval/rejection. | `administration/approvals.ts`, `users/role-assignments.ts`, `credentials/catalog.ts` |
 | No self-grant (R2) | Nobody grants, updates or revokes their own role | `users/role-assignments.ts` |
 | No action on one's own credential (D-26) | Verify, approve/reject renewal, suspend/revoke, waive — refused on the actor's own credential, whatever their role | `credentials/records.ts`, `eligibility/service.ts` |
 | Contract approval (D-30) | The creator and the submitter cannot approve (`SELF_APPROVAL_FORBIDDEN`) | `contracts/service.ts` |

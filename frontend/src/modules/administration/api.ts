@@ -42,7 +42,7 @@ export interface ApprovalRequest {
     | { kind: 'CATEGORY_CREATE'; category: { code: string; name: string }; reason: string }
     | { kind: 'CATEGORY_UPDATE'; code: string; change: Record<string, unknown>; before: Record<string, unknown>; reason: string }
     | { kind: 'BASELINE_IMPORT'; fileHash: string; totals: BaselineReport['totals']; reason: string };
-  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXECUTED';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXECUTED' | 'WITHDRAWN';
   createdAt: string;
   initiatorId: number;
   initiator: { displayName: string; email: string };
@@ -123,6 +123,15 @@ export function useDecide() {
     mutationFn: ({ id, decision, reason }: { id: number; decision: 'approve' | 'reject'; reason: string }) =>
       http.post<{ id: number; status: string }>(`/approvals/${id}/${decision}`, { reason }),
     onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: keys.approvals }), qc.invalidateQueries({ queryKey: keys.assignments }), qc.invalidateQueries({ queryKey: ['templates'] })]),
+  });
+}
+
+export function useWithdraw() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: number; reason: string }) =>
+      http.post<{ id: number; status: 'WITHDRAWN' }>(`/approvals/${id}/withdraw`, { reason }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.approvals }),
   });
 }
 

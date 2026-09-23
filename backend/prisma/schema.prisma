@@ -40,6 +40,7 @@ enum ApprovalStatus {
   APPROVED
   REJECTED
   EXECUTED
+  WITHDRAWN
 }
 
 model User {
@@ -132,6 +133,7 @@ model ApprovalRequest {
   createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz
   decidedAt   DateTime?      @map("decided_at") @db.Timestamptz
   executedAt  DateTime?      @map("executed_at") @db.Timestamptz
+  withdrawnAt DateTime?      @map("withdrawn_at") @db.Timestamptz
 
   initiator   User             @relation("initiator", fields: [initiatorId], references: [id])
   approver    User?            @relation("approver", fields: [approverId], references: [id])

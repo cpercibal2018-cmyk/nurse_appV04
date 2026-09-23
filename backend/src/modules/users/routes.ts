@@ -81,6 +81,10 @@ export function createUsersRouter(
     const { id } = IdParam.parse(req.params);
     res.json(await approvals.reject(authOf(res), id, DecideBody.parse(req.body).reason, res.locals.requestId));
   });
+  router.post('/approvals/:id/withdraw', authorize('approvals.decide'), async (req, res) => {
+    const { id } = IdParam.parse(req.params);
+    res.json(await approvals.withdraw(authOf(res), id, DecideBody.parse(req.body).reason, res.locals.requestId));
+  });
 
   // ── PAM (any signed-in user; the service requires a System Admin assignment) ─
   router.get('/pam/status', async (_req, res) => { res.json(await pam.status(authOf(res))); });

@@ -233,6 +233,41 @@ describeDb('access control', () => {
       expect((await b.post(`/approvals/${p.body.requestId}/approve`, { reason: 'Approve me' })).body.error.code).toBe('SELF_GRANT_FORBIDDEN');
       expect((await db.approvalRequest.findUniqueOrThrow({ where: { id: p.body.requestId } })).status).toBe('PENDING');
     });
+
+    it('lets only the initiator withdraw a pending request, without executing it', async () => {
+      const initiatorUser = await hrSystem();
+      const initiator = await signIn(app, initiatorUser.email);
+      const other = await signIn(app, (await hrSystem()).email);
+      const target = await makeUser(db);
+      const p = await grant(initiator, { userId: target.id, role: 'SYSTEM_ADMIN', scopeType: 'SYSTEM', scopeIds: [], reason: REASON });
+      const id = p.body.requestId as number;
+
+      expect((await other.post(`/approvals/${id}/withdraw`, { reason: 'Not my request' })).body.error.code).toBe('WITHDRAWAL_NOT_OWNER');
+      const withdrawn = await initiator.post(`/approvals/${id}/withdraw`, { reason: 'No longer needed' });
+      expect(withdrawn.body).toMatchObject({ id, status: 'WITHDRAWN' });
+      expect((await db.approvalRequest.findUniqueOrThrow({ where: { id } })).status).toBe('WITHDRAWN');
+      expect(await db.roleAssignment.count({ where: { userId: target.id } })).toBe(0);
+      expect(await db.auditEntry.count({ where: { action: 'APPROVAL_WITHDRAWN', resourceId: String(id) } })).toBe(1);
+      expect((await initiator.post(`/approvals/${id}/withdraw`, { reason: 'Again' })).body.error.code).toBe('APPROVAL_NOT_PENDING');
+    });
+
+    it('serializes withdrawal against a concurrent approval decision', async () => {
+      const initiatorUser = await hrSystem();
+      const initiator = await signIn(app, initiatorUser.email);
+      const approver = await signIn(app, (await hrSystem()).email);
+      const target = await makeUser(db);
+      const p = await grant(initiator, { userId: target.id, role: 'SYSTEM_ADMIN', scopeType: 'SYSTEM', scopeIds: [], reason: REASON });
+      const id = p.body.requestId as number;
+
+      const [withdrawn, approved] = await Promise.all([
+        initiator.post(`/approvals/${id}/withdraw`, { reason: 'Cancel before review' }),
+        approver.post(`/approvals/${id}/approve`, { reason: 'Reviewed and accepted' }),
+      ]);
+      expect([withdrawn.status, approved.status].filter((status) => status === 200)).toHaveLength(1);
+      const stored = await db.approvalRequest.findUniqueOrThrow({ where: { id } });
+      expect(['WITHDRAWN', 'EXECUTED']).toContain(stored.status);
+      expect(await db.roleAssignment.count({ where: { userId: target.id } })).toBe(stored.status === 'EXECUTED' ? 1 : 0);
+    });
   });
 
   describe('last System Admin (R8)', () => {

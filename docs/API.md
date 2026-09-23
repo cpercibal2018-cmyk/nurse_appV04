@@ -48,6 +48,7 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | POST | `/api/v1/role-assignments/:id/revoke` | Revoke `{reason}` (POST, not DELETE-with-body) | HR, SA (R2, R8) | backend |
 | GET | `/api/v1/approvals?status=PENDING` | Four-eyes queue (role grants/updates; credential-type changes — visible to system-wide admins only) | HR, SA | backend |
 | POST | `/api/v1/approvals/:id/approve` · `/reject` | Decide `{reason}` | HR, SA; approver ≠ initiator (R11); both decisions check request scope (catalog: system-wide) | backend |
+| POST | `/api/v1/approvals/:id/withdraw` | Initiator withdraws their own pending request with `{reason}`; returns terminal `WITHDRAWN` status and never executes the payload | HR, SA; initiator only; row-locked against concurrent approval/rejection | backend |
 | POST | `/api/v1/pam/elevate` · GET `/api/v1/pam/status` · POST `/api/v1/pam/end` | JIT elevation | users holding SA | backend |
 | POST | `/api/v1/break-glass/activate` | Siren (R18) | break-glass account only | spec §3.6 — **scope decision D-9** |
 | POST | `/api/v1/admin/baseline-import/preview` | `{file}` → per-row CREATE / UNCHANGED / CONFLICT / REJECTED report, totals (beds, fields), `canImport`; writes nothing | `baseline.import` — hospital-wide scope | **D-42** (P7) |

@@ -3,7 +3,7 @@ import { App, Button, Empty, Flex, Input, Modal, Table, Tag } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../hooks/useAuth';
 import { describeApiError } from '../../lib/errors';
-import { useApprovals, useDecide, type ApprovalRequest } from './api';
+import { useApprovals, useDecide, useWithdraw, type ApprovalRequest } from './api';
 
 const show = (v: unknown) => (typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v));
 
@@ -32,9 +32,11 @@ export function ApprovalsTab() {
   const { message } = App.useApp();
   const approvals = useApprovals();
   const decide = useDecide();
+  const withdraw = useWithdraw();
   const myId = useAuth((s) => s.user?.id);
   const [pending, setPending] = useState<{ request: ApprovalRequest; decision: 'approve' | 'reject' } | null>(null);
   const [reason, setReason] = useState('');
+  const [withdrawTarget, setWithdrawTarget] = useState<ApprovalRequest | null>(null);
 
   async function confirm() {
     if (!pending) return;
@@ -42,6 +44,18 @@ export function ApprovalsTab() {
       await decide.mutateAsync({ id: pending.request.id, decision: pending.decision, reason });
       message.success(t('saved'));
       setPending(null);
+      setReason('');
+    } catch (e) {
+      message.error(describeApiError(e));
+    }
+  }
+
+  async function confirmWithdraw() {
+    if (!withdrawTarget) return;
+    try {
+      await withdraw.mutateAsync({ id: withdrawTarget.id, reason });
+      message.success(t('withdrawn'));
+      setWithdrawTarget(null);
       setReason('');
     } catch (e) {
       message.error(describeApiError(e));
@@ -59,13 +73,18 @@ export function ApprovalsTab() {
         scroll={{ x: true }}
         columns={[
           { title: '#', dataIndex: 'id', width: 60 },
-          { title: t('status'), render: (_, r) => <Tag color="orange">{r.status}</Tag> },
+          { title: t('status'), render: (_, r) => <Tag color={r.status === 'PENDING' ? 'orange' : r.status === 'WITHDRAWN' ? 'default' : 'green'}>{t(`approvalStatus_${r.status}`, r.status)}</Tag> },
           { title: t('reason'), render: (_, r) => describe(r) },
           { title: t('initiator'), render: (_, r) => r.initiator.displayName },
           { title: t('requested'), render: (_, r) => new Date(r.createdAt).toLocaleString() },
           {
-            // R11: nobody decides their own request — the server refuses it, so the buttons are not offered.
-            title: '', render: (_, r) => r.initiatorId === myId ? <Tag>{t('awaitingOtherAdmin')}</Tag> : (
+            // R11: nobody approves or rejects their own request; initiators may withdraw it while pending.
+            title: '', render: (_, r) => r.initiatorId === myId ? (
+              <Flex gap={8} align="center">
+                <Tag>{t('awaitingOtherAdmin')}</Tag>
+                {r.status === 'PENDING' && <Button size="small" onClick={() => setWithdrawTarget(r)}>{t('withdraw')}</Button>}
+              </Flex>
+            ) : (
               <Flex gap={8}>
                 <Button size="small" type="primary" onClick={() => setPending({ request: r, decision: 'approve' })}>{t('approve')}</Button>
                 <Button size="small" danger onClick={() => setPending({ request: r, decision: 'reject' })}>{t('reject')}</Button>
@@ -85,6 +104,19 @@ export function ApprovalsTab() {
         destroyOnHidden
       >
         {pending && <p>{describe(pending.request)}</p>}
+        <Input.TextArea rows={3} placeholder={t('decisionReasonHint')} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={1000} />
+      </Modal>
+      <Modal
+        title={withdrawTarget ? `${t('withdraw')} #${withdrawTarget.id}` : ''}
+        open={withdrawTarget !== null}
+        onCancel={() => setWithdrawTarget(null)}
+        onOk={confirmWithdraw}
+        okText={t('withdraw')}
+        cancelText={t('cancel')}
+        okButtonProps={{ danger: true, disabled: reason.trim().length < 5, loading: withdraw.isPending }}
+        destroyOnHidden
+      >
+        {withdrawTarget && <p>{t('withdrawHint')}</p>}
         <Input.TextArea rows={3} placeholder={t('decisionReasonHint')} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={1000} />
       </Modal>
     </>
