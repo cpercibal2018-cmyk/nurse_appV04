@@ -17,11 +17,32 @@ import { join } from 'node:path';
 const DIST = process.argv[2] ?? 'dist';
 const ASSETS = join(DIST, 'assets');
 
-const ENTRY_BUDGET_KB = 200; // app shell + vendor-react, gzipped
+const ENTRY_BUDGET_KB = 200; // everything index.html loads on a cold cache, gzipped
 const CHUNK_BUDGET_KB = 150; // any single chunk, gzipped
 
-/** Files counted toward the entry budget (initial load on a cold cache). */
-const ENTRY_PATTERNS = [/^index-.*\.js$/, /^vendor-react-.*\.js$/];
+// V04 fix: the kit version picked entry files by name (index-*, vendor-react-*),
+// so a shared chunk loaded at startup under any other name was not counted and
+// the gate under-reported the initial load. The entry set is now exactly what
+// index.html loads: its module script plus every modulepreload (Vite lists the
+// entry's transitive static imports there).
+function initialLoadFiles() {
+  const html = join(DIST, 'index.html');
+  if (!existsSync(html)) {
+    console.error(`check-bundle-size: no ${html} — cannot determine the initial load.`);
+    process.exit(1);
+  }
+  const src = readFileSync(html, 'utf8');
+  const refs = [
+    ...src.matchAll(/<script[^>]+type="module"[^>]+src="([^"]+\.js)"/g),
+    ...src.matchAll(/<link[^>]+rel="modulepreload"[^>]+href="([^"]+\.js)"/g),
+  ].map((m) => m[1].split('/').pop());
+  if (refs.length === 0) {
+    console.error('check-bundle-size: index.html loads no module script — refusing to pass.');
+    process.exit(1);
+  }
+  return new Set(refs);
+}
+const ENTRY_FILES = initialLoadFiles();
 
 if (!existsSync(ASSETS)) {
   console.error(`check-bundle-size: no build output at ${ASSETS} — run the build first.`);
@@ -42,7 +63,7 @@ const report = [];
 
 for (const f of jsFiles.sort()) {
   const kb = gzKb(f);
-  const isEntry = ENTRY_PATTERNS.some((re) => re.test(f));
+  const isEntry = ENTRY_FILES.has(f);
   if (isEntry) entryKb += kb;
 
   report.push(`  ${kb.toFixed(2).padStart(8)} KB gz  ${f}${isEntry ? '   [entry]' : ''}`);

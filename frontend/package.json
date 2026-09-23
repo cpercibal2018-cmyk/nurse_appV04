@@ -19,7 +19,15 @@
     "vitest": "5.0.1"
   },
   "dependencies": {
+    "@ant-design/icons": "6.3.4",
+    "@tanstack/react-query": "5.103.2",
+    "antd": "6.6.5",
+    "dayjs": "1.11.23",
+    "i18next": "26.4.2",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "react-i18next": "17.0.15",
+    "react-router": "8.4.0",
+    "zustand": "5.0.15"
   }
 }

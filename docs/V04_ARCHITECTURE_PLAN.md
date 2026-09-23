@@ -97,15 +97,17 @@ This implements spec §6.1 order (L4) exactly, with grace (L8), waivers per temp
 
 | Concern | Choice |
 | :--- | :--- |
-| Stack | React 18, Vite, TypeScript strict, antd 5 (retained: every V03 screen uses it; a rewrite gains nothing), react-router 6, i18next (en/ar + RTL retained) |
+| Stack | React 19, Vite 8, TypeScript strict, antd **6** (retained family: every V03 screen uses antd; v6 supports React 19 natively, v5 needs a compatibility patch), react-router **8** (declarative mode), i18next (en/ar + RTL retained). *Implementation note (commit 4): majors moved from the draft's React 18 / antd 5 / router 6 because those were superseded when V04 started.* |
 | Server state | React Query hooks in `modules/<domain>/api.ts`; mutations show server errors (no optimistic fire-and-forget) |
 | Client state | Zustand only for session (user, roles, scopes) and UI preferences (theme, language) |
 | Auth | `services/http.ts` (from V03 `api.ts`): in-memory access token, CSRF header, single-flight refresh. Login waits for the server; no email-based role guessing |
 | Access UI | `usePermissions()` derived from `/auth/me`; navigation and buttons hidden when not permitted. **Never the enforcement point** |
 | Standalone demo mode | **Removed** (D-1). The app always needs the API |
-| Bundle | Route-level lazy loading kept; fail-closed budget gate (kit version) in CI |
+| Bundle | Route-level lazy loading; the signed-in shell, login form and 404 page are lazy too. Fail-closed budget gate in CI. *Commit 4 fixed a gate defect:* the kit version chose entry files by name (`index-*`, `vendor-react-*`) and missed shared chunks loaded at startup; it now counts exactly what `index.html` loads (module script + modulepreloads). Budgets unchanged (200 KB gz initial, 150 KB gz per chunk) |
 
 Pages carried over, re-pointed at domain endpoints: Login, Dashboard, Nurses (list, onboarding, detail/edit), Contracts (create, renew, transitions, documents), Credentials (catalog, requirements, records, my credentials, verification queue: **new**), Eligibility (states, details, waivers), Workforce (departments, units + bed grid + CSV, positions + assignment, coverage targets: **new**, KPI), Scheduling (week/month board, pool, auto-generate, publish, coverage), Attendance (gaps view), Notifications, Audit (+ verify), Administration (accounts, role assignments, approvals, PAM).
+
+**Porting order (commit 4 implementation note):** V03 pages read and write the browser store that enforced business rules, so each page is ported in the commit that delivers its backend module (5–9). Commit 4 ships the shell (layout, routing, HTTP client, session, i18n/RTL, login, dashboard health) and one scaffold page per module stating what it will contain.
 
 Removed pages: Observability (static values) and the Admin display tabs (Backup/PITR, Privilege separation, FHIR, PDPL static text). Their content moves into `docs/DEPLOYMENT.md` / `docs/SYSTEM_SPECIFICATION.md`. Observability returns when real metrics exist.
 
