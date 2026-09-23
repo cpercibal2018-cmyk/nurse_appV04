@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { App, Button, Empty, Flex, Input, Modal, Table, Tag } from 'antd';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../hooks/useAuth';
 import { describeApiError } from '../../lib/errors';
 import { useApprovals, useDecide, type ApprovalRequest } from './api';
 
@@ -31,6 +32,7 @@ export function ApprovalsTab() {
   const { message } = App.useApp();
   const approvals = useApprovals();
   const decide = useDecide();
+  const myId = useAuth((s) => s.user?.id);
   const [pending, setPending] = useState<{ request: ApprovalRequest; decision: 'approve' | 'reject' } | null>(null);
   const [reason, setReason] = useState('');
 
@@ -62,7 +64,8 @@ export function ApprovalsTab() {
           { title: t('initiator'), render: (_, r) => r.initiator.displayName },
           { title: t('requested'), render: (_, r) => new Date(r.createdAt).toLocaleString() },
           {
-            title: '', render: (_, r) => (
+            // R11: nobody decides their own request — the server refuses it, so the buttons are not offered.
+            title: '', render: (_, r) => r.initiatorId === myId ? <Tag>{t('awaitingOtherAdmin')}</Tag> : (
               <Flex gap={8}>
                 <Button size="small" type="primary" onClick={() => setPending({ request: r, decision: 'approve' })}>{t('approve')}</Button>
                 <Button size="small" danger onClick={() => setPending({ request: r, decision: 'reject' })}>{t('reject')}</Button>

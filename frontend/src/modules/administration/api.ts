@@ -44,6 +44,7 @@ export interface ApprovalRequest {
     | { kind: 'BASELINE_IMPORT'; fileHash: string; totals: BaselineReport['totals']; reason: string };
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXECUTED';
   createdAt: string;
+  initiatorId: number;
   initiator: { displayName: string; email: string };
   approver: { displayName: string } | null;
   reason: string | null;
