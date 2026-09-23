@@ -160,7 +160,7 @@ Follows the brief; each commit builds.
 | ID | Decision | Effect on the spec / plan |
 | :--- | :--- | :--- |
 | D-1 | **Remove** offline demo mode | Frontend always requires the API |
-| D-2 | **Local only for now**: `C:\WebApp_project\Local_Repo\nurse_appV04` with local git; no GitHub repo, no V03 tag yet | Revisit before first push |
+| D-2 | ~~Local only for now~~ — **superseded 2026-09-23:** the owner asked to sync to `https://github.com/cpercibal2018-cmyk/nurse_appV04` (branch `main`); local working copy `C:\WebApp_project\Local_Repo\nurse_appV04` | No V03 tag yet |
 | D-3 (C-1) | Onboarding creates a **Draft** contract | **Spec §3.1 amended:** onboarding is atomic (employee + Draft contract + audit); coverage starts only after HR approval (rule C2). Recorded in SYSTEM_SPECIFICATION as a deliberate deviation |
 | D-4 (C-2) | **Allow** when no requirement is configured | **Spec §6.1 check 4 amended:** absence of rules is not blocking. The engine adds an informational reason `NO_REQUIREMENTS_CONFIGURED` so the gap stays visible, never silent |
 | D-5 (C-8) | **Remove** `DEVELOPER` role | One seeded demo user per real role |
