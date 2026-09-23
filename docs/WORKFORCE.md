@@ -12,7 +12,7 @@ Sources: reference spec §2.9 (organisation), §3.1 and §3.1.1 (onboarding, pos
 | Positions | Tier from the §3.1.1 list; deactivation refused while held by active employees (W6); changing "schedulable" re-evaluates every holder (W7) | System-wide |
 | Coverage targets | Minimum staff per unit and shift (Morning / Evening / Night); `null` = **unspecified**, never zero (W8). No formula (D-16) | HR / System Admin with the unit in scope |
 
-**Nurse-to-bed KPI (D-11).** KPI A averages the ICU, ER and OR ratings (each coded 1–4); KPI B is hospital-wide. Nurses = published assignments on the chosen date and shift; beds = active units. The cut-lines are V03's reading of the MoH Ada'a indicator card, which is **not in the repository**; the page and every response say so (`thresholdSource`). The unit → area map is by unit code in `modules/workforce/kpi.ts`.
+**Nurse-to-bed KPI (D-11).** KPI A averages the ICU, ER and OR ratings (each coded 1–4); KPI B is hospital-wide. Nurses = published assignments on the chosen date and shift; beds = active units. The cut-lines are V03's reading of the MoH Ada'a indicator card, which is **not in the repository**; the page and every response say so (`thresholdSource`). Which units count as ICU, ER or OR is each unit's **KPI critical area**, set by system-wide HR on the unit (D-42).
 
 ## 2. Employees
 
@@ -20,7 +20,7 @@ Sources: reference spec §2.9 (organisation), §3.1 and §3.1.1 (onboarding, pos
 
 | Operation | Rules |
 | :--- | :--- |
-| **Onboarding** (E10, D-3) | One transaction: employee + **Draft** contract (Hijri dates converted by the server) + HIGH audit + eligibility state. Defaults: Unassigned, position SN (E6). Needs an idempotency key. The nurse is ineligible until another HR person approves the contract |
+| **Onboarding** (E10, D-3) | One transaction: employee + **Draft** contract (Hijri dates converted by the server) + HIGH audit + eligibility state. Defaults: Unassigned, position SN (E6) — when the hospital has no active SN position, a position must be chosen. Needs an idempotency key. The nurse is ineligible until another HR person approves the contract |
 | Edit | HR within scope; a unit move re-evaluates eligibility and returns invalid future published shifts to draft |
 | Position change (E9) | HR Admin only (not System Admin); refuses inactive or unchanged positions; reason required; audited from → to |
 | Delete | Soft delete with a reason (≥ 10 characters); history kept; eligibility becomes INELIGIBLE; never on one's own record (D-37) |

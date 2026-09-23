@@ -1,6 +1,6 @@
 # Seed data inventory (original V04 seed)
 
-The complete content of the V04 seed **as it was before the database-first migration**, generated directly from `backend/prisma/seed-data/*.ts` at tag `pre-db-first` (commit `1e89613`, 2026-09-23). It is the record that nothing was lost when hospital data moved out of TypeScript: every value below either lives in the baseline import file or the test fixtures after the migration (`docs/DATABASE_MIGRATION.md`, written as part of the migration).
+The complete content of the V04 seed **as it was before the database-first migration**, generated directly from `backend/prisma/seed-data/*.ts` at tag `pre-db-first` (commit `1e89613`, 2026-09-23). It is the record that nothing was lost when hospital data moved out of TypeScript: every value below either lives in the baseline import file or the test fixtures after the migration ([DATABASE_MIGRATION.md](DATABASE_MIGRATION.md)).
 
 | Group | Count | How the old seed loaded it |
 | :--- | ---: | :--- |

@@ -33,16 +33,17 @@ Redis, a message queue and a separate shared-code package are deliberately absen
 ```
 nurse_appV04/
 ├─ backend/
-│  ├─ prisma/        schema.prisma · migrations/ (Prisma Migrate + hand-written SQL) · seed.ts · seed-data/
+│  ├─ prisma/        schema.prisma · migrations/ (Prisma Migrate + hand-written SQL) · baseline/aigh-baseline.json (hospital data file for the import)
 │  ├─ src/
 │  │  ├─ config/     env.ts (validated settings) · residency.ts (KSA fail-closed check) · shifts.ts (shift times)
 │  │  ├─ middleware/ request-id · authenticate · authorize · idempotency · errors
 │  │  ├─ lib/        prisma · audit · dates · hijri · passwords · tokens · throttle · uploads · worker-lease · logger · http-errors
 │  │  ├─ modules/    one folder per domain (§4)
 │  │  ├─ jobs/       scheduler · worker · daily-transition · expiry-scan · attendance-alerts
+│  │  ├─ cli/        bootstrap.ts — the one-time first-administrator command
 │  │  ├─ app.ts      assembles the Express app (no listen — tests use it directly)
 │  │  └─ server.ts   residency and scanner checks → listen → scheduler (in-process mode)
-│  └─ test/          integration tests against a real PostgreSQL database
+│  └─ test/          integration tests against a real PostgreSQL database; fixtures/demo/ (development-only demo data and its loader)
 ├─ frontend/
 │  ├─ scripts/       check-bundle-size.mjs (fail-closed gzip budget)
 │  └─ src/
@@ -65,11 +66,11 @@ nurse_appV04/
 | :--- | :--- | :--- |
 | `auth` | Login, refresh rotation, logout, password change, break-glass siren, own sessions | `service.ts`, `routes.ts` |
 | `users` | Accounts, scoped role assignments, **the permission table**, scope resolution | `permissions.ts`, `access.ts`, `accounts.ts`, `role-assignments.ts` |
-| `administration` | Four-eyes approvals, PAM elevation | `approvals.ts`, `pam.ts` |
+| `administration` | Four-eyes approvals, PAM elevation, hospital baseline import | `approvals.ts`, `pam.ts`, `baseline-import.ts` |
 | `workforce` | Departments, units, beds (single / bulk / CSV), positions, coverage targets, KPI | `org.ts`, `kpi.ts` |
 | `nurses` | Employee master, onboarding, own phones | `service.ts` |
 | `contracts` | Contract lifecycle, renewal, documents | `service.ts` |
-| `credentials` | Catalog (four-eyes), requirements, records, evidence, renewal | `catalog.ts`, `records.ts`, `access.ts` |
+| `credentials` | Catalog: categories and types with their fields (four-eyes), requirements, records, evidence, renewal | `catalog.ts`, `fields.ts`, `records.ts`, `access.ts` |
 | `eligibility` | **The engine** (pure), stored state, waivers | `engine.ts`, `state.service.ts`, `service.ts` |
 | `scheduling` | Roster board, pool, draft, auto-fill, publish, coverage | `service.ts` |
 | `attendance` | Clock events, gap classification | `service.ts` |
@@ -103,7 +104,7 @@ The scheduler ticks every minute. Each period has a unique run key in `job_runs`
 
 ## 8. Audit
 
-`appendAudit(tx, …)` calls the SQL function `fn_append_audit_entry`, which takes an advisory lock, links the row to the previous hash and hashes the stored columns (including the timestamp). A trigger rejects every `UPDATE` and `DELETE` on `audit_entries`, whichever database role connects. The view `audit_chain_breaks` lists any row whose link or content fails verification; `GET /audit/verify` reports it. Details: [DATABASE.md §4](DATABASE.md#4-audit-chain).
+`appendAudit(tx, …)` calls the SQL function `fn_append_audit_entry`, which takes an advisory lock, links the row to the previous hash and hashes the stored columns (including the timestamp). A trigger rejects every `UPDATE` and `DELETE` on `audit_entries`, whichever database role connects. The view `audit_chain_breaks` lists any row whose link or content fails verification; `GET /audit/verify` reports it. Details: [DATABASE.md §4](DATABASE_ARCHITECTURE.md#4-audit-chain).
 
 ## 9. Frontend
 
@@ -122,6 +123,7 @@ The scheduler ticks every minute. Each period has a unique run key in `job_runs`
 | Route security matrix | `backend/test/route-matrix.test.ts` | Every registered route × five personas matches `permissions.ts`; unauthenticated → 401; no unreviewed ungated route |
 | End-to-end scenarios | `backend/test/scenarios.test.ts` | The 13 business scenarios as one story |
 | Log privacy | `backend/test/logging.test.ts` | No e-mail, password, name, salary or search text in logs |
+| Database-first | `backend/test/bootstrap.test.ts`, `database-first.test.ts`, `fixtures.test.ts` | On brand-new databases (migrations only): bootstrap, a hospital built through the API alone, the baseline import (exact counts, idempotent, all-or-nothing), demo fixtures |
 | Documentation | `backend/test/docs.test.ts`, `scripts/check-docs.mjs` | RBAC.md matches the permission table; every documentation link resolves |
 | Frontend | `frontend/src/**/*.test.ts(x)` | Translations complete, every page loads, Hijri and phone helpers |
 

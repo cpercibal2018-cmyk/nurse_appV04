@@ -21,11 +21,22 @@ npm install
 cp .env.example backend/.env
 # Set JWT_SECRET in backend/.env and check DATABASE_URL points to a V04-only database.
 docker compose up -d db                     # or start a separate PostgreSQL 15 database
-npm run db:generate -w backend              # required before seed or first dev start
-npm run db:deploy -w backend                # apply the V04 migrations
-npm run db:seed -w backend                  # reference data only
+npm run db:generate -w backend              # generate the Prisma client
+npm run db:deploy -w backend                # apply the V04 migrations (an empty database)
 npm run dev:backend                         # http://localhost:3001/api/v1/health
 npm run dev:frontend                        # http://localhost:5173
+```
+
+There is no seed: hospital data lives only in the database ([docs/DATABASE_ARCHITECTURE.md §7](docs/DATABASE_ARCHITECTURE.md#7-how-data-enters-the-database)). On an empty database:
+
+```bash
+npm run build -w backend && npm run bootstrap -w backend   # first System Admin + HR Admin (hidden password prompt)
+```
+
+then sign in and use **Administration → Hospital baseline import** with `backend/prisma/baseline/aigh-baseline.json`. For a development database with demo accounts and fictional staff instead (database name ending `_dev`, `_test` or `_demo`, no accounts yet):
+
+```bash
+DEMO_PASSWORD='choose-12-or-more-chars' npm run fixtures:demo -w backend
 ```
 
 ## Checks

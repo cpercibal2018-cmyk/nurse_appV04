@@ -8,8 +8,8 @@ Whether a nurse may work on a given day, and the credential records that decide 
 
 | Concept | Meaning | Who changes it |
 | :--- | :--- | :--- |
-| Category | Grouping of credential types (licence, life support, training, …) | Seed only |
-| **Credential type** (template) | Name, code, whether it expires, tracked fields (e.g. licence number), grace days (0–90) | System-wide HR / System Admin, **with a second system-wide approver** (D-24, D-25). The request needs a reason (≥ 10 characters) and shows before → after; it is refused if the type changed after the request. Break-glass applies at once |
+| Category | Grouping of credential types (licence, life support, training, …) | System-wide HR / System Admin, **with a second system-wide approver** (D-42 / P8); initially from the baseline import |
+| **Credential type** (template) | Name, code, whether it expires, tracked fields (e.g. licence number; one database row per field in `credential_template_fields`), grace days (0–90) | System-wide HR / System Admin, **with a second system-wide approver** (D-24, D-25). The request needs a reason (≥ 10 characters) and shows before → after; it is refused if the type changed after the request. Break-glass applies at once |
 | **Requirement** | "Unit U requires type T" — for every position (`position = null`) or one position; status `MANDATORY`, `TRANSITION` (with a deadline) or `OPTIONAL` | HR / System Admin with the unit in scope; applies immediately and re-evaluates every affected nurse in the same transaction |
 
 A position-specific requirement overrides the unit-wide one for the same type (§5.1.4). `OPTIONAL` requirements never affect eligibility. HR and supervisors can read rules **only for units in their assigned scope**, including when they pass an explicit `unitId` filter.
@@ -27,7 +27,7 @@ A position-specific requirement overrides the unit-wide one for the same type (�
 | Renewal | The nurse or HR stages new data and uploads new evidence; the current credential stays usable until its own expiry. HR approves (promotes the staged data and evidence) or rejects (clears them; the approved record is unchanged) |
 | Suspend / revoke | Immediate ineligibility. Revoked is final |
 
-**Iqama expiry:** the seeded Iqama template accepts an Umm al-Qura Hijri expiry field. The server converts that value to the corresponding Gregorian calendar day before recording or renewing the credential; the Gregorian `expiryDate` is the authoritative date for eligibility. It rejects invalid Hijri dates and an explicit Gregorian date that conflicts with the tracked field. The paired `expiryDateHijri` is stored for display. **Pre-fix records need review:** a credential entered with a Hijri expiry before this conversion may have a Gregorian year such as 1448 in `expiryDate`. Before deployment, HR must identify and reconcile such records against the evidence and audit trail; this change does not silently rewrite clinical records.
+**Iqama expiry:** the baseline Iqama type accepts an Umm al-Qura Hijri expiry field. The server converts that value to the corresponding Gregorian calendar day before recording or renewing the credential; the Gregorian `expiryDate` is the authoritative date for eligibility. It rejects invalid Hijri dates and an explicit Gregorian date that conflicts with the tracked field. The paired `expiryDateHijri` is stored for display. **Pre-fix records need review:** a credential entered with a Hijri expiry before this conversion may have a Gregorian year such as 1448 in `expiryDate`. Before deployment, HR must identify and reconcile such records against the evidence and audit trail; this change does not silently rewrite clinical records.
 
 **Display labels** (never authorize anything on their own): `Active`, `SubjectToRenew` (within 60 days), `OnProcess` (renewal awaiting review), `Expired`.
 
@@ -91,8 +91,8 @@ Each run sends only the milestone a record is in now, once per recipient (event 
 
 | Value | Where | Current |
 | :--- | :--- | :--- |
-| Grace days per type | Credential catalog (four-eyes) | Seeded per type; 0–90 |
-| Requirements per unit / position | Requirements page | Seeded demo requirements only with `SEED_DEMO=true` |
+| Grace days per type | Credential catalog (four-eyes) | 0 for every type in the baseline file until the hospital policy sets them; 0–90 |
+| Requirements per unit / position | Requirements page | None until the hospital enters its policy (the six illustrative ones exist only in the development fixtures) |
 | Renewal window | `RENEWAL_WINDOW_DAYS` in `credentials/records.ts` | 60 days (spec §5.2) |
 | Reminder milestones and recipients | `MILESTONES`, `ROUTING` in `jobs/expiry-scan.ts` | D-39 |
 | Waiver maximum | Spec §6.1.2 + database constraint | 72 hours |

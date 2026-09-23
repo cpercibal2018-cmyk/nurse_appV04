@@ -33,7 +33,7 @@ Every backend setting is in [`.env.example`](../.env.example) and is validated a
 | `TRUST_PROXY` | false | `true` behind the proxy, so login limits and session history see the client address |
 | `JOBS_MODE` | in-process | `worker` on the API in production (§3) |
 | `DATA_RESIDENCY_REGION` / `PDPL_ALLOWED_REGIONS` | local / local | A KSA region id and its allowlist; `local` is refused in production. Never `me-south-1` (Bahrain) or `me-central-1` (UAE) |
-| `SEED_DEMO` / `SEED_DEMO_PASSWORD` | false / — | Demo data is refused in production |
+| `DEMO_PASSWORD` | — | Development fixtures only (`npm run fixtures:demo`); never set in production |
 
 ## 3. Processes and background jobs
 
@@ -56,8 +56,7 @@ Every backend setting is in [`.env.example`](../.env.example) and is validated a
 ```bash
 npm ci
 npm run build                       # backend (prisma generate + tsc) and frontend (with bundle gate)
-npm run db:deploy -w backend        # prisma migrate deploy — never db push
-npm run db:seed -w backend          # reference data only; idempotent
+npm run db:deploy -w backend        # prisma migrate deploy — never db push; there is no seed
 # restart the API and the worker
 curl -fsS https://<host>/api/v1/health   # 200 {"status":"ok","database":"up"}; 503 when the database is down
 ```
@@ -65,6 +64,15 @@ curl -fsS https://<host>/api/v1/health   # 200 {"status":"ok","database":"up"}; 
 After a release, a System Admin should open **Audit → Verify chain** (expected: intact) and **Administration → Jobs** (expected: recent runs completed).
 
 **First release after commit 10b:** the reminder job sends each record's current milestone once under the new milestone keys (D-39); contracts that already ended without a renewal get one "Contract ended" notice.
+
+### First installation (empty database)
+
+1. `npm run db:deploy -w backend` — the structure only; the database holds no data and no accounts.
+2. `npm run bootstrap -w backend` in an interactive terminal on the server — creates the first System Admin and a hospital-wide HR Admin (two people, so approvals work) and optionally the break-glass account. It refuses to run once any account exists.
+3. The HR Admin signs in, opens **Administration → Hospital baseline import**, previews the hospital's baseline file (the reference is `backend/prisma/baseline/aigh-baseline.json`) and requests the import; the System Admin elevates (PAM) and approves it. It is applied in one transaction or not at all.
+4. Credential requirements (the hospital's credential policy), accounts, employees and contracts are then entered through the application.
+
+Never run the demo fixtures on a production database; the command refuses `NODE_ENV=production` and any database with accounts.
 
 ## 5. Backups and restore
 

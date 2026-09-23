@@ -10,12 +10,13 @@
 | [CLINICAL_ELIGIBILITY.md](CLINICAL_ELIGIBILITY.md) | Credentials, the eligibility engine, grace, waivers, policy transitions, reminders |
 | [WORKFORCE.md](WORKFORCE.md) | Organisation, employees, contracts, scheduling, attendance |
 | [API.md](API.md) | Every endpoint, with permission, scope and source |
-| [DATABASE.md](DATABASE.md) | Tables, database-enforced rules, the audit chain, migrations, seed |
+| [DATABASE_ARCHITECTURE.md](DATABASE_ARCHITECTURE.md) | Data domains and relationships, database-enforced rules, the audit chain, migrations, **how data enters the database** (bootstrap, baseline import, fixtures) |
+| [DATABASE_MIGRATION.md](DATABASE_MIGRATION.md) | The database-first migration: old vs new architecture, steps, data mapping, import process, rollback, validation |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Configuration, processes and jobs, release steps, backups, **known gaps before production**, monitoring |
 | [MIGRATION.md](MIGRATION.md) | Moving from V03: data, user-visible changes, V03 programme items |
 | [SEED_DATA_INVENTORY.md](SEED_DATA_INVENTORY.md) | The complete original seed (organisation, positions, credential catalogue, demo data) as it was before hospital data moved out of TypeScript |
 | [CLEANUP_REPORT.md](CLEANUP_REPORT.md) | What the final cleanup removed, moved and kept, and the full validation matrix |
-| [V04_ARCHITECTURE_PLAN.md](V04_ARCHITECTURE_PLAN.md) | The plan, the **owner decision record** (§9a, D-1 … D-41) and implementation notes per commit |
+| [V04_ARCHITECTURE_PLAN.md](V04_ARCHITECTURE_PLAN.md) | The plan, the **owner decision record** (§9a, D-1 … D-42) and implementation notes per commit |
 | [reference/AIGH_Nursing_Workforce_Management_System_v2_8_7.md](reference/AIGH_Nursing_Workforce_Management_System_v2_8_7.md) | The original specification, verbatim (never edited) |
 
 ## Rule register

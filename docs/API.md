@@ -50,6 +50,8 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | POST | `/api/v1/approvals/:id/approve` · `/reject` | Decide `{reason}` | HR, SA; approver ≠ initiator (R11); both decisions check request scope (catalog: system-wide) | backend |
 | POST | `/api/v1/pam/elevate` · GET `/api/v1/pam/status` · POST `/api/v1/pam/end` | JIT elevation | users holding SA | backend |
 | POST | `/api/v1/break-glass/activate` | Siren (R18) | break-glass account only | spec §3.6 — **scope decision D-9** |
+| POST | `/api/v1/admin/baseline-import/preview` | `{file}` → per-row CREATE / UNCHANGED / CONFLICT / REJECTED report, totals (beds, fields), `canImport`; writes nothing | `baseline.import` — hospital-wide scope | **D-42** (P7) |
+| POST | `/api/v1/admin/baseline-import` | `{file, reason ≥ 10}` → **202** `{status: PENDING_APPROVAL, requestId, report}`; refused with any conflict or rejection (`BASELINE_NOT_IMPORTABLE`) or nothing new (`NOTHING_TO_IMPORT`). A second hospital-wide admin approves via `/approvals/:id/approve`; the file is re-checked (`BASELINE_CHANGED_SINCE_REQUEST`) and applied in one transaction. Break-glass → 201 applied | `baseline.import` — hospital-wide scope | **D-42** (P7) |
 
 **Implemented in commit 5 (notes):**
 - Every route under `/api/v1` except health and `/auth/login|refresh|logout` passes one `authenticate` step; an anonymous caller gets 401 for any path, known or not.
@@ -67,7 +69,7 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | POST · PATCH | `/api/v1/departments`, `/:id` | Create / update / deactivate — refused while it has active units (W1) | HR, SA — system-wide | W1 |
 | GET | `/api/v1/units?departmentId&includeInactive` | List | EMP | spec §2.9 |
 | GET | `/api/v1/units/summary` | Live bed totals by department, active units (W3: the seeded 582 is not a constant) | EMP | kit |
-| POST · PATCH | `/api/v1/units`, `/:id` | Create (initial beds logged) / rename / move department / deactivate — refused while it has active employees (W2) | HR, SA — system-wide | W2 |
+| POST · PATCH | `/api/v1/units`, `/:id` | Create (initial beds logged) / rename / move department / set `criticalArea` (ICU / ER / OR / null) / deactivate — refused while it has active employees (W2) | HR, SA — system-wide | W2 |
 | PUT | `/api/v1/units/:id/bed-capacity` | `{bedCount 0–500, reason}` → `UPDATED`/`UNCHANGED`; one log row per change (W4) | HR, SA — unit in scope | W4 |
 | PUT | `/api/v1/units/bed-capacity/bulk` **[I]** | `{rows:[{unitCode, bedCount}], reason}` → per-row `UPDATED`/`UNCHANGED`/`REJECTED` (unknown code, out of scope, bad value, duplicate); applied rows commit together (W5) | HR, SA — rows outside scope rejected | W5 |
 | POST | `/api/v1/units/import` **[I]** | `{csv, dryRun=true}`; header `unit_code,name,department_code,beds[,description]`; RFC 4180 quotes; ≤ 500 rows; never deletes or deactivates | HR, SA — system-wide | kit |
@@ -75,13 +77,14 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | GET | `/api/v1/positions?includeInactive` · `/:code` | Directory | EMP | spec §3.1.1 |
 | POST · PATCH | `/api/v1/positions`, `/:code` | Create / update (tier from the §3.1.1 list) / deactivate — refused while held by active employees (W6). A schedulability change re-evaluates holders (L6) | HR, SA — system-wide | W6, W7 |
 | GET · PUT | `/api/v1/coverage-targets?unitId` | `{unitId, shiftType, minimumStaff 0–999 \| null}`; `null` removes the target ("unspecified", never zero — W8) | read EMP; write HR, SA — unit in scope | spec §6.3 |
-| GET | `/api/v1/kpi/nurse-to-bed?date&shift` | KPI A (ICU/ER/OR codes 1–4, averaged) and B (hospital-wide). Nurses = Published assignments on that date/shift; beds = active units. Response carries `thresholdSource` (card not in repository) | HR, SA, SUP | V03 `kpi.ts` — **D-11** |
+| GET | `/api/v1/kpi/nurse-to-bed?date&shift` | KPI A (units whose `criticalArea` is ICU/ER/OR — set per unit by HR; codes 1–4, averaged) and B (hospital-wide). Nurses = Published assignments on that date/shift; beds = active units. Response carries `thresholdSource` (card not in repository) | HR, SA, SUP | V03 `kpi.ts` — **D-11** |
 
 ### 2.5 Nurses (`modules/nurses`) — implemented in commit 7
 
 | Method | Endpoint | Purpose | Permission / scope | Source |
 | :--- | :--- | :--- | :--- | :--- |
 | GET | `/api/v1/employees?unitId&unassigned&positionCode&q&page&pageSize` | List | HR/SA scoped → `view: FULL`; SUP scoped → `view: BASELINE` (identity, unit, position, job title, specialty, status, hire date, contact email, mobile phone, actual work place — salary, marital status, nationality, file no., rank, job post and emergency contact phone suppressed) | spec §8.1, **D-36** |
+| GET | `/api/v1/employees/onboarding-defaults` | Rule E6 defaults: `{unitId: null, positionCode}` — the default position only if the hospital has it active, else `null` (onboarding then requires a position: `POSITION_REQUIRED`) | HR, SA | E6, **D-42** (P4) |
 | GET | `/api/v1/employees/me` · `/:id` | Own profile (FULL) · one record, shaped by viewer | EMP own; HR, SUP scoped | spec §8.1 |
 | POST | `/api/v1/employees/onboard` **[I]** | Employee + **Draft** contract (Hijri dates converted by the server) + HIGH audit + eligibility state in one transaction → `{employeeId, contractId}`. Defaults: Unassigned, position SN (E6). Job number unique regardless of case (E1) | HR, SA — unit in scope; Unassigned needs system-wide | spec §3.1, **D-3**, D-17 |
 | PATCH | `/api/v1/employees/:id` | Source fields E1–E8 and the two phones (not position); a unit move re-evaluates eligibility; salary and emergency-phone values are not copied into the audit trail | HR, SA — old and new unit in scope | spec §3.1, D-35 |
@@ -108,6 +111,7 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | :--- | :--- | :--- | :--- | :--- |
 | GET | `/api/v1/credential-categories` · `/api/v1/credential-templates?includeInactive` | Catalog | EMP | spec §5.1 |
 | POST · PATCH | `/api/v1/credential-templates`, `/:id` | Template admin (fields, `gracePeriodDays` 0–90, activity) with `reason` (≥ 10). **202** `{status: PENDING_APPROVAL, requestId}` — applied only when a second system-wide admin approves via `/approvals/:id/approve` (D-24); break-glass → 201/200 `{status: APPLIED, template}`. Grace/expiry/activity changes re-evaluate holders | HR, SA — **system-wide scope only** (D-25) | spec §5.1, §6.1.1, R10 |
+| POST · PATCH | `/api/v1/credential-categories`, `/:code` | Create / change a category `{code, name, description?, displayOrder, reason ≥ 10}` → **202** pending approval by a second system-wide admin (`CATEGORY_CHANGED_SINCE_REQUEST` if it changed meanwhile); break-glass → applied | HR, SA — **system-wide scope only** | **D-42** (P8) |
 | GET | `/api/v1/credential-requirements?unitId&position&templateId` | Rules filtered to caller's units (out-of-scope `unitId` returns an empty list) | HR, SA, SUP — scoped | spec §5.1.4 |
 | POST · PUT · DELETE | `/api/v1/credential-requirements`, `/:id` | Rule CRUD; re-evaluates the unit in the same transaction; `{affectedEmployees}` | HR (unit in scope), SA | spec §5.1.4 |
 | POST | `/api/v1/credential-requirements/bulk` | `{items[]}` in one transaction → `{created, updated, affectedEmployees}` | HR (scoped), SA | spec §5.1.4 |
