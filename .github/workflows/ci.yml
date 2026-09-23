@@ -46,5 +46,21 @@ jobs:
           npm run db:seed -w backend
       - run: npm run typecheck
       - run: npm test    # backend, frontend, documentation links
-      - name: Build (frontend build includes the gzipped bundle budget gate)
-        run: npm run build
+      - name: Build backend
+        run: |
+          if npm run build -w backend > backend-build.log 2>&1; then
+            cat backend-build.log
+          else
+            tail -n 35 backend-build.log
+            printf '::error::Backend build: %s\n' "$(tail -n 18 backend-build.log | tr '\n' ' ' | cut -c 1-3500)"
+            exit 1
+          fi
+      - name: Build frontend (includes the gzipped bundle budget gate)
+        run: |
+          if npm run build -w frontend > frontend-build.log 2>&1; then
+            cat frontend-build.log
+          else
+            tail -n 35 frontend-build.log
+            printf '::error::Frontend build: %s\n' "$(tail -n 18 frontend-build.log | tr '\n' ' ' | cut -c 1-3500)"
+            exit 1
+          fi
