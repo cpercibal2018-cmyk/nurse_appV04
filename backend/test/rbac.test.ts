@@ -212,6 +212,57 @@ describeDb('access control', () => {
     });
   });
 
+  describe('validation: separation of duties and lock-out prevention', () => {
+    it('R8 also stops deactivating the account of the last active System Admin', async () => {
+      const hr = await signIn(app, (await hrSystem()).email);
+      const sa = await makeUser(db, { roles: [{ role: 'SYSTEM_ADMIN', scopeType: 'SYSTEM' }] });
+      const mine = await db.roleAssignment.findFirstOrThrow({ where: { userId: sa.id } });
+      await db.roleAssignment.updateMany({ where: { role: 'SYSTEM_ADMIN', revokedAt: null, id: { not: mine.id } }, data: { revokedAt: new Date() } });
+      const res = await hr.patch(`/users/${sa.id}`, { isActive: false });
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('LAST_SYSTEM_ADMIN');
+    });
+
+    it('R8 does not count System Admin assignments held by deactivated accounts', async () => {
+      const hr = await signIn(app, (await hrSystem()).email);
+      const a = await makeUser(db, { roles: [{ role: 'SYSTEM_ADMIN', scopeType: 'SYSTEM' }] });
+      const b = await makeUser(db, { roles: [{ role: 'SYSTEM_ADMIN', scopeType: 'SYSTEM' }], isActive: false });
+      const keep = [a.id, b.id];
+      await db.roleAssignment.updateMany({ where: { role: 'SYSTEM_ADMIN', revokedAt: null, userId: { notIn: keep } }, data: { revokedAt: new Date() } });
+      const asgA = await db.roleAssignment.findFirstOrThrow({ where: { userId: a.id } });
+      // b's assignment is live but b cannot sign in, so revoking a would leave nobody.
+      expect((await hr.post(`/role-assignments/${asgA.id}/revoke`, { reason: 'Clearing out admins' })).body.error.code).toBe('LAST_SYSTEM_ADMIN');
+    });
+
+    it('an administrator cannot re-link their own account to another employee', async () => {
+      const hr = await hrSystem();
+      const c = await signIn(app, hr.email);
+      const emp = await makeEmployee(db, org.unitA.id);
+      const res = await c.patch(`/users/${hr.id}`, { employeeId: emp.id });
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('SELF_UPDATE_FORBIDDEN');
+    });
+
+    it('an approval decision needs a reason of 5+ characters (R4) and is audited (R12)', async () => {
+      const a = await signIn(app, (await hrSystem()).email);
+      const b = await signIn(app, (await hrSystem()).email);
+      const t = await makeUser(db);
+      const p = await grant(a, { userId: t.id, role: 'HR_ADMIN', scopeType: 'SYSTEM', scopeIds: [], reason: REASON });
+      expect((await b.post(`/approvals/${p.body.requestId}/reject`, { reason: 'no' })).body.error.code).toBe('VALIDATION_FAILED');
+      expect((await b.post(`/approvals/${p.body.requestId}/reject`, { reason: 'Not agreed' })).status).toBe(200);
+      expect(await db.auditEntry.count({ where: { action: 'APPROVAL_INITIATED', resourceId: String(p.body.requestId) } })).toBe(1);
+      expect(await db.auditEntry.count({ where: { action: 'APPROVAL_REJECTED', resourceId: String(p.body.requestId) } })).toBe(1);
+    });
+
+    it('PAM elevation and its end are audited HIGH (R12)', async () => {
+      const sa = await makeUser(db, { roles: [{ role: 'SYSTEM_ADMIN', scopeType: 'SYSTEM' }] });
+      const c = await signIn(app, sa.email);
+      await c.post('/pam/elevate', { reason: 'Quarterly access review' });
+      await c.post('/pam/end');
+      expect(await db.auditEntry.count({ where: { actorUserId: sa.id, action: { in: ['PAM_ELEVATED', 'PAM_ENDED'] }, priority: 'HIGH' } })).toBe(2);
+    });
+  });
+
   describe('idempotency', () => {
     it('replays the stored response for a repeated key, and refuses the key for a different request', async () => {
       const c = await signIn(app, (await hrSystem()).email);
@@ -262,6 +313,47 @@ describeDb('access control', () => {
       expect((await c.patch(`/users/${made.body.id}`, { isActive: false })).status).toBe(200);
       expect((await victim.get('/auth/me')).status).toBe(401);
       expect((await c.patch(`/users/${hr.id}`, { isActive: false })).body.error.code).toBe('SELF_DEACTIVATION_FORBIDDEN');
+    });
+  });
+
+  describe('validation: unauthorized access sweep (R15)', () => {
+    const ADMIN_ENDPOINTS: Array<[string, string]> = [
+      ['GET', '/users'], ['POST', '/users'], ['PATCH', '/users/1'],
+      ['GET', '/role-assignments'], ['POST', '/role-assignments'], ['PATCH', '/role-assignments/1'], ['POST', '/role-assignments/1/revoke'],
+      ['GET', '/approvals'], ['POST', '/approvals/1/approve'], ['POST', '/approvals/1/reject'],
+    ];
+    const SIGNED_IN_ENDPOINTS: Array<[string, string]> = [
+      ['GET', '/auth/me'], ['POST', '/auth/password'], ['GET', '/roles/matrix'], ['GET', '/departments'], ['GET', '/units'],
+      ['GET', '/pam/status'], ['POST', '/pam/elevate'], ['POST', '/pam/end'],
+    ];
+
+    it('rejects every protected endpoint without a token (401) and writes nothing', async () => {
+      const before = await db.auditEntry.count();
+      const { default: request } = await import('supertest');
+      for (const [method, path] of [...ADMIN_ENDPOINTS, ...SIGNED_IN_ENDPOINTS]) {
+        const r = await request(app)[method.toLowerCase() as 'get'](`/api/v1${path}`).set('Origin', 'http://localhost:5173').send({});
+        expect([method, path, r.status]).toEqual([method, path, 401]);
+      }
+      expect(await db.auditEntry.count()).toBe(before);
+    });
+
+    it('rejects every administrative endpoint for a plain employee (403) and a supervisor (403)', async () => {
+      const emp = await signIn(app, (await makeUser(db)).email);
+      const sup = await signIn(app, (await makeUser(db, { roles: [{ role: 'SUPERVISOR', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
+      for (const c of [emp, sup]) {
+        for (const [method, path] of ADMIN_ENDPOINTS) {
+          const r = method === 'GET' ? await c.get(path) : method === 'PATCH' ? await c.patch(path, {}) : await c.post(path, {});
+          expect([method, path, r.status, r.body.error?.code]).toEqual([method, path, 403, 'FORBIDDEN']);
+        }
+      }
+    });
+
+    it('a dormant System Admin is refused on every administrative endpoint until elevated', async () => {
+      const sa = await signIn(app, (await makeUser(db, { roles: [{ role: 'SYSTEM_ADMIN', scopeType: 'SYSTEM' }] })).email);
+      for (const [method, path] of ADMIN_ENDPOINTS) {
+        const r = method === 'GET' ? await sa.get(path) : method === 'PATCH' ? await sa.patch(path, {}) : await sa.post(path, {});
+        expect([method, path, r.body.error?.code]).toEqual([method, path, 'PAM_ELEVATION_REQUIRED']);
+      }
     });
   });
 

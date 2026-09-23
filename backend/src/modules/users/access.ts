@@ -110,3 +110,23 @@ export async function unitsOfScope(db: DbClient, scopeType: ScopeType, scopeIds:
   const units = await db.unit.findMany({ where: { departmentId: { in: scopeIds } }, select: { id: true } });
   return units.map((u) => u.id);
 }
+
+/**
+ * Rule R8 counter: active System Admin assignments held by ACTIVE accounts,
+ * excluding one assignment or one account (the one about to be removed). An
+ * assignment on a deactivated account cannot sign in, so it does not count.
+ * Callers hold the lock taken by lockSystemAdminChanges.
+ */
+export async function otherActiveSystemAdmins(db: DbClient, exclude: { assignmentId?: number; userId?: number }, now = new Date()) {
+  return db.roleAssignment.count({
+    where: {
+      role: 'SYSTEM_ADMIN', revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      user: { isActive: true },
+      ...(exclude.assignmentId ? { id: { not: exclude.assignmentId } } : {}),
+      ...(exclude.userId ? { userId: { not: exclude.userId } } : {}),
+    },
+  });
+}
+
+/** Serialises every change that could remove the last System Admin (R8). */
+export const lockSystemAdminChanges = (db: DbClient) => db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('role_assignments:revoke'))`;

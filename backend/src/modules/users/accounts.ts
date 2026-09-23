@@ -9,7 +9,7 @@ import { appendAudit } from '../../lib/audit.js';
 import { HttpError, notFound } from '../../lib/http-errors.js';
 import { PasswordSchema, type PasswordService } from '../../lib/passwords.js';
 import type { Db, DbClient } from '../../lib/prisma.js';
-import { unitScope, type AuthContext, type UnitScope } from './access.js';
+import { lockSystemAdminChanges, otherActiveSystemAdmins, unitScope, type AuthContext, type UnitScope } from './access.js';
 
 const ADMIN_ROLES = ['HR_ADMIN', 'SYSTEM_ADMIN'] as const;
 
@@ -84,12 +84,23 @@ export function createAccountService(db: Db, passwords: PasswordService) {
     if (!target) throw notFound('Account not found');
     if (target.isBreakGlass) throw new HttpError(403, 'BREAK_GLASS_ACCOUNT_PROTECTED', 'The break-glass account is managed outside the application');
     if (id === auth.user.id && body.isActive === false) throw new HttpError(403, 'SELF_DEACTIVATION_FORBIDDEN', 'You cannot deactivate your own account');
+    // Separation of duties: the employee link decides whose "own" records an
+    // account sees, so nobody may re-link their own account.
+    if (id === auth.user.id && body.employeeId !== undefined) throw new HttpError(403, 'SELF_UPDATE_FORBIDDEN', 'You cannot change the employee link of your own account');
 
     const scope = await unitScope(db, auth, ADMIN_ROLES);
     await assertEmployeeInScope(db, scope, target.employeeId); // may administer this account at all
     if (body.employeeId !== undefined) await assertEmployeeInScope(db, scope, body.employeeId); // and may link it there
 
     return db.$transaction(async (tx) => {
+      if (body.isActive === false && target.isActive) {
+        // R8: deactivating an account must not remove the last usable System Admin.
+        await lockSystemAdminChanges(tx);
+        const holdsSa = await tx.roleAssignment.count({ where: { userId: id, role: 'SYSTEM_ADMIN', revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } });
+        if (holdsSa > 0 && (await otherActiveSystemAdmins(tx, { userId: id })) === 0) {
+          throw new HttpError(409, 'LAST_SYSTEM_ADMIN', 'This account holds the last active System Admin assignment (R8)');
+        }
+      }
       const updated = await tx.user.update({ where: { id }, data: body, select: { id: true, isActive: true, displayName: true, employeeId: true } });
       if (body.isActive === false && target.isActive) {
         // Deactivation ends every session at once (authenticate checks the family).

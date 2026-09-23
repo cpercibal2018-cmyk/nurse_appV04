@@ -185,6 +185,8 @@ Follows the brief; each commit builds.
 | Break-glass (D-9) | Siren on successful sign-in of the flagged account: irrevocable event, HIGH audit, CRITICAL in-app notification to System Admins; root access without PAM/four-eyes; session and access end at 4 h. Failed attempts on it are audited HIGH | SMS/email to CEO + IT Director not built (no SMTP/SMS) |
 | Workforce reads | `GET /departments`, `GET /units` brought forward from commit 7 (the role-assignment scope picker needs them); read-only | Writes stay in commit 7 |
 
+**Commit 5 validation (2026-09-23)** found and fixed five defects, each reproduced by a failing test first: logout lacked the CSRF check (spec §3.4 "all state-changing requests"); login lacked an Origin check (login CSRF); deactivating an account could remove the last System Admin, bypassing R8; R8 counted assignments held by deactivated accounts; an administrator could re-link their own account to another employee. API responses now also carry `Cache-Control: no-store`.
+
 ## 9. Decisions required before stage 2
 
 Each row names the conflict it resolves, my recommendation, and the consequence. **Nothing below is assumed. Stage 2 starts only once these are answered.**

@@ -33,7 +33,19 @@ export function createAuthRouter(env: Env, auth: AuthService, authenticate: Requ
     res.clearCookie(CSRF_COOKIE, { path: '/', secure, sameSite: 'lax' });
   }
 
+  const requireAppOrigin = (origin: string | undefined) => {
+    if (origin !== env.CORS_ORIGIN) throw new HttpError(403, 'ORIGIN_REJECTED', 'Request origin not allowed');
+  };
+  /** Double submit: the X-CSRF-Token header must equal the readable CSRF cookie. */
+  const requireCsrfCookieMatch = (cookies: Record<string, string | undefined>, header: string | undefined) => {
+    const cookieToken = cookies[CSRF_COOKIE] ?? '';
+    if (!cookieToken || !header || !constantTimeEqual(cookieToken, header)) throw new HttpError(403, 'CSRF_FAILED', 'Missing or invalid CSRF token');
+  };
+
+  // Login has no session yet, so no CSRF token exists; the Origin check stops
+  // another site from signing a victim into an attacker's account (login CSRF).
   router.post('/login', async (req, res) => {
+    requireAppOrigin(req.get('origin'));
     const body = LoginBody.parse(req.body);
     try {
       sendSession(res, await auth.login(body.email, body.password, req.ip ?? 'unknown', res.locals.requestId));
@@ -50,10 +62,8 @@ export function createAuthRouter(env: Env, auth: AuthService, authenticate: Requ
   // may already be expired): Origin must be the app, and the X-CSRF-Token
   // header must equal the CSRF cookie (double submit).
   router.post('/refresh', async (req, res) => {
-    if (req.get('origin') !== env.CORS_ORIGIN) throw new HttpError(403, 'ORIGIN_REJECTED', 'Request origin not allowed');
-    const cookieToken = (req.cookies as Record<string, string | undefined>)[CSRF_COOKIE] ?? '';
-    const header = req.get('x-csrf-token') ?? '';
-    if (!cookieToken || !header || !constantTimeEqual(cookieToken, header)) throw new HttpError(403, 'CSRF_FAILED', 'Missing or invalid CSRF token');
+    requireAppOrigin(req.get('origin'));
+    requireCsrfCookieMatch(req.cookies as Record<string, string | undefined>, req.get('x-csrf-token'));
     try {
       sendSession(res, await auth.refresh((req.cookies as Record<string, string | undefined>)[REFRESH_COOKIE], res.locals.requestId));
     } catch (e) {
@@ -62,8 +72,10 @@ export function createAuthRouter(env: Env, auth: AuthService, authenticate: Requ
     }
   });
 
+  // Spec §3.4: every state-changing request carries the CSRF token — logout too.
   router.post('/logout', async (req, res) => {
-    if (req.get('origin') !== env.CORS_ORIGIN) throw new HttpError(403, 'ORIGIN_REJECTED', 'Request origin not allowed');
+    requireAppOrigin(req.get('origin'));
+    requireCsrfCookieMatch(req.cookies as Record<string, string | undefined>, req.get('x-csrf-token'));
     await auth.logout((req.cookies as Record<string, string | undefined>)[REFRESH_COOKIE], res.locals.requestId);
     clearSession(res);
     res.status(204).end();

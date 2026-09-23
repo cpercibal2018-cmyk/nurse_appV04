@@ -9,7 +9,7 @@ import type { AppRole, ScopeType } from '../../generated/prisma/client.js';
 import { appendAudit } from '../../lib/audit.js';
 import { HttpError, notFound } from '../../lib/http-errors.js';
 import type { Db, DbClient } from '../../lib/prisma.js';
-import { scopeCovers, unitScope, unitsOfScope, type AuthContext } from './access.js';
+import { lockSystemAdminChanges, otherActiveSystemAdmins, scopeCovers, unitScope, unitsOfScope, type AuthContext } from './access.js';
 
 const ADMIN_ROLES = ['HR_ADMIN', 'SYSTEM_ADMIN'] as const;
 const DAY_MS = 24 * 3600_000;
@@ -216,18 +216,14 @@ export function createRoleAssignmentService(db: Db) {
 
   async function revoke(auth: AuthContext, id: number, reason: string, requestId?: string) {
     await db.$transaction(async (tx) => {
-      // Serialise System Admin revocations so two concurrent ones cannot remove the last (R8).
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('role_assignments:revoke'))`;
+      // Serialise System Admin removals so two concurrent ones cannot remove the last (R8).
+      await lockSystemAdminChanges(tx);
       const existing = await tx.roleAssignment.findUnique({ where: { id } });
       if (!existing || existing.revokedAt) throw notFound('Assignment not found or already revoked');
       if (existing.userId === auth.user.id) throw forbid('SELF_REVOKE_FORBIDDEN', 'You cannot revoke your own role — another administrator must (R2)');
       await assertCovers(tx, auth, existing.scopeType, existing.scopeIds);
-      if (existing.role === 'SYSTEM_ADMIN') {
-        const now = new Date();
-        const others = await tx.roleAssignment.count({
-          where: { role: 'SYSTEM_ADMIN', revokedAt: null, id: { not: id }, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
-        });
-        if (others === 0) throw new HttpError(409, 'LAST_SYSTEM_ADMIN', 'The last System Admin assignment cannot be revoked (R8)');
+      if (existing.role === 'SYSTEM_ADMIN' && (await otherActiveSystemAdmins(tx, { assignmentId: id })) === 0) {
+        throw new HttpError(409, 'LAST_SYSTEM_ADMIN', 'The last System Admin assignment cannot be revoked (R8)');
       }
       await tx.roleAssignment.update({ where: { id }, data: { revokedAt: new Date(), revokedById: auth.user.id, revokeReason: reason } });
       await appendAudit(tx, {

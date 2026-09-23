@@ -35,8 +35,8 @@ describeDb('authentication', () => {
   it('answers a wrong password and an unknown email identically, and audits the real account', async () => {
     const app = testApp(db);
     const u = await makeUser(db);
-    const wrong = await request(app).post('/api/v1/auth/login').send({ email: u.email, password: 'wrong-password-123' });
-    const unknown = await request(app).post('/api/v1/auth/login').send({ email: 'nobody@nowhere.sa', password: 'wrong-password-123' });
+    const wrong = await request(app).post('/api/v1/auth/login').set('Origin', ORIGIN).send({ email: u.email, password: 'wrong-password-123' });
+    const unknown = await request(app).post('/api/v1/auth/login').set('Origin', ORIGIN).send({ email: 'nobody@nowhere.sa', password: 'wrong-password-123' });
     expect(wrong.status).toBe(401);
     expect(wrong.body).toEqual(unknown.body);
     expect(wrong.body.error.code).toBe('INVALID_CREDENTIALS');
@@ -47,15 +47,15 @@ describeDb('authentication', () => {
   it('rejects an inactive account', async () => {
     const app = testApp(db);
     const u = await makeUser(db, { isActive: false });
-    const res = await request(app).post('/api/v1/auth/login').send({ email: u.email, password: PASSWORD });
+    const res = await request(app).post('/api/v1/auth/login').set('Origin', ORIGIN).send({ email: u.email, password: PASSWORD });
     expect(res.body.error.code).toBe('INVALID_CREDENTIALS');
   });
 
   it('limits failed attempts per account, then refuses even the right password (429 + Retry-After)', async () => {
     const app = testApp(db, { LOGIN_THROTTLE_MAX_PER_ACCOUNT: '3' });
     const u = await makeUser(db);
-    for (let i = 0; i < 3; i++) await request(app).post('/api/v1/auth/login').send({ email: u.email, password: 'wrong-password-123' });
-    const res = await request(app).post('/api/v1/auth/login').send({ email: u.email, password: PASSWORD });
+    for (let i = 0; i < 3; i++) await request(app).post('/api/v1/auth/login').set('Origin', ORIGIN).send({ email: u.email, password: 'wrong-password-123' });
+    const res = await request(app).post('/api/v1/auth/login').set('Origin', ORIGIN).send({ email: u.email, password: PASSWORD });
     expect(res.status).toBe(429);
     expect(res.body.error.code).toBe('TOO_MANY_ATTEMPTS');
     expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
@@ -65,9 +65,9 @@ describeDb('authentication', () => {
     const app = testApp(db, { LOGIN_THROTTLE_MAX_PER_CLIENT: '2' });
     const a = await makeUser(db);
     const b = await makeUser(db);
-    await request(app).post('/api/v1/auth/login').send({ email: a.email, password: 'wrong-password-123' });
-    await request(app).post('/api/v1/auth/login').send({ email: b.email, password: 'wrong-password-123' });
-    const res = await request(app).post('/api/v1/auth/login').send({ email: (await makeUser(db)).email, password: PASSWORD });
+    await request(app).post('/api/v1/auth/login').set('Origin', ORIGIN).send({ email: a.email, password: 'wrong-password-123' });
+    await request(app).post('/api/v1/auth/login').set('Origin', ORIGIN).send({ email: b.email, password: 'wrong-password-123' });
+    const res = await request(app).post('/api/v1/auth/login').set('Origin', ORIGIN).send({ email: (await makeUser(db)).email, password: PASSWORD });
     expect(res.status).toBe(429);
   });
 
@@ -141,7 +141,7 @@ describeDb('authentication', () => {
     const app = testApp(db);
     const u = await makeUser(db);
     const c = await signIn(app, u.email);
-    const out = await c.agent.post('/api/v1/auth/logout').set('Origin', ORIGIN);
+    const out = await c.agent.post('/api/v1/auth/logout').set('Origin', ORIGIN).set('X-CSRF-Token', c.session.csrf);
     expect(out.status).toBe(204);
     expect((await c.get('/auth/me')).status).toBe(401);
     // Cookies are cleared, so a refresh is refused (by the CSRF check first).
@@ -223,6 +223,34 @@ describeDb('authentication', () => {
     const bg = await makeUser(db, { isBreakGlass: true });
     const ev = await db.breakGlassEvent.create({ data: { actorUserId: bg.id, reason: 'x', ipAddress: '1.1.1.1', expiresAt: new Date(Date.now() + 1000) } });
     await expect(db.breakGlassEvent.delete({ where: { id: ev.id } })).rejects.toThrow();
+  });
+
+  it('validation: login refuses a foreign or missing Origin (login CSRF)', async () => {
+    const app = testApp(db);
+    const u = await makeUser(db);
+    const foreign = await request(app).post('/api/v1/auth/login').set('Origin', 'https://evil.example').send({ email: u.email, password: PASSWORD });
+    expect(foreign.status).toBe(403);
+    expect(foreign.body.error.code).toBe('ORIGIN_REJECTED');
+    expect((await request(app).post('/api/v1/auth/login').send({ email: u.email, password: PASSWORD })).status).toBe(403);
+  });
+
+  it('validation: logout needs the double-submitted CSRF token (spec §3.4: every state change)', async () => {
+    const app = testApp(db);
+    const u = await makeUser(db);
+    const c = await signIn(app, u.email);
+    const forged = await c.agent.post('/api/v1/auth/logout').set('Origin', ORIGIN);
+    expect(forged.status).toBe(403);
+    expect(forged.body.error.code).toBe('CSRF_FAILED');
+    expect((await c.get('/auth/me')).status).toBe(200); // still signed in
+    expect((await c.agent.post('/api/v1/auth/logout').set('Origin', ORIGIN).set('X-CSRF-Token', c.session.csrf)).status).toBe(204);
+  });
+
+  it('validation: API responses are never cached (tokens and personal data)', async () => {
+    const app = testApp(db);
+    const u = await makeUser(db);
+    const c = await signIn(app, u.email);
+    expect(c.loginResponse.headers['cache-control']).toBe('no-store');
+    expect((await c.get('/auth/me')).headers['cache-control']).toBe('no-store');
   });
 
   it('leaves the audit chain intact', async () => {

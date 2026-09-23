@@ -34,6 +34,8 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   // One exact origin; credentials allowed because the refresh token travels in a cookie.
   app.use(cors({ origin: env.CORS_ORIGIN, credentials: true, exposedHeaders: ['X-Request-Id'] }));
   app.use(express.json({ limit: '1mb' }));
+  // API responses carry tokens and personal data: never store them in any cache.
+  app.use('/api', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   app.use(cookieParser());
 
   // Liveness + database reachability. Deliberately reveals nothing else.
