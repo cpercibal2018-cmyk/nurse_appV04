@@ -48,7 +48,7 @@ export function createAuthRouter(env: Env, auth: AuthService, authenticate: Requ
     requireAppOrigin(req.get('origin'));
     const body = LoginBody.parse(req.body);
     try {
-      sendSession(res, await auth.login(body.email, body.password, req.ip ?? 'unknown', res.locals.requestId));
+      sendSession(res, await auth.login(body.email, body.password, req.ip ?? 'unknown', res.locals.requestId, req.get('user-agent')));
     } catch (e) {
       if (e instanceof HttpError && e.status === 429) {
         const d = e.details as { retryAfterSeconds?: number } | undefined;
@@ -65,7 +65,7 @@ export function createAuthRouter(env: Env, auth: AuthService, authenticate: Requ
     requireAppOrigin(req.get('origin'));
     requireCsrfCookieMatch(req.cookies as Record<string, string | undefined>, req.get('x-csrf-token'));
     try {
-      sendSession(res, await auth.refresh((req.cookies as Record<string, string | undefined>)[REFRESH_COOKIE], res.locals.requestId));
+      sendSession(res, await auth.refresh((req.cookies as Record<string, string | undefined>)[REFRESH_COOKIE], res.locals.requestId, { ip: req.ip ?? 'unknown', userAgent: req.get('user-agent') }));
     } catch (e) {
       if (e instanceof HttpError && e.status === 401) clearSession(res);
       throw e;
@@ -79,6 +79,11 @@ export function createAuthRouter(env: Env, auth: AuthService, authenticate: Requ
     await auth.logout((req.cookies as Record<string, string | undefined>)[REFRESH_COOKIE], res.locals.requestId);
     clearSession(res);
     res.status(204).end();
+  });
+
+  // D-22: own login/session history only.
+  router.get('/sessions', authenticate, async (_req, res) => {
+    res.json(await auth.sessions(authOf(res)));
   });
 
   router.get('/me', authenticate, async (_req, res) => {

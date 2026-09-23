@@ -249,6 +249,19 @@ Follows the brief; each commit builds.
 | Gap alerts | On-demand view only; the 15-minute worker and "Critical Coverage Alert" push are **commit 9** | Planned |
 | API map correction | §2.10 said "after 15 min"; the spec says 30 minutes. The map now says 30 | Corrected |
 
+### Implementation notes — commit 9 (notifications, audit, jobs, own sessions)
+
+| Topic | What was built | Status |
+| :--- | :--- | :--- |
+| Scheduler | One minute tick; each period is a unique `job_runs.run_key` (completed once, failed/stuck retried up to 5 attempts, missed days run on next start — N4); `worker_leases` stops two processes running one job | Spec §10.3 lease + run history. `JOBS_MODE=in-process` (default, development), `worker` for production with `npm run worker`, `off` |
+| Daily transition | Everything date-driven that commits 6–8 left to "the daily job": contract and credential statuses, grace closure (+ HR notice), PAM and break-glass expiry, idempotency purge, full eligibility refresh (which demotes invalid future published shifts) | As specified. First run on the dev data corrected the three V03 credentials stored as Valid with past expiry dates |
+| **REQUIREMENT NOT ESTABLISHED** — reminder milestones | Spec §7.1 names the event key (record + expiry date + milestone) but not the milestones. V04 sends one notice on entering the window (90 days contracts, 60 days credentials) and one when a credential has expired | **Owner to confirm** (e.g. add 30/14/7-day reminders) |
+| Email | Notifications are stored with `emailStatus = SKIPPED`: SMTP is not decided (spec §7.2 worker not built); unregistered employees receive nothing yet | Deferred with SMTP |
+| Coverage alerts | Spec §14.2 "push notification" is an in-app CRITICAL notice to the unit's supervisors; suppression is provable (one per assignment via the unique event key) | Push channel not built |
+| Role expiry | Expired role assignments stop working at once (queries filter on `expiresAt`); no separate "expired" audit row is written | As built in commit 5 |
+| Audit reading | System Admin only (D-20), search + chain verification; HR audit access still **REQUIREMENT NOT ESTABLISHED** | As decided |
+| Own session history (D-22) | `refresh_sessions.ip_address` / `user_agent` (migration `20260923180000_session_meta_and_job_runs`), `GET /auth/sessions`, Sign-in history page | Done |
+
 ### Proposals received with the D-24…D-28 decisions — not adopted yet
 
 The owner's notes for D-24…D-28 also suggested features beyond those decisions. None is specified, so each is **REQUIREMENT NOT ESTABLISHED** until the owner schedules it:

@@ -10,6 +10,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate && tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
+    "worker": "node dist/jobs/worker.js",
     "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
     "test": "prisma generate && vitest run",
     "db:migrate": "prisma migrate dev",

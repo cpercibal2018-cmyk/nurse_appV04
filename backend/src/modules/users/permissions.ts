@@ -49,6 +49,11 @@ export const PERMISSIONS = {
   'roster.write': ['SUPERVISOR'],
   'attendance.read': ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'],
 
+  // Audit (D-20: System Admin only until decided) and background jobs.
+  'audit.read': ['SYSTEM_ADMIN'],
+  'jobs.read': ['SYSTEM_ADMIN'],
+  'jobs.run': ['SYSTEM_ADMIN'],
+
   // Credentials and eligibility — spec §8.1 Credentials row, §5.1.4, §6.1.
   'credentials.catalog.read': ['EMPLOYEE'],
   'credentials.catalog.write': ['HR_ADMIN', 'SYSTEM_ADMIN'], // system-wide scope enforced in the service

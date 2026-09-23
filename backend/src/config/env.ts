@@ -43,6 +43,9 @@ const EnvSchema = z.object({
   UPLOAD_MAX_SIZE_BYTES: int(10 * 1024 * 1024),
   /** D-10: dev marks files CLEAN after magic-byte checks; production refuses to start without a real scanner. */
   UPLOAD_SCANNER: z.enum(['dev-magic-bytes', 'clamav']).default('dev-magic-bytes'),
+  // ── Background jobs (spec §10.2; plan "Jobs") ─────────────────────────────
+  /** in-process: the API runs the scheduler (development). worker: a separate `npm run worker` runs it (production). off: nothing runs. */
+  JOBS_MODE: z.enum(['in-process', 'worker', 'off']).default('in-process'),
   /** Set when running behind the reverse proxy so req.ip is the client, not the proxy. */
   TRUST_PROXY: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
 });

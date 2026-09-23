@@ -1,13 +1,13 @@
 // Application shell (ported from V03 app/src/components/AppLayout.tsx).
 // Dropped from V03: the footer claiming "PDPL · KSA me-central-1" (me-central-1
 // is the UAE, and the browser cannot know the server region), the unread badge
-// fed by the browser store (returns with notifications, commit 9), and the
+// fed by the browser store (now served by GET /notifications, commit 9), and the
 // DEVELOPER role display (decision D-5).
 
 import { useState, type ReactNode } from 'react';
-import { App as AntApp, Avatar, Button, Dropdown, Flex, Layout, Menu, Tag, Tooltip } from 'antd';
+import { App as AntApp, Avatar, Badge, Button, Dropdown, Flex, Layout, Menu, Tag, Tooltip } from 'antd';
 import {
-  BulbOutlined, GlobalOutlined, KeyOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MoonOutlined,
+  BellOutlined, BulbOutlined, GlobalOutlined, HistoryOutlined, KeyOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MoonOutlined,
 } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -16,6 +16,7 @@ import { MODULES } from '../app/modules';
 import { useAuth } from '../hooks/useAuth';
 import { usePermissions } from '../hooks/usePermissions';
 import { usePreferences } from '../hooks/usePreferences';
+import { useUnreadCount } from '../modules/notifications/api';
 import { ChangePasswordModal } from './ChangePasswordModal';
 
 // Plain spans instead of antd Typography in the shell: Typography bundles its
@@ -41,6 +42,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const user = useAuth((s) => s.user);
   const roles = useAuth((s) => s.roles);
   const logout = useAuth((s) => s.logout);
+  const unread = useUnreadCount();
   const { language, setLanguage, theme, setTheme } = usePreferences();
   const isRtl = language === 'ar';
   const sidebarWidth = collapsed ? 64 : 244;
@@ -64,6 +66,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       ...roles.map((r, i) => ({ key: `role-${i}`, label: `${r.role} · ${r.scopeType}${r.dormant ? ' (dormant)' : ''}`, disabled: true })),
       { type: 'divider' as const },
       ...(user?.isBreakGlass ? [] : [{ key: 'password', icon: <KeyOutlined />, label: t('changePassword'), onClick: () => setChangingPassword(true) }]),
+      { key: 'sessions', icon: <HistoryOutlined />, label: t('signInHistory'), onClick: () => navigate('/sessions') },
       { key: 'logout', icon: <LogoutOutlined />, label: t('logout'), onClick: () => void signOut() },
     ],
   };
@@ -103,6 +106,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
               {pam && !breakGlass && (
                 <Link to="/admin"><Tag color="orange">{t('elevatedUntil', { time: new Date(pam.expiresAt).toLocaleTimeString() })}</Tag></Link>
               )}
+              <Tooltip title={t('notifications')}>
+                <Link to="/notifications" aria-label={t('notifications')}>
+                  <Badge count={unread.data ?? 0} size="small" overflowCount={99}><Button type="text" icon={<BellOutlined />} /></Badge>
+                </Link>
+              </Tooltip>
               <Tooltip title={theme === 'dark' ? t('lightMode') : t('darkMode')}>
                 <Button type="text" aria-label={theme === 'dark' ? t('lightMode') : t('darkMode')} icon={theme === 'dark' ? <BulbOutlined /> : <MoonOutlined />} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
               </Tooltip>

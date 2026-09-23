@@ -5,6 +5,7 @@ import { assertResidency } from './config/residency.js';
 import { assertUploadScanner } from './lib/uploads.js';
 import { createPrisma } from './lib/prisma.js';
 import { describeError, logger } from './lib/logger.js';
+import { startScheduler } from './jobs/scheduler.js';
 
 // Quiet: dotenv's banner is not JSON and would break the one-line-JSON log format.
 dotenv.config({ quiet: true });
@@ -21,12 +22,16 @@ assertUploadScanner(env.UPLOAD_SCANNER, env.NODE_ENV === 'production');
 const db = createPrisma(env.DATABASE_URL);
 const app = createApp({ env, db });
 
+// Jobs run here only in development; production runs `npm run worker` (plan: Jobs).
+const stopJobs = env.JOBS_MODE === 'in-process' ? startScheduler(db) : () => undefined;
+
 const server = app.listen(env.PORT, () => {
   logger.info('listening', { port: env.PORT, environment: env.NODE_ENV, region: env.DATA_RESIDENCY_REGION });
 });
 
 function shutdown(signal: string) {
   logger.info('shutting down', { signal });
+  stopJobs();
   server.close(() => {
     db.$disconnect().finally(() => process.exit(0));
   });

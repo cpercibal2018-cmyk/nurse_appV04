@@ -28,6 +28,8 @@ import { createContractsRouter } from './modules/contracts/routes.js';
 import { createSchedulingService } from './modules/scheduling/service.js';
 import { createSchedulingRouter } from './modules/scheduling/routes.js';
 import { createAttendanceService } from './modules/attendance/service.js';
+import { createNotificationsRouter } from './modules/notifications/routes.js';
+import { createAuditRouter } from './modules/audit/routes.js';
 
 export interface AppDeps {
   env: Env;
@@ -77,6 +79,8 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   api.use(createWorkforceRouter(db, createOrgService(db)));
   api.use(createNursesRouter(db, createNurseService(db)));
   api.use(createSchedulingRouter(db, createSchedulingService(db), createAttendanceService(db)));
+  api.use(createNotificationsRouter(db));
+  api.use(createAuditRouter(db));
   api.use(createContractsRouter(db, createContractService(db, createStorage(env.STORAGE_DIR), env.UPLOAD_MAX_SIZE_BYTES), env.UPLOAD_MAX_SIZE_BYTES));
   api.use(createCredentialsRouter(
     catalog,

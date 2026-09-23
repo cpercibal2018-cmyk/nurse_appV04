@@ -85,6 +85,7 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | POST | `/api/v1/auth/refresh` | Rotate (atomic consume; replay → family revoked, `SESSION_REVOKED`) | cookie + Origin + CSRF double-submit | → `{token, csrfToken, expiresIn}` | server |
 | POST | `/api/v1/auth/logout` | Revoke | cookie | → 204 | server |
 | GET | `/api/v1/auth/me` | Identity, stored grants (SA marked `dormant` until PAM), effective roles, PAM and break-glass state | EMP | → `{user{id,email,displayName,employeeId,isBreakGlass}, roles[], effectiveRoles[], pam, breakGlass}` | server + backend `roles/me` |
+| GET | `/api/v1/auth/sessions` | Own sign-in history: one entry per session family — signed in / last active, sign-in and last IP and browser, current, active (**D-22**, commit 9) | EMP (own only) | → `{items[]}` | spec §3.3 |
 | POST | `/api/v1/auth/password` | Change own password; revokes all sessions | EMP | `{currentPassword, newPassword}` → 204 | spec §3.3 (new) |
 
 ### 2.3 Users & roles (`modules/users`)
@@ -210,14 +211,24 @@ Eligibility in every response is the **live engine for the shift date** (L7), no
 | GET | `/api/v1/attendance/me?from&to` | Own clock events | EMP | spec |
 | GET | `/api/v1/attendance/gaps?unitId&date` | Published shifts of a unit/date vs clock-ins: `UPCOMING`, `PENDING`, `MISSING` (no clock-in at or after the start, **30 min** passed), `PRESENT`, `INELIGIBLE_ON_DUTY` (clocked in, engine blocks today). Shift times from D-31 | HR, SA, SUP — scoped | spec §14.2 (30 min; the earlier "15 min" in this map was wrong) |
 
-### 2.11 Notifications & audit
+### 2.11 Notifications, audit and jobs — implemented in commit 9
 
 | Method | Endpoint | Purpose | Permission | Source |
 | :--- | :--- | :--- | :--- | :--- |
-| GET | `/api/v1/notifications?unread` | Own notifications only (N2) | EMP | spec §7 |
-| POST | `/api/v1/notifications/:id/read` | Acknowledge own | EMP (recipient only) | store |
-| GET | `/api/v1/audit?resource&resourceId&actor&action&from&to` | Search | SA; HR scoped? (**REQUIREMENT NOT ESTABLISHED** — spec defines an `audit_reader` DB role only) | AuditModule |
-| GET | `/api/v1/audit/verify?limit` | Chain check (`audit_chain_breaks`) | SA | gate1 |
+| GET | `/api/v1/notifications?unread&page&pageSize` | Own notifications with the unread count | EMP (own only, N2) | spec §7.1 |
+| POST | `/api/v1/notifications/:id/read` · `/read-all` | Acknowledge own; another user's id is 404 | EMP (recipient only) | spec §7.1 |
+| GET | `/api/v1/audit?resource&resourceId&actor&action&priority&from&to&page` | Search, newest first; BIGINT ids as strings; actor names resolved | **SA only (D-20)** | spec §9.1 |
+| GET | `/api/v1/audit/verify` | Chain check (`audit_chain_breaks` view: link and content) | SA | spec §9.1, A3 |
+| GET | `/api/v1/admin/jobs` | Jobs, schedules and last 10 runs each | SA | plan "Jobs" |
+| POST | `/api/v1/admin/jobs/:name/run` | Run now under its own run key (never consumes the scheduled period); HIGH audit | SA | plan "Jobs" |
+
+**Scheduled jobs** (`backend/src/jobs/`; in the API process when `JOBS_MODE=in-process`, in `npm run worker` when `worker`). Each run is a unique `job_runs.run_key`, taken under a worker lease (spec §10.3):
+
+| Job | When (Asia/Riyadh) | Does | Source |
+| :--- | :--- | :--- | :--- |
+| `daily-transition` | 00:05 daily (catches up if missed) | Contracts Approved→Active / →Expired; stored credential status by date; closes ended grace windows (HIGH audit + HR notice); removes expired PAM; ends expired break-glass; purges spent idempotency keys; re-evaluates every live nurse (demotes invalid future published shifts; TRANSITION policy notice) | spec §6.1, §6.1.1, §6.1.1.1, §6.2, §5.2, R13, R18 |
+| `expiry-scan` | 06:00 daily | Contracts ending ≤ 90 days; credentials expiring ≤ 60 days and already expired → employee + scoped HR; key = record + expiry date + milestone | spec §7.1 (N1–N4) |
+| `attendance-alerts` | every 15 minutes | Shifts under way: not clocked in 30 min after the start, or clocked in while ineligible → CRITICAL notice to the unit's supervisors, once per assignment | spec §14.2 |
 
 ### 2.12 Removed from V03
 

@@ -32,17 +32,22 @@ export interface IssuedSession {
   cookieMaxAge: number;
 }
 
+/** Where a request came from; stored on the session row for the owner's history (D-22). */
+export interface ClientMeta { ip: string; userAgent?: string }
+
 const invalidCredentials = () => new HttpError(401, 'INVALID_CREDENTIALS', 'Invalid email or password');
 const sessionEnded = () => new HttpError(401, 'SESSION_EXPIRED', 'Your session has ended — sign in again');
 
 export function createAuthService(deps: AuthDeps) {
   const { db, env, tokens, passwords } = deps;
 
-  async function issue(tx: DbClient, userId: number, family: string, idleUntil: Date, absoluteUntil: Date, now: Date): Promise<IssuedSession> {
+  async function issue(tx: DbClient, userId: number, family: string, idleUntil: Date, absoluteUntil: Date, now: Date, meta: ClientMeta): Promise<IssuedSession> {
     const id = randomToken(16);
     const secret = randomToken(32);
     const expiresAt = new Date(Math.min(idleUntil.getTime(), absoluteUntil.getTime()));
-    await tx.refreshSession.create({ data: { id, userId, tokenHash: sha256hex(secret), familyId: family, expiresAt, absoluteExpiresAt: absoluteUntil } });
+    await tx.refreshSession.create({
+      data: { id, userId, tokenHash: sha256hex(secret), familyId: family, expiresAt, absoluteExpiresAt: absoluteUntil, ipAddress: meta.ip.slice(0, 45), userAgent: meta.userAgent?.slice(0, 300) ?? null },
+    });
     const csrfToken = randomToken(24);
     return {
       refreshCookie: `${id}.${secret}`,
@@ -53,7 +58,7 @@ export function createAuthService(deps: AuthDeps) {
     };
   }
 
-  async function login(emailRaw: string, password: string, clientIp: string, requestId?: string) {
+  async function login(emailRaw: string, password: string, clientIp: string, requestId?: string, userAgent?: string) {
     const email = emailRaw.trim().toLowerCase();
     const accountKey = `acct:${email}`;
     const clientKey = `ip:${clientIp}`;
@@ -81,7 +86,7 @@ export function createAuthService(deps: AuthDeps) {
     const absoluteSeconds = user.isBreakGlass ? Math.min(BREAK_GLASS_SESSION_SECONDS, env.SESSION_ABSOLUTE_SECONDS) : env.SESSION_ABSOLUTE_SECONDS;
     return db.$transaction(async (tx) => {
       if (user.isBreakGlass) await sirenOnLogin(tx, user.id, clientIp, now, absoluteSeconds, requestId);
-      const session = await issue(tx, user.id, randomToken(16), new Date(now.getTime() + env.SESSION_IDLE_SECONDS * 1000), new Date(now.getTime() + absoluteSeconds * 1000), now);
+      const session = await issue(tx, user.id, randomToken(16), new Date(now.getTime() + env.SESSION_IDLE_SECONDS * 1000), new Date(now.getTime() + absoluteSeconds * 1000), now, { ip: clientIp, userAgent });
       await tx.user.update({ where: { id: user.id }, data: { lastLoginAt: now } });
       await appendAudit(tx, { actorUserId: user.id, action: 'LOGIN_SUCCEEDED', resource: 'user', resourceId: String(user.id), requestId, priority: user.isBreakGlass ? 'HIGH' : 'NORMAL' });
       return session;
@@ -122,7 +127,7 @@ export function createAuthService(deps: AuthDeps) {
    * token that was already consumed is treated as theft and the whole family
    * is revoked (spec §3.3 "consumed atomically — replay is rejected").
    */
-  async function refresh(cookieValue: string | undefined, requestId?: string): Promise<IssuedSession> {
+  async function refresh(cookieValue: string | undefined, requestId?: string, meta: ClientMeta = { ip: 'unknown' }): Promise<IssuedSession> {
     const [id, secret] = (cookieValue ?? '').split('.');
     if (!id || !secret) throw sessionEnded();
     const session = await db.refreshSession.findUnique({ where: { id } });
@@ -145,7 +150,7 @@ export function createAuthService(deps: AuthDeps) {
     return db.$transaction(async (tx) => {
       const consumed = await tx.refreshSession.updateMany({ where: { id, revokedAt: null }, data: { revokedAt: now } });
       if (consumed.count !== 1) throw new HttpError(401, 'SESSION_REVOKED', 'This session was ended for your protection — sign in again');
-      return issue(tx, user.id, session.familyId, new Date(now.getTime() + env.SESSION_IDLE_SECONDS * 1000), session.absoluteExpiresAt, now);
+      return issue(tx, user.id, session.familyId, new Date(now.getTime() + env.SESSION_IDLE_SECONDS * 1000), session.absoluteExpiresAt, now, meta);
     });
   }
 
@@ -196,7 +201,33 @@ export function createAuthService(deps: AuthDeps) {
     };
   }
 
-  return { login, refresh, logout, changePassword, me };
+  /**
+   * D-22: the caller's own sign-ins, newest first. One entry per session
+   * family (a sign-in and its refreshes): where it started, where it was last
+   * refreshed, and whether it can still be used.
+   */
+  async function sessions(auth: AuthContext, now = new Date()) {
+    const rows = await db.refreshSession.findMany({
+      where: { userId: auth.user.id },
+      select: { familyId: true, createdAt: true, expiresAt: true, absoluteExpiresAt: true, revokedAt: true, ipAddress: true, userAgent: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const families = new Map<string, typeof rows>();
+    for (const r of rows) families.set(r.familyId, [...(families.get(r.familyId) ?? []), r]);
+    const items = [...families.entries()].map(([familyId, list]) => {
+      const first = list[0]!;
+      const last = list[list.length - 1]!;
+      const active = list.some((r) => !r.revokedAt && r.expiresAt > now && r.absoluteExpiresAt > now);
+      return {
+        current: familyId === auth.sessionFamily, active,
+        signedInAt: first.createdAt, lastActiveAt: last.createdAt, endsBy: first.absoluteExpiresAt,
+        signInIp: first.ipAddress, signInUserAgent: first.userAgent, lastIp: last.ipAddress, lastUserAgent: last.userAgent,
+      };
+    }).sort((a, b) => b.signedInAt.getTime() - a.signedInAt.getTime()).slice(0, 50);
+    return { items, total: items.length };
+  }
+
+  return { login, refresh, logout, changePassword, me, sessions };
 }
 
 export type AuthService = ReturnType<typeof createAuthService>;

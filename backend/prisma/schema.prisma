@@ -79,6 +79,9 @@ model RefreshSession {
   absoluteExpiresAt DateTime  @map("absolute_expires_at") @db.Timestamptz
   revokedAt         DateTime? @map("revoked_at") @db.Timestamptz
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  /// Where the sign-in or refresh came from — shown only to the account owner (D-22).
+  ipAddress         String?   @map("ip_address") @db.VarChar(45)
+  userAgent         String?   @map("user_agent") @db.VarChar(300)
 
   user User @relation(fields: [userId], references: [id])
 
@@ -748,4 +751,27 @@ model WorkerLease {
 
   @@index([expiresAt])
   @@map("worker_leases")
+}
+
+enum JobRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+/// One row per scheduled run. `runKey` (job + period, e.g. daily-transition:2026-09-23)
+/// is unique, so a period runs at most once to completion and a missed period is visible (N4).
+model JobRun {
+  id         Int          @id @default(autoincrement())
+  jobName    String       @map("job_name")
+  runKey     String       @unique @map("run_key")
+  status     JobRunStatus @default(RUNNING)
+  startedAt  DateTime     @default(now()) @map("started_at") @db.Timestamptz
+  finishedAt DateTime?    @map("finished_at") @db.Timestamptz
+  attempts   Int          @default(1)
+  summary    Json?
+  error      String?
+
+  @@index([jobName, startedAt])
+  @@map("job_runs")
 }

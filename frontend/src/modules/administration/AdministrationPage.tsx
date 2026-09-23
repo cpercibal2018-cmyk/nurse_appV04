@@ -9,6 +9,7 @@ import { AccountsTab } from './AccountsTab';
 import { ApprovalsTab } from './ApprovalsTab';
 import { useMatrix } from './api';
 import { PamTab } from './PamTab';
+import { JobsTab } from './JobsTab';
 import { RoleAssignmentsTab } from './RoleAssignmentsTab';
 
 function MatrixTab() {
@@ -42,6 +43,7 @@ export default function AdministrationPage() {
       { key: 'approvals', label: t('approvals'), children: <ApprovalsTab /> },
     ] : []),
     ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'pam', label: t('privilegedAccess'), children: <PamTab /> }] : []),
+    ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'jobs', label: t('backgroundJobs'), children: <JobsTab /> }] : []),
     { key: 'matrix', label: t('accessMatrix'), children: <MatrixTab /> },
   ];
 
