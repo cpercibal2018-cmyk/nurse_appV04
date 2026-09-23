@@ -503,6 +503,23 @@ describeDb('credentials and eligibility', () => {
       expect([after.hasExpiry, after.requiresUpload, after.displayOrder]).toEqual([tpl.hasExpiry, tpl.requiresUpload, tpl.displayOrder]);
     });
 
+    it('a field cannot be both the issue and the expiry date — refused on request, and when an older request is approved', async () => {
+      const hr2 = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] })).email);
+      const both = { key: 'iqama', label: 'Expiry', type: 'date', required: true, displayOrder: 1, isIssueDate: true, isExpiryDate: true };
+      const code = `BOTH_${Date.now()}`;
+      const asked = await hr.post('/credential-templates', { code, name: 'Both dates', categoryCode: 'LICENSURE', fieldDefs: [both], reason });
+      expect(asked.body.error.code).toBe('VALIDATION_FAILED');
+      // A request stored before the rule existed (as in the first browser check) is refused at approval, nothing written.
+      const initiator = await db.user.findFirstOrThrow({ where: { email: (await hr.get('/auth/me')).body.email } });
+      const stored = await db.approvalRequest.create({ data: {
+        initiatorId: initiator.id, actionType: `TEMPLATE_CREATE:${code}`, status: 'PENDING',
+        payload: { kind: 'TEMPLATE_CREATE', reason, template: { code, name: 'Both dates', categoryCode: 'LICENSURE', hasExpiry: true, requiresUpload: true, gracePeriodDays: 0, displayOrder: 0, fieldDefs: [both] } },
+      } });
+      const decided = await approve(hr2, stored.id);
+      expect(decided.body.error.code).toBe('FIELD_DEFINITIONS_INVALID');
+      expect(await db.credentialTemplate.findUnique({ where: { code } })).toBeNull();
+    });
+
     it('the Catalog screen\'s field edit (reordered and renumbered, a field added, description cleared) applies as sent', async () => {
       const tpl = await makeTemplate(db);
       await db.credentialTemplate.update({ where: { id: tpl.id }, data: { description: 'Old text' } });

@@ -35,6 +35,8 @@ export const FieldDefs = z.array(FieldDefSchema).max(30).superRefine((defs, ctx)
     if ((d.isIssueDate || d.isExpiryDate) && d.type !== 'date' && d.type !== 'date_hijri') {
       ctx.addIssue({ code: 'custom', message: `${d.key}: issue/expiry fields must be Gregorian or Umm al-Qura dates` });
     }
+    // One field as both would make every credential of the type expire on the day it was issued.
+    if (d.isIssueDate && d.isExpiryDate) ctx.addIssue({ code: 'custom', message: `${d.key}: a field cannot be both the issue date and the expiry date` });
   }
   if (defs.filter((d) => d.isIssueDate).length > 1) ctx.addIssue({ code: 'custom', message: 'At most one issue-date field' });
   if (defs.filter((d) => d.isExpiryDate).length > 1) ctx.addIssue({ code: 'custom', message: 'At most one expiry-date field' });
@@ -174,8 +176,18 @@ export function createCatalogService(db: Db) {
     return { current, before };
   }
 
+  /**
+   * Field rules are re-applied when an approved request runs: a request stored
+   * before a rule existed must be refused, not written.
+   */
+  function assertFieldRules(fieldDefs: unknown) {
+    const check = FieldDefs.safeParse(fieldDefs);
+    if (!check.success) throw new HttpError(422, 'FIELD_DEFINITIONS_INVALID', 'The field definitions break a catalog rule — reject this request and submit a corrected one', check.error.issues.map((i) => i.message));
+  }
+
   async function createNow(tx: DbClient, auth: AuthContext, t: TemplateData, reason: string, approvalRequestId: number | null, requestId?: string) {
     await assertSystemWide(tx, auth);
+    assertFieldRules(t.fieldDefs);
     await validateCreate(tx, t);
     const { fieldDefs, ...columns } = t;
     const created = await tx.credentialTemplate.create({ data: columns });
@@ -195,6 +207,7 @@ export function createCatalogService(db: Db) {
       }
     }
     const { fieldDefs, ...columns } = change;
+    if (fieldDefs !== undefined) assertFieldRules(fieldDefs);
     if (Object.keys(columns).length) await tx.credentialTemplate.update({ where: { id }, data: columns });
     // Field definitions are replaced as a set; the audit entry keeps before → after.
     if (fieldDefs !== undefined) {

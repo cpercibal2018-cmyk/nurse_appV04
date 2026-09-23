@@ -50,6 +50,8 @@ describeDb('database constraints', () => {
     await violates((tx, templateId) => tx.credentialTemplateField.createMany({ data: [
       { ...base, templateId, key: 'e1', type: 'date', isExpiryDate: true }, { ...base, templateId, key: 'e2', ordinal: 1, type: 'date_hijri', isExpiryDate: true },
     ] }));
+    // One field cannot be both dates: the credential would expire the day it was issued.
+    await violates((tx, templateId) => tx.credentialTemplateField.create({ data: { ...base, templateId, key: 'both', type: 'date', isIssueDate: true, isExpiryDate: true } }));
   });
 
   it('a deprecated position names an existing, different successor (P1)', async () => {

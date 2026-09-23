@@ -11,7 +11,7 @@ import { useUnits } from '../administration/api';
 import { usePositions } from '../workforce/api';
 import { FIELD_TYPES, useCategories, useCredentialAction, useCredentials, useRequirements, useTemplates, type Category, type CredentialRow, type Requirement, type Template } from './api';
 import { CredentialStatusTag, DocumentsDrawer, LifecycleTag } from './components';
-import { changeBody, createBody, isDateType, toFormValues, type FieldRowValue, type TemplateFormValues } from './catalogForm';
+import { changeBody, createBody, fieldProblems, isDateType, toFormValues, type FieldRowValue, type TemplateFormValues } from './catalogForm';
 
 type Decision = { kind: 'suspend' | 'revoke' | 'reject'; row: CredentialRow };
 
@@ -274,11 +274,8 @@ function CatalogTab() {
             name="fields"
             rules={[{
               validator: async (_, list?: FieldRowValue[]) => {
-                const l = list ?? [];
-                const keys = l.map((f) => f?.key).filter(Boolean);
-                if (new Set(keys).size !== keys.length) throw new Error(t('fieldKeyDuplicate'));
-                const dated = (flag: 'isIssueDate' | 'isExpiryDate') => l.filter((f) => f?.[flag] && isDateType(f.type)).length;
-                if (dated('isIssueDate') > 1 || dated('isExpiryDate') > 1) throw new Error(t('fieldDatesOnce'));
+                const problems = fieldProblems(list);
+                if (problems.length) throw new Error(problems.map((p) => t(p)).join(' '));
               },
             }]}
           >

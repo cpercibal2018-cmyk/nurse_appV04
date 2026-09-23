@@ -19,6 +19,17 @@ export const toFieldDefs = (rows: readonly FieldRowValue[] = []): FieldDef[] => 
   ...(isDateType(f.type) && f.isExpiryDate ? { isExpiryDate: true } : {}),
 }));
 
+/** The catalog field rules the form can check before sending: i18n keys of the problems found. */
+export function fieldProblems(rows: readonly (Partial<FieldRowValue> | undefined)[] = []): string[] {
+  const out: string[] = [];
+  const keys = rows.map((f) => f?.key).filter(Boolean);
+  if (new Set(keys).size !== keys.length) out.push('fieldKeyDuplicate');
+  const dated = (flag: 'isIssueDate' | 'isExpiryDate') => rows.filter((f) => f?.[flag] && isDateType(f.type)).length;
+  if (dated('isIssueDate') > 1 || dated('isExpiryDate') > 1) out.push('fieldDatesOnce');
+  if (rows.some((f) => f?.isIssueDate && f.isExpiryDate && isDateType(f.type))) out.push('fieldDatesSame');
+  return out;
+}
+
 /** A stored template as form values. */
 export const toFormValues = (x: Template): TemplateFormValues => ({
   name: x.name, categoryCode: x.categoryCode, description: x.description, hasExpiry: x.hasExpiry, requiresUpload: x.requiresUpload,

@@ -53,6 +53,7 @@ Prisma cannot express these, so they are hand-written in migration SQL. They are
 | D-35: phones in E.164 | `employees_primary_phone_e164`, `employees_emergency_contact_phone_e164` | `employee_phones` |
 | L8: grace 0–90 days | `chk_credential_templates_grace` | `init` |
 | Credential fields: key format, label, one row per key, date flags only on date fields, at most one issue and one expiry field per type | `chk_template_fields_key`, `chk_template_fields_label`, `chk_template_fields_date_flags`, unique (`template_id`, `key`), partial uniques `credential_template_fields_one_issue_date` / `_one_expiry_date` | `database_first_master_data` |
+| A credential field is not both the issue date and the expiry date | `chk_template_fields_not_issue_and_expiry` | `field_not_issue_and_expiry` |
 | A deprecated position's successor exists and is not itself | `positions_replaced_by_fkey`, `chk_positions_not_self_replaced` | `database_first_master_data` |
 | §5.1.4: one requirement per template + unit + position (position `NULL` = every position) | unique index `NULLS NOT DISTINCT` | `init` |
 | Credential issue ≤ expiry | `chk_credentials_dates` | `init` |
@@ -89,6 +90,7 @@ Values kept out of the audit trail on purpose: salary and the emergency contact 
 | `20260923180000_session_meta_and_job_runs` | Session IP and browser (D-22); `job_runs` |
 | `20260924090000_employee_phones` | `employees.primary_phone`, `emergency_contact_phone` with E.164 checks (D-35) |
 | `20260924100000_database_first_master_data` | `credential_template_fields` (the field definitions, copied from the JSON with a count check; the JSON kept as `field_defs_legacy` for rollback), `positions.replaced_by` foreign key, `units.critical_area` (filled from the former code map) |
+| `20260925090000_field_not_issue_and_expiry` | Check: one field cannot be both the issue and the expiry date (found in the first browser check) |
 
 **Rules**
 

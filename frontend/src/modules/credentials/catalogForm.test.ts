@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Template } from './api';
-import { changeBody, createBody, toFieldDefs, toFormValues } from './catalogForm';
+import { changeBody, createBody, fieldProblems, toFieldDefs, toFormValues } from './catalogForm';
 
 const stored: Template = {
   id: 7, code: 'SCFHS', name: 'SCFHS licence', categoryCode: 'LICENSE', description: null, hasExpiry: true, requiresUpload: true,
@@ -33,6 +33,16 @@ describe('credential type form', () => {
   it('drops date flags on non-date fields and trims labels', () => {
     expect(toFieldDefs([{ key: 'ref', label: ' Reference ', type: 'text', required: false, isIssueDate: true, isExpiryDate: true }]))
       .toEqual([{ key: 'ref', label: 'Reference', type: 'text', required: false, displayOrder: 1 }]);
+  });
+
+  it('flags the field rules the server enforces', () => {
+    const d = (key: string, extra: object = {}) => ({ key, label: key, type: 'date' as const, required: true, ...extra });
+    expect(fieldProblems([d('a'), d('b')])).toEqual([]);
+    expect(fieldProblems([d('a'), d('a')])).toEqual(['fieldKeyDuplicate']);
+    expect(fieldProblems([d('a', { isExpiryDate: true }), d('b', { isExpiryDate: true })])).toEqual(['fieldDatesOnce']);
+    expect(fieldProblems([d('iqama', { isIssueDate: true, isExpiryDate: true })])).toEqual(['fieldDatesSame']);
+    // Flags on a non-date field are dropped when sent, so they are not a problem.
+    expect(fieldProblems([{ ...d('t', { isIssueDate: true, isExpiryDate: true }), type: 'text' }])).toEqual([]);
   });
 
   it('builds a create body without an empty description', () => {
