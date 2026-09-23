@@ -421,6 +421,38 @@ describeDb('credentials and eligibility', () => {
     const reason = 'Hospital policy memo 2026-14';
     const approve = async (client: typeof hr, requestId: number) => client.post(`/approvals/${requestId}/approve`, { reason: 'Checked against the memo' });
 
+    it('credential categories are created and changed through four-eyes by system-wide admins only (P8)', async () => {
+      const code = uniq('CAT').toUpperCase().slice(0, 30);
+      const hr2 = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] })).email);
+      const scopedHr = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
+      const nurse = await signIn(app, (await makeUser(db)).email);
+
+      expect((await nurse.post('/credential-categories', { code, name: 'Research', reason })).status).toBe(403);
+      expect((await scopedHr.post('/credential-categories', { code, name: 'Research', reason })).body.error.code).toBe('SCOPE_NOT_COVERED');
+      expect((await hr.post('/credential-categories', { code, name: 'Research', reason: 'short' })).body.error.code).toBe('VALIDATION_FAILED');
+
+      const created = await hr.post('/credential-categories', { code, name: 'Research', description: 'Research credentials', displayOrder: 9, reason });
+      expect(created.status).toBe(202);
+      expect(await db.credentialCategory.findUnique({ where: { code } })).toBeNull(); // nothing until approved
+      expect((await approve(hr, created.body.requestId)).body.error.code).toBe('SELF_APPROVAL_FORBIDDEN');
+      expect((await approve(hr2, created.body.requestId)).body.status).toBe('EXECUTED');
+      expect(await db.credentialCategory.findUnique({ where: { code } })).toMatchObject({ name: 'Research', displayOrder: 9 });
+      expect((await hr.post('/credential-categories', { code, name: 'Again', reason })).body.error.code).toBe('CATEGORY_EXISTS');
+
+      const change = await hr.patch(`/credential-categories/${code}`, { name: 'Research & audit', reason });
+      expect(change.status).toBe(202);
+      // A second administrator's competing request (one pending request per initiator and action — R11).
+      const hr3 = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] })).email);
+      const racing = await hr3.patch(`/credential-categories/${code}`, { name: 'Research & compliance', reason: `${reason} (second)` });
+      expect(racing.status).toBe(202);
+      await approve(hr2, change.body.requestId);
+      expect((await db.credentialCategory.findUniqueOrThrow({ where: { code } })).name).toBe('Research & audit');
+      expect((await approve(hr2, racing.body.requestId)).body.error.code).toBe('CATEGORY_CHANGED_SINCE_REQUEST');
+      expect((await hr.patch(`/credential-categories/${code}`, { name: 'Research & audit', reason })).body.error.code).toBe('NO_CHANGES');
+      expect(await db.auditEntry.count({ where: { resource: 'credential_category', resourceId: code } })).toBe(2);
+      expect((await hr.get('/credential-categories')).body.items.map((c: { code: string }) => c.code)).toContain(code);
+    });
+
     it('only system-wide administrators change templates; every change waits for a second one (D-24, D-25)', async () => {
       const scoped = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
       const hr2 = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] })).email);

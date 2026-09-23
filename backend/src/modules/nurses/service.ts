@@ -69,7 +69,7 @@ export const OnboardBody = z.strictObject({
   emergencyContactPhone: SourceFields.emergencyContactPhone.default(null),
   unitId: SourceFields.unitId.default(null), // E6: Unassigned
   hireDate: SourceFields.hireDate.default(null),
-  positionCode: z.string().min(1).max(20).default('SN'), // E6
+  positionCode: z.string().min(1).max(20).optional(), // omitted → rule E6 default, when that position exists
   contractStart: IsoDate,
   contractEnd: IsoDate,
 });
@@ -99,6 +99,9 @@ export const OwnContactBody = z.strictObject({
   primaryPhone: SourceFields.primaryPhone.optional(),
   emergencyContactPhone: SourceFields.emergencyContactPhone.optional(),
 });
+/** Rule E6 (V03 commit 4f51b22): onboarding places a new employee in this position unless another is chosen. */
+export const DEFAULT_ONBOARDING_POSITION = 'SN';
+
 export const PositionBody = z.strictObject({ positionCode: z.string().min(1).max(20), reason: z.string().trim().min(3).max(500) });
 export const DeleteBody = z.strictObject({ reason: z.string().trim().min(10, 'Deleting an employee needs a reason of at least 10 characters').max(500) });
 export const ListQuery = z.object({
@@ -228,10 +231,20 @@ export function createNurseService(db: Db) {
       });
     },
 
+    /** Rule E6 defaults for the onboarding form: Unassigned, and the default position when it exists and is active. */
+    async onboardingDefaults() {
+      const p = await db.position.findUnique({ where: { code: DEFAULT_ONBOARDING_POSITION }, select: { isActive: true } });
+      return { unitId: null, positionCode: p?.isActive ? DEFAULT_ONBOARDING_POSITION : null, rule: 'E6' };
+    },
+
     /** E10 + D-3: employee, Draft contract, audit and eligibility state in one transaction. Returns identifiers only ([I]). */
-    async onboard(auth: AuthContext, body: z.infer<typeof OnboardBody>, requestId?: string) {
-      if (body.contractEnd <= body.contractStart) throw unprocessable('CONTRACT_DATES_INVALID', 'Contract end must be after its start (C5)');
+    async onboard(auth: AuthContext, input: z.infer<typeof OnboardBody>, requestId?: string) {
+      if (input.contractEnd <= input.contractStart) throw unprocessable('CONTRACT_DATES_INVALID', 'Contract end must be after its start (C5)');
       return db.$transaction(async (tx) => {
+        // E6: no position given → the default, but only if the hospital has it (an empty database may not).
+        const positionCode = input.positionCode ?? (await tx.position.findFirst({ where: { code: DEFAULT_ONBOARDING_POSITION, isActive: true }, select: { code: true } }))?.code;
+        if (!positionCode) throw unprocessable('POSITION_REQUIRED', `Choose a position: the default position ${DEFAULT_ONBOARDING_POSITION} (rule E6) does not exist or is inactive`);
+        const body = { ...input, positionCode };
         await assertPlaceable(tx, auth, body.unitId);
         await assertPosition(tx, body.positionCode);
         await assertJobNumberFree(tx, body.jobNumber);

@@ -10,11 +10,11 @@ import { appendAudit } from '../../lib/audit.js';
 import { HttpError, notFound } from '../../lib/http-errors.js';
 import type { Db } from '../../lib/prisma.js';
 import { scopeCovers, unitScope, type AuthContext, type UnitScope } from '../users/access.js';
-import type { CatalogApprovalPayload, CatalogService } from '../credentials/catalog.js';
+import { isCatalogPayload, type CatalogApprovalPayload, type CatalogService } from '../credentials/catalog.js';
 import type { ApprovalPayload as RolePayload, RoleAssignmentService } from '../users/role-assignments.js';
 
 type ApprovalPayload = RolePayload | CatalogApprovalPayload;
-const isCatalog = (p: ApprovalPayload): p is CatalogApprovalPayload => p.kind === 'TEMPLATE_CREATE' || p.kind === 'TEMPLATE_UPDATE';
+const isCatalog = (p: ApprovalPayload): p is CatalogApprovalPayload => isCatalogPayload(p);
 
 export const DecideBody = z.strictObject({
   reason: z.string().trim().min(5, 'A decision needs a reason of at least 5 characters (R4)').max(1000),

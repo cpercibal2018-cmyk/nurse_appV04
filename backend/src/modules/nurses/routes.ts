@@ -18,6 +18,7 @@ export function createNursesRouter(db: Db, nurses: NurseService) {
   r.get('/employees/me', async (_req, res) => { res.json(await nurses.me(authOf(res))); });
   // Own record only (D-35): no permission, the caller's employee id is the target.
   r.patch('/employees/me/contact', async (req, res) => { res.json(await nurses.updateOwnContact(authOf(res), OwnContactBody.parse(req.body), rid(res))); });
+  r.get('/employees/onboarding-defaults', authorize('employees.write'), async (_req, res) => { res.json(await nurses.onboardingDefaults()); });
   r.post('/employees/onboard', authorize('employees.write'), idempotent(db, 'employees.onboard'), async (req, res) => {
     res.status(201).json(await nurses.onboard(authOf(res), OnboardBody.parse(req.body), rid(res)));
   });

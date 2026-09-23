@@ -35,6 +35,12 @@ export function useUpdateOwnContact() {
   });
 }
 
+/** Rule E6 defaults (Unassigned, default position if the hospital has it), from the server. */
+export const useOnboardingDefaults = (enabled: boolean) => useQuery({
+  queryKey: ['employees', 'onboarding-defaults'], enabled,
+  queryFn: () => http.get<{ unitId: null; positionCode: string | null }>('/employees/onboarding-defaults'),
+});
+
 export const useEmployee = (id: number | null) => useQuery({ queryKey: ['employees', 'one', id], enabled: id !== null, queryFn: () => http.get<EmployeeRow>(`/employees/${id}`) });
 
 type Action =

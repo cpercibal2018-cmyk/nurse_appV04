@@ -38,7 +38,9 @@ export interface ApprovalRequest {
     | { kind: 'GRANT'; grant: GrantInput }
     | { kind: 'UPDATE'; assignmentId: number; update: { scopeType?: ScopeType; scopeIds?: number[]; reason: string } }
     | { kind: 'TEMPLATE_CREATE'; template: { code: string; name: string }; reason: string }
-    | { kind: 'TEMPLATE_UPDATE'; templateId: number; code: string; change: Record<string, unknown>; before: Record<string, unknown>; reason: string };
+    | { kind: 'TEMPLATE_UPDATE'; templateId: number; code: string; change: Record<string, unknown>; before: Record<string, unknown>; reason: string }
+    | { kind: 'CATEGORY_CREATE'; category: { code: string; name: string }; reason: string }
+    | { kind: 'CATEGORY_UPDATE'; code: string; change: Record<string, unknown>; before: Record<string, unknown>; reason: string };
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXECUTED';
   createdAt: string;
   initiator: { displayName: string; email: string };

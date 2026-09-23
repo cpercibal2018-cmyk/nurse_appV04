@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { appendAudit } from '../../lib/audit.js';
 import { isIsoDate, toDbDate } from '../../lib/dates.js';
 import { HttpError, notFound } from '../../lib/http-errors.js';
+import type { CredentialCategory } from '../../generated/prisma/client.js';
 import { Prisma, type Db, type DbClient } from '../../lib/prisma.js';
 import { refreshEligibility, refreshUnit } from '../eligibility/state.service.js';
 import { unitScope, type AuthContext } from '../users/access.js';
@@ -73,6 +74,26 @@ export const TemplateUpdateBody = z.strictObject({
   reason: ChangeReason,
 });
 
+/** Categories group credential types (spec §5.1.1). Hospital-wide and four-eyes like types (P8, D-24, D-25). */
+export const CategoryCreateBody = z.strictObject({
+  code: z.string().regex(/^[A-Z][A-Z0-9_]{1,39}$/),
+  name: Name,
+  description: Description.optional(),
+  displayOrder: DisplayOrder.default(0),
+  reason: ChangeReason,
+});
+export const CategoryUpdateBody = z.strictObject({
+  name: Name.optional(),
+  description: Description.nullable().optional(),
+  displayOrder: DisplayOrder.optional(),
+  reason: ChangeReason,
+});
+export const CategoryParam = z.object({ code: z.string().regex(/^[A-Z][A-Z0-9_]{1,39}$/) });
+
+type CategoryData = Omit<z.infer<typeof CategoryCreateBody>, 'reason'>;
+type CategoryChange = Omit<z.infer<typeof CategoryUpdateBody>, 'reason'>;
+type CategoryBefore = Partial<Record<keyof CategoryChange, unknown>>;
+
 type TemplateData = Omit<z.infer<typeof TemplateCreateBody>, 'reason'>;
 type TemplateChange = Omit<z.infer<typeof TemplateUpdateBody>, 'reason'>;
 type ChangedValues = Partial<Record<keyof TemplateChange, unknown>>;
@@ -81,9 +102,15 @@ type ChangedValues = Partial<Record<keyof TemplateChange, unknown>>;
 export type CatalogApprovalPayload =
   | { kind: 'TEMPLATE_CREATE'; template: TemplateData; reason: string }
   /** `before` holds the stored values of the changed fields, to refuse a stale approval. */
-  | { kind: 'TEMPLATE_UPDATE'; templateId: number; code: string; change: TemplateChange; before: ChangedValues; reason: string };
+  | { kind: 'TEMPLATE_UPDATE'; templateId: number; code: string; change: TemplateChange; before: ChangedValues; reason: string }
+  | { kind: 'CATEGORY_CREATE'; category: CategoryData; reason: string }
+  | { kind: 'CATEGORY_UPDATE'; code: string; change: CategoryChange; before: CategoryBefore; reason: string };
+
+export const isCatalogPayload = (p: { kind: string }): p is CatalogApprovalPayload =>
+  ['TEMPLATE_CREATE', 'TEMPLATE_UPDATE', 'CATEGORY_CREATE', 'CATEGORY_UPDATE'].includes(p.kind);
 
 export type CatalogOutcome = { status: 'APPLIED'; template: TemplateView } | { status: 'PENDING_APPROVAL'; requestId: number };
+export type CategoryOutcome = { status: 'APPLIED'; category: CredentialCategory } | { status: 'PENDING_APPROVAL'; requestId: number };
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
@@ -182,6 +209,42 @@ export function createCatalogService(db: Db) {
     return row;
   }
 
+  async function assertCategoryFree(tx: DbClient, code: string) {
+    if (await tx.credentialCategory.findUnique({ where: { code } })) throw new HttpError(409, 'CATEGORY_EXISTS', `A category with code ${code} already exists`);
+  }
+
+  async function createCategoryNow(tx: DbClient, auth: AuthContext, c: CategoryData, reason: string, approvalRequestId: number | null, requestId?: string) {
+    await assertSystemWide(tx, auth);
+    await assertCategoryFree(tx, c.code);
+    const row = await tx.credentialCategory.create({ data: c });
+    await appendAudit(tx, { actorUserId: auth.user.id, action: 'CATEGORY_CREATED', resource: 'credential_category', resourceId: c.code, changes: { category: c, reason, approvalRequestId }, requestId, priority: 'HIGH' });
+    return row;
+  }
+
+  async function categoryChanges(tx: DbClient, code: string, change: CategoryChange) {
+    const current = await tx.credentialCategory.findUnique({ where: { code } });
+    if (!current) throw notFound('Category not found');
+    const before: CategoryBefore = {};
+    for (const [k, v] of Object.entries(change) as Array<[keyof CategoryChange, unknown]>) {
+      if (v !== undefined && !same(current[k], v)) before[k] = current[k];
+    }
+    if (Object.keys(before).length === 0) throw new HttpError(400, 'NO_CHANGES', 'The request does not change the category');
+    return { current, before };
+  }
+
+  async function updateCategoryNow(tx: DbClient, auth: AuthContext, code: string, change: CategoryChange, reason: string, expected: CategoryBefore | null, approvalRequestId: number | null, requestId?: string) {
+    await assertSystemWide(tx, auth);
+    const { current, before } = await categoryChanges(tx, code, change);
+    if (expected) {
+      for (const [k, v] of Object.entries(expected) as Array<[keyof CategoryChange, unknown]>) {
+        if (!same(current[k], v)) throw new HttpError(409, 'CATEGORY_CHANGED_SINCE_REQUEST', 'The category has changed since this request was made — reject it and submit a new one');
+      }
+    }
+    const row = await tx.credentialCategory.update({ where: { code }, data: change });
+    await appendAudit(tx, { actorUserId: auth.user.id, action: 'CATEGORY_UPDATED', resource: 'credential_category', resourceId: code, changes: { before, after: change, reason, approvalRequestId }, requestId, priority: 'HIGH' });
+    return row;
+  }
+
   async function initiateApproval(auth: AuthContext, actionType: string, payload: CatalogApprovalPayload, requestId?: string) {
     return db.$transaction(async (tx) => {
       const req = await tx.approvalRequest.create({ data: { initiatorId: auth.user.id, actionType, payload: payload as Prisma.InputJsonObject } });
@@ -239,10 +302,32 @@ export function createCatalogService(db: Db) {
       return { status: 'PENDING_APPROVAL', requestId: await initiateApproval(auth, `TEMPLATE_UPDATE:${id}`, { kind: 'TEMPLATE_UPDATE', templateId: id, code: current.code, change: only, before, reason }, requestId) };
     },
 
+    // Categories follow the same four-eyes path as credential types (P8).
+    async createCategory(auth: AuthContext, body: z.infer<typeof CategoryCreateBody>, requestId?: string): Promise<CategoryOutcome> {
+      const { reason, ...category } = body;
+      if (auth.breakGlass) return { status: 'APPLIED', category: await db.$transaction((tx) => createCategoryNow(tx, auth, category, reason, null, requestId)) };
+      await assertSystemWide(db, auth);
+      await assertCategoryFree(db, category.code);
+      return { status: 'PENDING_APPROVAL', requestId: await initiateApproval(auth, `CATEGORY_CREATE:${category.code}`, { kind: 'CATEGORY_CREATE', category, reason }, requestId) };
+    },
+
+    async updateCategory(auth: AuthContext, code: string, body: z.infer<typeof CategoryUpdateBody>, requestId?: string): Promise<CategoryOutcome> {
+      const { reason, ...change } = body;
+      if (auth.breakGlass) return { status: 'APPLIED', category: await db.$transaction((tx) => updateCategoryNow(tx, auth, code, change, reason, null, null, requestId)) };
+      await assertSystemWide(db, auth);
+      const { before } = await categoryChanges(db, code, change);
+      const only = Object.fromEntries(Object.keys(before).map((k) => [k, change[k as keyof CategoryChange]])) as CategoryChange;
+      return { status: 'PENDING_APPROVAL', requestId: await initiateApproval(auth, `CATEGORY_UPDATE:${code}`, { kind: 'CATEGORY_UPDATE', code, change: only, before, reason }, requestId) };
+    },
+
     /** Executes an approved catalog request as the approver, inside the approval's transaction (R11). */
-    async executeApproved(tx: DbClient, approver: AuthContext, payload: CatalogApprovalPayload, approvalRequestId: number, requestId?: string) {
-      if (payload.kind === 'TEMPLATE_CREATE') return (await createNow(tx, approver, payload.template, payload.reason, approvalRequestId, requestId)).id;
-      return (await updateNow(tx, approver, payload.templateId, payload.change, payload.reason, payload.before, approvalRequestId, requestId)).id;
+    async executeApproved(tx: DbClient, approver: AuthContext, payload: CatalogApprovalPayload, approvalRequestId: number, requestId?: string): Promise<number | string> {
+      switch (payload.kind) {
+        case 'TEMPLATE_CREATE': return (await createNow(tx, approver, payload.template, payload.reason, approvalRequestId, requestId)).id;
+        case 'TEMPLATE_UPDATE': return (await updateNow(tx, approver, payload.templateId, payload.change, payload.reason, payload.before, approvalRequestId, requestId)).id;
+        case 'CATEGORY_CREATE': return (await createCategoryNow(tx, approver, payload.category, payload.reason, approvalRequestId, requestId)).code;
+        case 'CATEGORY_UPDATE': return (await updateCategoryNow(tx, approver, payload.code, payload.change, payload.reason, payload.before, approvalRequestId, requestId)).code;
+      }
     },
 
     async listRequirements(auth: AuthContext, q: z.infer<typeof RequirementQuery>) {

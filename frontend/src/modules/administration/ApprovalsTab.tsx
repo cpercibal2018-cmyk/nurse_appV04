@@ -13,6 +13,11 @@ function describe(r: ApprovalRequest): string {
     const diff = Object.keys(p.change).map((k) => `${k}: ${show(p.before[k])} → ${show(p.change[k])}`).join('; ');
     return `Change credential type ${p.code}: ${diff} — “${p.reason}”`;
   }
+  if (p.kind === 'CATEGORY_CREATE') return `New credential category ${p.category.code} — ${p.category.name} — “${p.reason}”`;
+  if (p.kind === 'CATEGORY_UPDATE') {
+    const diff = Object.keys(p.change).map((k) => `${k}: ${show(p.before[k])} → ${show(p.change[k])}`).join('; ');
+    return `Change credential category ${p.code}: ${diff} — “${p.reason}”`;
+  }
   if (p.kind === 'GRANT') {
     const g = p.grant;
     return `Grant ${g.role} (${g.scopeType}${g.scopeIds.length ? ` ${g.scopeIds.join(', ')}` : ''}) to account #${g.userId} — “${g.reason}”`;

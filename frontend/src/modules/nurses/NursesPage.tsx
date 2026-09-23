@@ -14,7 +14,7 @@ import { toHijriShort } from '../../lib/hijri';
 import { phoneRule } from '../../lib/phone';
 import { useUnits } from '../administration/api';
 import { usePositions } from '../workforce/api';
-import { useEmployee, useEmployeeAction, useEmployees, type EmployeeRow } from './api';
+import { useEmployee, useEmployeeAction, useEmployees, useOnboardingDefaults, type EmployeeRow } from './api';
 
 const OPTIONAL_TEXT = ['middleName', 'jobTitle', 'fileNo', 'rankGrade', 'nationality', 'jobPostLocation', 'actualWorkPlace', 'specialty', 'primaryPhone', 'emergencyContactPhone'] as const;
 
@@ -61,7 +61,7 @@ function EmployeeFields({ units, positions, onboarding }: { units: Array<{ value
       </Form.Item>
       <Form.Item name="salary" label={t('salarySar')}><InputNumber min={0} precision={2} style={{ width: '100%' }} stringMode /></Form.Item>
       <Form.Item name="unitId" label={t('unit')}><Select options={units} /></Form.Item>
-      {onboarding && <Form.Item name="positionCode" label={t('position')}><Select showSearch optionFilterProp="label" options={positions} /></Form.Item>}
+      {onboarding && <Form.Item name="positionCode" label={t('position')} rules={[{ required: true }]}><Select showSearch optionFilterProp="label" options={positions} /></Form.Item>}
       <Form.Item name="contactEmail" label={t('contactEmail')} rules={[{ required: true, type: 'email' }]}><Input maxLength={200} /></Form.Item>
       <Flex gap={8}>
         <Form.Item name="primaryPhone" label={t('primaryPhone')} extra={t('phoneHint')} rules={[phoneRule(t('phoneInvalid'))]} style={{ flex: 1 }}><Input maxLength={24} dir="ltr" /></Form.Item>
@@ -86,6 +86,7 @@ export default function NursesPage() {
   const [onboarding, setOnboarding] = useState<string | null>(null); // idempotency key while open
   const [selected, setSelected] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
+  const defaults = useOnboardingDefaults(canWrite);
   const [moving, setMoving] = useState(false);
   const detail = useEmployee(selected);
   const [onboardForm] = Form.useForm();
@@ -124,7 +125,7 @@ export default function NursesPage() {
 
       <Drawer title={t('onboardEmployee')} open={onboarding !== null} onClose={() => setOnboarding(null)} size={640} destroyOnHidden>
         <Alert type="info" showIcon title={t('onboardHint')} style={{ marginBottom: 12 }} />
-        <Form form={onboardForm} layout="vertical" initialValues={{ unitId: null, positionCode: 'SN' }} onFinish={async (v) => {
+        <Form form={onboardForm} layout="vertical" initialValues={{ unitId: null, positionCode: defaults.data?.positionCode ?? undefined }} onFinish={async (v) => {
           const out = await run<{ employeeId: number; contractId: number }>({ kind: 'onboard', body: toBody(v), key: onboarding! }, t('onboarded'));
           if (out) { setOnboarding(null); setSelected(out.employeeId); }
         }}>

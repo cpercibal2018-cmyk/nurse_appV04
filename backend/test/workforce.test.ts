@@ -161,6 +161,16 @@ describeDb('workforce, employees and contracts', () => {
       contractStart: today(), contractEnd: addDays(today(), 364), ...over,
     });
 
+    it('rule E6: the server supplies the default position; omitting it at onboarding uses it (P4)', async () => {
+      expect((await scoped.get('/employees/onboarding-defaults')).body).toEqual({ unitId: null, positionCode: 'SN', rule: 'E6' });
+      const nurse = await signIn(app, (await makeUser(db)).email);
+      expect((await nurse.get('/employees/onboarding-defaults')).status).toBe(403);
+      const body = onboardBody(); // no positionCode
+      const res = await idem(scoped.post('/employees/onboard', body));
+      expect(res.status).toBe(201);
+      expect((await db.employee.findUniqueOrThrow({ where: { id: res.body.employeeId } })).positionCode).toBe('SN');
+    });
+
     it('creates the employee, a Draft contract with Hijri dates, an audit row and an INELIGIBLE state atomically', async () => {
       const body = onboardBody();
       expect((await scoped.post('/employees/onboard', body)).body.error.code).toBe('IDEMPOTENCY_KEY_REQUIRED');

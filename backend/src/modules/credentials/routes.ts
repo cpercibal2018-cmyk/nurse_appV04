@@ -3,7 +3,9 @@ import { z } from 'zod';
 import { HttpError } from '../../lib/http-errors.js';
 import { authOf, authorize } from '../../middleware/authorize.js';
 import { EvaluateQuery, StateQuery, WaiverBody, WaiverQuery, type createEligibilityService } from '../eligibility/service.js';
-import { RequirementBody, RequirementBulkBody, RequirementQuery, RequirementUpdateBody, TemplateCreateBody, TemplateUpdateBody, type CatalogService } from './catalog.js';
+import {
+  CategoryCreateBody, CategoryParam, CategoryUpdateBody, RequirementBody, RequirementBulkBody, RequirementQuery, RequirementUpdateBody, TemplateCreateBody, TemplateUpdateBody, type CatalogService,
+} from './catalog.js';
 import { ApproveRenewalBody, DecisionBody, ListQuery, RecordBody, RenewalBody, SelfRecordBody, VerifyBody, type RecordService } from './records.js';
 
 const IdParam = z.object({ id: z.coerce.number().int().positive() });
@@ -16,6 +18,14 @@ export function createCredentialsRouter(catalog: CatalogService, records: Record
 
   // ── Catalog (§5.1.1–5.1.3) ────────────────────────────────────────────────
   r.get('/credential-categories', authorize('credentials.catalog.read'), async (_req, res) => { res.json({ items: await catalog.listCategories() }); });
+  r.post('/credential-categories', authorize('credentials.catalog.write'), async (req, res) => {
+    const out = await catalog.createCategory(authOf(res), CategoryCreateBody.parse(req.body), rid(res));
+    res.status(out.status === 'PENDING_APPROVAL' ? 202 : 201).json(out);
+  });
+  r.patch('/credential-categories/:code', authorize('credentials.catalog.write'), async (req, res) => {
+    const out = await catalog.updateCategory(authOf(res), CategoryParam.parse(req.params).code, CategoryUpdateBody.parse(req.body), rid(res));
+    res.status(out.status === 'PENDING_APPROVAL' ? 202 : 200).json(out);
+  });
   r.get('/credential-templates', authorize('credentials.catalog.read'), async (req, res) => {
     res.json({ items: await catalog.listTemplates(req.query.includeInactive === 'true') });
   });
