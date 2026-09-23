@@ -4,7 +4,7 @@ How V04 replaces `nurse_appV03`, what happens to V03's data, and where each open
 
 ## 1. Data
 
-**No data migration is required.** V03 has no production data: its server re-seeded the database on every container start (`prisma db push` + seed), and the browser store held demo data only ([DATABASE_CONSOLIDATION.md §7](DATABASE_CONSOLIDATION.md#7-data-migration-from-v03)). V04 starts from its own seed:
+**No data migration is required.** V03 has no production data: its server re-seeded the database on every container start (`prisma db push` + seed), and the browser store held demo data only ([DATABASE_CONSOLIDATION.md §7](history/DATABASE_CONSOLIDATION.md#7-data-migration-from-v03)). V04 starts from its own seed:
 
 - **Reference data** (departments, 47 units / 582 beds baseline, positions, credential catalog) is loaded by `npm run db:seed -w backend` and is then HR's to change in the app.
 - **Demo data** (employees, contracts, credentials, one user per role) is loaded only with `SEED_DEMO=true`, never in production. It is based on V03's demo seed; the first daily job on it corrected three V03 credentials that were stored as Valid with past expiry dates.
@@ -27,7 +27,7 @@ How V04 replaces `nurse_appV03`, what happens to V03's data, and where each open
 
 ## 3. The V03 repository
 
-The V03 repository (`C:\WebApp_project\Local_Repo\app`, repo `nurse_appV03`) is **left untouched** and stays the historical record until V04 has been validated in the hospital environment. Nothing in V04 depends on it. What each V03 file became is recorded in [CLEANUP_PLAN.md](CLEANUP_PLAN.md) and [DUPLICATE_IMPLEMENTATION_MAP.md](DUPLICATE_IMPLEMENTATION_MAP.md); tagging V03 (`v03-final`) and making it read-only is the owner's action (D-2).
+The V03 repository (`C:\WebApp_project\Local_Repo\app`, repo `nurse_appV03`) is **left untouched** and stays the historical record until V04 has been validated in the hospital environment. Nothing in V04 depends on it. What each V03 file became is recorded in [CLEANUP_PLAN.md](history/CLEANUP_PLAN.md) and [DUPLICATE_IMPLEMENTATION_MAP.md](history/DUPLICATE_IMPLEMENTATION_MAP.md); tagging V03 (`v03-final`) and making it read-only is the owner's action (D-2).
 
 ## 4. Open programme items (V03 remediation tracker)
 

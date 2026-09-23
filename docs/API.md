@@ -87,7 +87,7 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | PATCH | `/api/v1/employees/:id` | Source fields E1–E8 and the two phones (not position); a unit move re-evaluates eligibility; salary and emergency-phone values are not copied into the audit trail | HR, SA — old and new unit in scope | spec §3.1, D-35 |
 | POST | `/api/v1/employees/:id/position` | `{positionCode, reason}`; rejects inactive/unchanged; HIGH audit from → to; re-evaluates eligibility | **HR_ADMIN only** (E9), scoped | E9 |
 | DELETE | `/api/v1/employees/:id` | Soft delete, body `{reason ≥ 10}`; history kept; eligibility becomes INELIGIBLE; not on one's own record | HR, SA — scoped | spec |
-| PATCH | `/api/v1/employees/me/contact` | Own `primaryPhone` / `emergencyContactPhone` only (E.164 `+` 8–15 digits; separators removed; `null` clears); anything else → 422; audited `EMPLOYEE_CONTACT_UPDATED` | EMP own record (no permission; `NO_EMPLOYEE_RECORD` if unlinked) | spec §3.3, **D-35** |
+| PATCH | `/api/v1/employees/me/contact` | Own `primaryPhone` / `emergencyContactPhone` only (E.164 `+` 8–15 digits; separators removed; `null` clears); any other field → 400 `VALIDATION_FAILED`; audited `EMPLOYEE_CONTACT_UPDATED` | EMP own record (no permission; `NO_EMPLOYEE_RECORD` if unlinked) | spec §3.3, **D-35** |
 
 ### 2.6 Contracts (`modules/contracts`) — implemented in commit 7
 

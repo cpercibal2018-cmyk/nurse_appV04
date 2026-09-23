@@ -1,5 +1,7 @@
 # Duplicate Implementation Map
 
+> **Historical (stage-1 analysis of V03, 2026-09-22).** Kept for traceability; it describes V03 and the plan for V04, not V04 as built. For V04 see [docs/README.md](../README.md). Content unchanged since it was retired in commit 12, except that relative links were adjusted for the move.
+
 For every feature with more than one implementation: where each lives, which one actually runs, which is more complete, how they conflict, and what V04 does. Paths are relative to the V03 clone. V04 paths refer to the target layout in `V04_ARCHITECTURE_PLAN.md`. Conflict IDs (C-n) and rule IDs are defined in `FEATURE_MASTER_INVENTORY.md`.
 
 **Legend — "Runs?":** ✅ executed by the running app · ❌ never executed · 💀 dead code (no callers)

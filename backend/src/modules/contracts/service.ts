@@ -5,7 +5,7 @@
 //   PendingApproval ─return→ Draft
 //   Approved | Active ─suspend→ Suspended ─reinstate→ Approved / Active (by date)
 //   Approved | Active ─terminate→ Terminated (final)
-//   Expired: set only by the daily job when the end date passes (commit 9).
+//   Expired: set only by the daily job when the end date passes (jobs/daily-transition.ts).
 //   Superseded: never set by hand ("silent superseding has been removed", §4.2).
 // The creator and the submitter may not approve (D-30), and nobody acts on
 // their own contract. Every change re-evaluates eligibility in its transaction (L6).

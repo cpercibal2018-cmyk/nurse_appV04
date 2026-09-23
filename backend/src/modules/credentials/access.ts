@@ -1,7 +1,6 @@
 // Record scope for credential and eligibility endpoints (spec §8.1
 // Credentials row; R15: an id sent by the browser never establishes access).
 
-import type { AppRole } from '../../generated/prisma/client.js';
 import { HttpError, notFound } from '../../lib/http-errors.js';
 import type { DbClient } from '../../lib/prisma.js';
 import { unitScope, type AuthContext, type UnitScope } from '../users/access.js';
@@ -29,11 +28,6 @@ export async function viewerOf(db: DbClient, auth: AuthContext, employeeId: numb
   if (allow.includes('HR') && inScope(await unitScope(db, auth, HR_ROLES), emp.unitId)) return { viewer: 'HR', unitId: emp.unitId };
   if (allow.includes('SUPERVISOR') && inScope(await unitScope(db, auth, ['SUPERVISOR']), emp.unitId)) return { viewer: 'SUPERVISOR', unitId: emp.unitId };
   throw outOfScope();
-}
-
-/** Units the caller may read through the given roles (for list filters). */
-export async function readableUnits(db: DbClient, auth: AuthContext, roles: readonly AppRole[]) {
-  return unitScope(db, auth, roles);
 }
 
 /** Prisma filter restricting employees to a unit scope. */

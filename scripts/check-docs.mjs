@@ -15,6 +15,7 @@ const SOURCES = [
   'README.md',
   'ops/backup/README.md',
   ...readdirSync(join(ROOT, 'docs')).filter((f) => f.endsWith('.md')).map((f) => `docs/${f}`),
+  ...readdirSync(join(ROOT, 'docs', 'history')).filter((f) => f.endsWith('.md')).map((f) => `docs/history/${f}`),
 ];
 
 /** Text outside fenced code blocks and inline code, where links are real. */

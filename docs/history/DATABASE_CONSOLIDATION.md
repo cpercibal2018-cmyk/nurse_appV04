@@ -1,5 +1,7 @@
 # Database Consolidation
 
+> **Historical (stage-1 analysis of V03, 2026-09-22).** Kept for traceability; it describes V03 and the plan for V04, not V04 as built. For V04 see [docs/README.md](../README.md). Content unchanged since it was retired in commit 12, except that relative links were adjusted for the move.
+
 ## 1. Inputs compared
 
 | # | Source | Form | Models / tables | Used by | Validates |
@@ -125,7 +127,7 @@ V03 has no production data: the running system reseeds on every boot, and browse
 
 ## Appendix A — V04 schema
 
-The schema proposed here was reviewed and is now implemented as the **only** schema: [`backend/prisma/schema.prisma`](../backend/prisma/schema.prisma), with its constraints in [`backend/prisma/migrations/`](../backend/prisma/migrations/). The draft copy that used to be in this appendix was removed so that two schema texts cannot drift apart.
+The schema proposed here was reviewed and is now implemented as the **only** schema: [`backend/prisma/schema.prisma`](../../backend/prisma/schema.prisma), with its constraints in [`backend/prisma/migrations/`](../../backend/prisma/migrations/). The draft copy that used to be in this appendix was removed so that two schema texts cannot drift apart.
 
 Changes made while implementing the draft:
 

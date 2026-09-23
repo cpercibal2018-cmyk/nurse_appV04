@@ -13,20 +13,26 @@
 | [DATABASE.md](DATABASE.md) | Tables, database-enforced rules, the audit chain, migrations, seed |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Configuration, processes and jobs, release steps, backups, **known gaps before production**, monitoring |
 | [MIGRATION.md](MIGRATION.md) | Moving from V03: data, user-visible changes, V03 programme items |
+| [CLEANUP_REPORT.md](CLEANUP_REPORT.md) | What the final cleanup removed, moved and kept, and the full validation matrix |
 | [V04_ARCHITECTURE_PLAN.md](V04_ARCHITECTURE_PLAN.md) | The plan, the **owner decision record** (§9a, D-1 … D-41) and implementation notes per commit |
 | [reference/AIGH_Nursing_Workforce_Management_System_v2_8_7.md](reference/AIGH_Nursing_Workforce_Management_System_v2_8_7.md) | The original specification, verbatim (never edited) |
 
-## Stage-1 analysis (V03)
-
-Produced before V04 was built. They describe V03 and are kept for traceability until the cleanup commit decides their fate; do not use them as a description of V04.
+## Rule register
 
 | Document | Contents |
 | :--- | :--- |
-| [LEGACY_REPOSITORY_INVENTORY.md](LEGACY_REPOSITORY_INVENTORY.md) | What V03 contained |
-| [DUPLICATE_IMPLEMENTATION_MAP.md](DUPLICATE_IMPLEMENTATION_MAP.md) | Where V03 implemented the same thing more than once |
-| [FEATURE_MASTER_INVENTORY.md](FEATURE_MASTER_INVENTORY.md) | Features and the **business rule register** (R, E, C, D, L, W, S, N, A rule IDs cited throughout) |
-| [DATABASE_CONSOLIDATION.md](DATABASE_CONSOLIDATION.md) | How V03's four schema sources became the V04 schema |
-| [CLEANUP_PLAN.md](CLEANUP_PLAN.md) | What happens to each V03 file |
+| [FEATURE_MASTER_INVENTORY.md](FEATURE_MASTER_INVENTORY.md) | The **business rule register** (§15: R, E, C, D, L, W, S, N, A rule IDs cited by the code, the tests, the first migration and these documents). Its other sections are the stage-1 feature inventory of V03 and are historical |
+
+## History (stage-1 analysis of V03)
+
+Produced before V04 was built and retired in commit 12 ([CLEANUP_REPORT.md §1.2](CLEANUP_REPORT.md#12-moved)). They describe V03 and the plan for V04, not V04 as built; kept unchanged for traceability.
+
+| Document | Contents |
+| :--- | :--- |
+| [history/LEGACY_REPOSITORY_INVENTORY.md](history/LEGACY_REPOSITORY_INVENTORY.md) | What V03 contained |
+| [history/DUPLICATE_IMPLEMENTATION_MAP.md](history/DUPLICATE_IMPLEMENTATION_MAP.md) | Where V03 implemented the same thing more than once |
+| [history/DATABASE_CONSOLIDATION.md](history/DATABASE_CONSOLIDATION.md) | How V03's four schema sources became the V04 schema |
+| [history/CLEANUP_PLAN.md](history/CLEANUP_PLAN.md) | What was to happen to each V03 file |
 
 ## Keeping the documents true
 

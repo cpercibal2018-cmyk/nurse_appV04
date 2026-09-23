@@ -1,5 +1,7 @@
 # Cleanup Plan
 
+> **Historical (stage-1 analysis of V03, 2026-09-22).** Kept for traceability; it describes V03 and the plan for V04, not V04 as built. For V04 see [docs/README.md](../README.md). Content unchanged since it was retired in commit 12, except that relative links were adjusted for the move.
+
 ## 1. Principles
 
 1. **V03 is never destroyed.** V04 is built in a new repository (D-2). V03 is tagged `v03-final` and left intact as the archive. "ARCHIVE" = stays in V03, not copied to V04. "DELETE" = not copied to V04, because it has no unique value (it also stays in V03 history).

@@ -33,4 +33,4 @@ npm run build            # includes the frontend bundle budget gate
 
 ## Status
 
-Stage 2 of the consolidation: commits 1–11 of the sequence in [docs/V04_ARCHITECTURE_PLAN.md §7](docs/V04_ARCHITECTURE_PLAN.md#7-commit-sequence-stage-2-after-approval) are done; commit 12 (cleanup) remains. **Not yet deployable to production** — see [DEPLOYMENT.md §6](docs/DEPLOYMENT.md#6-known-gaps-before-production).
+Stage 2 of the consolidation is complete: all 12 commits of the sequence in [docs/V04_ARCHITECTURE_PLAN.md §7](docs/V04_ARCHITECTURE_PLAN.md#7-commit-sequence-stage-2-after-approval) are done; the validation matrix is in [docs/CLEANUP_REPORT.md](docs/CLEANUP_REPORT.md). **Not yet deployable to production** — see [DEPLOYMENT.md §6](docs/DEPLOYMENT.md#6-known-gaps-before-production).

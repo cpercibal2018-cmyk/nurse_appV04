@@ -1,7 +1,7 @@
 // Application shell (ported from V03 app/src/components/AppLayout.tsx).
 // Dropped from V03: the footer claiming "PDPL · KSA me-central-1" (me-central-1
 // is the UAE, and the browser cannot know the server region), the unread badge
-// fed by the browser store (now served by GET /notifications, commit 9), and the
+// fed by the browser store (now served by GET /notifications), and the
 // DEVELOPER role display (decision D-5).
 
 import { useState, type ReactNode } from 'react';

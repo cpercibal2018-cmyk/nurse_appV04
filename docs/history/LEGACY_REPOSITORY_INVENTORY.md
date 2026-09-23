@@ -1,5 +1,7 @@
 # Legacy Repository Inventory — nurse_appV03
 
+> **Historical (stage-1 analysis of V03, 2026-09-22).** Kept for traceability; it describes V03 and the plan for V04, not V04 as built. For V04 see [docs/README.md](../README.md). Content unchanged since it was retired in commit 12, except that relative links were adjusted for the move.
+
 | | |
 | :--- | :--- |
 | **Source** | https://github.com/cpercibal2018-cmyk/nurse_appV03.git |

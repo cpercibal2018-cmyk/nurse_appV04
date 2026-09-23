@@ -2,7 +2,7 @@
 // Every handler that changes a contract, credential, requirement, position or
 // waiver calls refreshEligibility(tx, …) INSIDE its own transaction, so the
 // stored state commits with the change. Date passage (expiries, waiver ends,
-// deadlines) is caught by the daily transition job (commit 9); publication
+// deadlines) is caught by the daily transition job (jobs/daily-transition.ts); publication
 // never trusts this snapshot and re-runs the engine (L7).
 
 import { appendAudit } from '../../lib/audit.js';
@@ -142,7 +142,7 @@ export async function refreshUnit(tx: DbClient, unitId: number, positionCode: st
  * requirements rechecks the nurse's future published shifts. A shift the
  * engine now blocks — or one outside the nurse's home unit (D-32) — goes back
  * to Draft for review, with a HIGH audit row and a notice to the unit's
- * supervisors. Date passage is handled by the daily job (commit 9).
+ * supervisors. Date passage is handled by the daily job (jobs/daily-transition.ts).
  */
 async function demoteInvalidPublished(
   tx: DbClient, facts: EngineFacts, employeeId: number, event: string,

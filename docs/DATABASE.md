@@ -1,6 +1,6 @@
 # Database
 
-PostgreSQL 15. The schema is [`backend/prisma/schema.prisma`](../backend/prisma/schema.prisma); the only way it changes is a migration in [`backend/prisma/migrations/`](../backend/prisma/migrations/). The consolidation that produced this schema from V03's four sources is recorded in [DATABASE_CONSOLIDATION.md](DATABASE_CONSOLIDATION.md).
+PostgreSQL 15. The schema is [`backend/prisma/schema.prisma`](../backend/prisma/schema.prisma); the only way it changes is a migration in [`backend/prisma/migrations/`](../backend/prisma/migrations/). The consolidation that produced this schema from V03's four sources is recorded in [DATABASE_CONSOLIDATION.md](history/DATABASE_CONSOLIDATION.md).
 
 ## 1. Conventions
 

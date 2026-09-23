@@ -1,5 +1,7 @@
 # Feature Master Inventory — nurse_appV03 → V04
 
+> **Status (commit 12).** §15 *Business rule register* is **live**: its rule IDs are cited by the V04 code, tests, the first migration and the documentation set. Sections 1–14 and §16 are the stage-1 inventory of V03 (2026-09-22) and are historical — for V04 behaviour see [docs/README.md](README.md). Where §15 and a later owner decision differ, the decision record in [V04_ARCHITECTURE_PLAN.md §9a](V04_ARCHITECTURE_PLAN.md#9a-decision-record-2026-09-23) wins.
+
 Every capability found in the repository, where it lives, how real it is, and which business rules it carries. Evidence is file:line in the V03 clone (`C:\WebApp_project\Local_Repo\app`). "Spec" = `AIGH_Nursing_Workforce_Management_System_v2_8_7.md` (rev 2.8.7c).
 
 ## Status legend
