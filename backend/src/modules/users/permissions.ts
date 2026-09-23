@@ -42,6 +42,13 @@ export const PERMISSIONS = {
   'contracts.read': ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'],
   'contracts.manage': ['HR_ADMIN', 'SYSTEM_ADMIN'],
 
+  // Scheduling — spec §8.1: HR "coverage/read view by default"; scoped
+  // Supervisor drafts and publishes (D-14). Employees read their own and
+  // home-unit published schedule through /roster/me.
+  'roster.read': ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'],
+  'roster.write': ['SUPERVISOR'],
+  'attendance.read': ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'],
+
   // Credentials and eligibility — spec §8.1 Credentials row, §5.1.4, §6.1.
   'credentials.catalog.read': ['EMPLOYEE'],
   'credentials.catalog.write': ['HR_ADMIN', 'SYSTEM_ADMIN'], // system-wide scope enforced in the service

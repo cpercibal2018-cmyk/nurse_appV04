@@ -59,14 +59,14 @@ export async function evaluateFor(tx: DbClient, employeeId: number, date: IsoDat
 }
 
 /**
- * Active HR admins whose scope covers a unit (system-wide, the unit's
- * department, or the unit itself) — recipients of eligibility notices (N2).
+ * Active holders of a role whose scope covers a unit (system-wide, the unit's
+ * department, or the unit itself) — recipients of unit notices (N2).
  */
-export async function hrRecipientsForUnit(tx: DbClient, unitId: number | null, now = new Date()): Promise<number[]> {
+export async function recipientsForUnit(tx: DbClient, role: 'HR_ADMIN' | 'SUPERVISOR', unitId: number | null, now = new Date()): Promise<number[]> {
   const unit = unitId === null ? null : await tx.unit.findUnique({ where: { id: unitId }, select: { departmentId: true } });
   const grants = await tx.roleAssignment.findMany({
     where: {
-      role: 'HR_ADMIN', revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }], user: { isActive: true },
+      role, revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }], user: { isActive: true },
     },
     select: { userId: true, scopeType: true, scopeIds: true },
   });
@@ -77,6 +77,8 @@ export async function hrRecipientsForUnit(tx: DbClient, unitId: number | null, n
   ).map((g) => g.userId);
   return [...new Set(ids)];
 }
+
+export const hrRecipientsForUnit = (tx: DbClient, unitId: number | null, now = new Date()) => recipientsForUnit(tx, 'HR_ADMIN', unitId, now);
 
 /** Recalculates and stores one nurse's eligibility for today, inside the caller's transaction. */
 export async function refreshEligibility(tx: DbClient, employeeId: number, event: string, opts: { actorUserId?: number | null; requestId?: string; now?: Date } = {}) {
@@ -114,6 +116,8 @@ export async function refreshEligibility(tx: DbClient, employeeId: number, event
     });
   }
 
+  await demoteInvalidPublished(tx, facts, employeeId, event, opts, now);
+
   if (previous?.status !== result.status) {
     await appendAudit(tx, {
       actorUserId: opts.actorUserId ?? null, action: 'ELIGIBILITY_CHANGED', resource: 'employee', resourceId: employeeId,
@@ -131,4 +135,46 @@ export async function refreshUnit(tx: DbClient, unitId: number, positionCode: st
   });
   for (const e of emps) await refreshEligibility(tx, e.id, event, opts);
   return emps.length;
+}
+
+/**
+ * Spec §6.2: a change to credentials, contract, employee status/position or
+ * requirements rechecks the nurse's future published shifts. A shift the
+ * engine now blocks — or one outside the nurse's home unit (D-32) — goes back
+ * to Draft for review, with a HIGH audit row and a notice to the unit's
+ * supervisors. Date passage is handled by the daily job (commit 9).
+ */
+async function demoteInvalidPublished(
+  tx: DbClient, facts: EngineFacts, employeeId: number, event: string,
+  opts: { actorUserId?: number | null; requestId?: string }, now: Date,
+) {
+  const today = riyadhDate(now);
+  const published = await tx.shiftAssignment.findMany({
+    where: { employeeId, status: 'Published', shiftDate: { gte: new Date(`${today}T00:00:00Z`) } },
+    orderBy: { shiftDate: 'asc' },
+  });
+  for (const a of published) {
+    const date = dbDate(a.shiftDate);
+    const result = evaluate(facts, { date, today, now });
+    const reasons: string[] = result.status === 'INELIGIBLE' ? result.reasons.filter((r) => r.severity === 'BLOCK').map((r) => r.code) : [];
+    if (facts.employee?.unitId !== a.unitId) reasons.push('NOT_HOME_UNIT');
+    if (reasons.length === 0) continue;
+    await tx.shiftAssignment.update({ where: { id: a.id }, data: { status: 'Draft', publishedAt: null, publishedById: null, eligibilityAtPublish: null } });
+    await appendAudit(tx, {
+      actorUserId: opts.actorUserId ?? null, action: 'ASSIGNMENT_DEMOTED', resource: 'shift_assignment', resourceId: a.id,
+      changes: { employeeId, unitId: a.unitId, shiftDate: date, shiftType: a.shiftType, reasons, event }, requestId: opts.requestId, priority: 'HIGH',
+    });
+    const supervisors = await recipientsForUnit(tx, 'SUPERVISOR', a.unitId, now);
+    await tx.notification.createMany({
+      data: supervisors.map((recipientId) => ({
+        recipientId, employeeId, type: 'COVERAGE' as const, priority: 'HIGH' as const,
+        title: 'Published shift returned to draft',
+        message: `A ${a.shiftType} shift on ${date} no longer passes the eligibility check (${reasons.join(', ')}) and is back in draft for review.`,
+        titleAr: 'أعيدت مناوبة منشورة إلى المسودة',
+        messageAr: `المناوبة (${a.shiftType}) بتاريخ ${date} لم تعد تجتاز فحص الأهلية (${reasons.join('، ')}) وأعيدت إلى المسودة للمراجعة.`,
+        eventKey: `demoted:${a.id}:${a.publishedAt?.getTime() ?? 0}`,
+      })),
+      skipDuplicates: true,
+    });
+  }
 }

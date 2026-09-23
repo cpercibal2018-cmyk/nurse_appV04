@@ -179,6 +179,9 @@ Follows the brief; each commit builds.
 | D-28 (2026-09-23) | **System Admins cannot issue waivers** (spec §6.1.2 literal) | Supervisor or HR Admin only. The break-glass account acts as System Admin, so it cannot issue waivers either |
 | D-29 (2026-09-23) | **Contract transition map** | Draft → submit → PendingApproval → approve → Approved (future) / Active (covers today), or return → Draft. Approved/Active → suspend or terminate. Suspended → reinstate (Approved/Active by date, overlap re-checked). Terminated is final. Expired only by the daily job; Superseded not set by hand |
 | D-30 (2026-09-23) | **A contract is approved by a different HR person** | The creator and the submitter cannot approve it (`SELF_APPROVAL_FORBIDDEN`); stored in the new `contracts.created_by_id` / `submitted_by_id` columns (migration `20260923120000_contract_actors`) |
+| D-31 (2026-09-23) | **Shift times = V03's**: Morning 07:00–15:00, Evening 15:00–23:00, Night 23:00–07:00 (next day), Asia/Riyadh | Kept in one file (`backend/src/config/shifts.ts`) so they can change; used by attendance gaps |
+| D-32 (2026-09-23) | **Home unit only** — no floating | A nurse is drafted and published only in their own unit: the engine checks the home unit's credential rules, so floating would skip the target unit's rules. A unit move demotes future published shifts. Floating needs an engine change first |
+| D-33 (2026-09-23) | **Attendance: gap view now, badge feed later** | Events list and gap view built; the PACS ingest endpoint waits for its contract (auth, format, delivery — B-15) |
 
 ### Implementation notes — commit 5 (authentication and RBAC)
 
@@ -230,6 +233,21 @@ Follows the brief; each commit builds.
 | Own phone update (spec §3.3) | Not built: the employee schema has no phone column | **REQUIREMENT NOT ESTABLISHED** |
 | KPI (D-11) | Ported engine; response and page state that the Ada'a card is not in the repository. Unit → area map is V03's (by unit code). Beds count **active** units only (V03 counted inactive critical units in KPI A) | Kept per D-11; thresholds unverified |
 | Stored status lag | Approved → Active at start date and Active → Expired at end date need the daily job (commit 9). The engine treats Approved and Active alike for coverage (C12), so eligibility is correct meanwhile | Same pattern as commit 6 |
+
+### Implementation notes — commit 8 (scheduling and attendance)
+
+| Topic | What was built | Status |
+| :--- | :--- | :--- |
+| Who schedules (D-14) | Only scoped Supervisors draft, auto-fill, cancel and publish; HR / System Admin read the board and coverage | As decided |
+| Live eligibility (L7) | Board, pool, auto-fill and publish all run the engine for the shift date; facts are loaded once per nurse per request | As specified |
+| Publication (S3, L8) | One transaction, advisory lock per unit; INELIGIBLE stays Draft with reasons; grace/waiver reliance stored on the assignment, returned and audited | As specified |
+| Revalidation (§6.2) | Built into `refreshEligibility`, so every change that refreshes a nurse re-checks their future published shifts; invalid → Draft + HIGH audit + supervisor notice | As specified. Date passage (a credential expiring tomorrow) needs the daily job — **commit 9** |
+| Auto-fill | V03 filled to the removed bed formula (D-16); V04 fills to configured targets only. **Heuristics, not policy:** one auto-filled shift per nurse per day, fewest shifts first. Manual drafting can still give a nurse two shifts in a day (only S1 applies) | Rest/fatigue rules **REQUIREMENT NOT ESTABLISHED** |
+| Past dates | Drafting and publishing refuse shift dates before today | Implementation safeguard |
+| Coverage | Eligible, non-cancelled assignments counted per status; shortage = target − published eligible; never blocks (S4) | As specified |
+| **Spec issue — early clock-in** | Spec §14.2's query counts only clock-ins **at or after** the shift start, so a nurse who badges in at 06:50 for 07:00 shows as MISSING. Kept literal (test documents it) | **Owner to confirm** — recommend counting clock-ins from a set time before the start |
+| Gap alerts | On-demand view only; the 15-minute worker and "Critical Coverage Alert" push are **commit 9** | Planned |
+| API map correction | §2.10 said "after 15 min"; the spec says 30 minutes. The map now says 30 | Corrected |
 
 ### Proposals received with the D-24…D-28 decisions — not adopted yet
 

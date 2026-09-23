@@ -185,25 +185,30 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | POST | `/api/v1/eligibility/:employeeId/refresh` | Recalculate and store one nurse | HR, SA (scoped) | spec §6.1 |
 | GET · POST | `/api/v1/waivers?employeeId&active`, `/api/v1/waivers` | List / create `{employeeId, templateId, reason, expiresAt}` (≤ 72 h, HIGH audit) | read HR, SA, SUP; **create SUP or HR only** (spec §6.1.2 — System Admin gets 403), scoped, not own | spec §6.1.2 |
 
-### 2.9 Scheduling (`modules/scheduling`)
+### 2.9 Scheduling (`modules/scheduling`) — implemented in commit 8
+
+Eligibility in every response is the **live engine for the shift date** (L7), not the stored snapshot. A nurse is scheduled only in their **home unit** (D-32). Windows are 1–94 days (S6).
 
 | Method | Endpoint | Purpose | Permission / scope | Source |
 | :--- | :--- | :--- | :--- | :--- |
-| GET | `/api/v1/roster?unitId&from&to` (≤ 94 days) | Board | SUP (scoped, drafts + published); HR read; EMP → published own/home-unit only (S2) | SchedulingModule |
-| GET | `/api/v1/roster/pool?unitId&date&shift` | Eligible candidates | SUP (scoped) | spec §6.1 |
-| POST | `/api/v1/shift-assignments` | Draft assignment (S1 + engine check) | SUP (scoped) — **C-9** | store |
-| DELETE | `/api/v1/shift-assignments/:id` | Remove draft / cancel published | SUP (scoped) | store |
-| POST | `/api/v1/roster/auto-generate` | Draft fill (dry-run default) | SUP (scoped) | SchedulingModule |
-| POST | `/api/v1/roster/publish` **[I]** | `{unitId, from, to}` → one transaction, engine re-validation (L7, S3) → `{published, blocked[]}` | SUP (scoped) — **C-9** | store + spec §6.2 |
-| GET | `/api/v1/coverage?unitId&from&to` | Draft and published counts vs targets (S4, S5) | SUP, HR | spec §6.3 |
+| GET | `/api/v1/roster?unitId&from&to` | Board: non-cancelled assignments with live eligibility, and coverage per date × shift | HR, SA, SUP — unit in scope (read) | spec §6.2 |
+| GET | `/api/v1/roster/me?from&to` | Own published shifts (any unit) + home-unit published schedule with notes (S2) | EMP | spec §6.2 |
+| GET | `/api/v1/roster/pool?unitId&date&shiftType` | Home-unit candidates not already in that slot, ranked by live eligibility, with their other shifts that day | SUP — unit in scope | spec §6.1 |
+| POST | `/api/v1/shift-assignments` | `{employeeId, unitId, shiftDate, shiftType, notes?}` → Draft (+ live eligibility). Refused: other unit (`NOT_HOME_UNIT`), past date, same slot twice (S1, `SHIFT_SLOT_TAKEN`) | **SUP only** — unit in scope (D-14) | S1 |
+| DELETE | `/api/v1/shift-assignments/:id` | Draft → deleted; Published → Cancelled with body `{reason}` (HIGH audit) | SUP — unit in scope | spec §6.2 |
+| POST | `/api/v1/roster/auto-generate` | `{unitId, from, to, dryRun=true}`: drafts up to each configured target from eligible home-unit nurses; unset targets reported (D-16); at most one auto-filled shift per nurse per day; fewest shifts first | SUP — unit in scope | V03 board (formula removed) |
+| POST | `/api/v1/roster/publish` **[I]** | `{unitId, from, to}` → one transaction, per-unit advisory lock; each draft re-validated (L7, S3); ineligible stays Draft with reasons → `{published, blocked[], reliedOnGraceOrWaiver[]}`; reliance also stored as `eligibilityAtPublish` and in the HIGH audit (L8) | SUP — unit in scope | spec §6.2 |
+| GET | `/api/v1/coverage?unitId&from&to` | Per date × shift: target (`null` = unspecified), draft and published `{total, eligible}`, `publishedShortage` (warning only, S4) | HR, SA, SUP — scoped | spec §6.3 |
+| — | Revalidation (no endpoint) | Every eligibility refresh (credential, contract, position, requirement, waiver, unit move, deletion) re-checks the nurse's future published shifts; an invalid one returns to Draft, HIGH audit `ASSIGNMENT_DEMOTED`, COVERAGE notice to the unit's supervisors | — | spec §6.2 |
 
-### 2.10 Attendance (`modules/attendance`)
+### 2.10 Attendance (`modules/attendance`) — implemented in commit 8 (read side)
 
 | Method | Endpoint | Purpose | Permission | Source |
 | :--- | :--- | :--- | :--- | :--- |
-| POST | `/api/v1/attendance/events` | Ingest clock events (feed) | service credential — **integration contract not established** (B-15) | spec §14.2 |
-| GET | `/api/v1/attendance/events?employeeId&from&to` | List | HR, SUP (scoped); EMP own | spec |
-| GET | `/api/v1/attendance/gaps?unitId&date` | Published shifts without clock-in after 15 min | SUP, HR | spec §14.2 |
+| POST | `/api/v1/attendance/events` | Ingest from the badge system (PACS) | **Not built** — integration contract not established (B-15, **D-33**) | spec §14.2 |
+| GET | `/api/v1/attendance/events?employeeId\|unitId&from&to` | Clock events (≤ 94 days) | HR, SA, SUP — scoped | spec §14.2 |
+| GET | `/api/v1/attendance/me?from&to` | Own clock events | EMP | spec |
+| GET | `/api/v1/attendance/gaps?unitId&date` | Published shifts of a unit/date vs clock-ins: `UPCOMING`, `PENDING`, `MISSING` (no clock-in at or after the start, **30 min** passed), `PRESENT`, `INELIGIBLE_ON_DUTY` (clocked in, engine blocks today). Shift times from D-31 | HR, SA, SUP — scoped | spec §14.2 (30 min; the earlier "15 min" in this map was wrong) |
 
 ### 2.11 Notifications & audit
 
