@@ -2,7 +2,7 @@
 
 How to run V04 and what must be settled before production. The production topology in the reference spec (§2.2, §10) describes containers and blue/green releases; **V04 has no container images yet** (only a development database in `docker-compose.yml`), so this guide describes plain Node processes behind a reverse proxy.
 
-> **Production is not possible yet.** The API refuses to start with `NODE_ENV=production` because no malware scanner exists for uploads (D-10). See [§6](#6-known-gaps-before-production) for this and the other prerequisites.
+> **Production prerequisites are still open.** With `NODE_ENV=production` the API starts only with `UPLOAD_SCANNER=clamav` and a reachable `CLAMAV_HOST` configured (D-10, [§2.1](#21-malware-scanner-clamav)); [§6](#6-known-gaps-before-production) lists what else must be settled first.
 
 ## 1. Requirements
 
@@ -11,6 +11,7 @@ How to run V04 and what must be settled before production. The production topolo
 | Node.js | 22 LTS or newer (`engines` in `package.json`; CI uses 22) |
 | PostgreSQL | 15 (extensions `btree_gist`, `pgcrypto` — created by the first migration) |
 | Reverse proxy | TLS termination; serves the frontend and forwards `/api/v1` to the API on the **same origin** (the refresh cookie, CSRF and `Origin` checks assume it) |
+| ClamAV | `clamd` 1.x reachable over TCP from the API, ≥ 2 GB RAM, signatures updated by `freshclam` (spec §5.3.2). See §2.1 |
 | Hosting | Inside the Kingdom (spec §8.3). The API and worker refuse to start outside the configured KSA region allowlist |
 
 ## 2. Configuration
@@ -30,11 +31,36 @@ Every backend setting is in [`.env.example`](../.env.example) and is validated a
 | `LOGIN_THROTTLE_WINDOW_SECONDS` / `_MAX_PER_ACCOUNT` / `_MAX_PER_CLIENT` | 900 / 5 / 20 | D-23; see the single-instance limit in §6 |
 | `STORAGE_DIR` | ./storage | Persistent, backed-up volume; never served directly |
 | `UPLOAD_MAX_SIZE_BYTES` | 10485760 | Spec §5.1.5 |
-| `UPLOAD_SCANNER` | dev-magic-bytes | Production refuses both current values (§6) |
+| `UPLOAD_SCANNER` | dev-magic-bytes | `clamav` — production refuses anything else (D-10, §2.1) |
+| `CLAMAV_HOST` / `CLAMAV_PORT` | — / 3310 | The `clamd` TCP endpoint; the host is required with `clamav` |
+| `CLAMAV_TIMEOUT_MS` | 30000 | Per `clamd` call (spec §5.3.2) |
+| `CLAMAV_MAX_SIGNATURE_AGE_HOURS` | 48 | Older signatures log `clamav signatures are stale` (spec §5.3.2 rule 7) |
 | `TRUST_PROXY` | false | `true` behind the proxy, so login limits and session history see the client address |
 | `JOBS_MODE` | in-process | `worker` on the API in production (§3) |
 | `DATA_RESIDENCY_REGION` / `PDPL_ALLOWED_REGIONS` | local / local | A KSA region id and its allowlist; `local` is refused in production. Never `me-south-1` (Bahrain) or `me-central-1` (UAE) |
 | `DEMO_PASSWORD` | — | Development fixtures only (`npm run fixtures:demo`); never set in production |
+
+### 2.1 Malware scanner (ClamAV)
+
+Every upload (credential evidence and contract copies) goes: size and type checks → magic bytes → **`clamd` scan** → storage → database row. The API streams the bytes to `clamd` with `INSTREAM` inside the upload request (`backend/src/lib/scanner.ts`), so a file is written to `STORAGE_DIR` only after `clamd` reports it clean:
+
+| `clamd` result | Response | What is kept |
+| :--- | :--- | :--- |
+| `OK` | 201; document `CLEAN`; the `DOCUMENT_UPLOADED` audit names the engine and signature version | File and row |
+| `… FOUND` | 422 `UPLOAD_INFECTED` | **Nothing stored.** A HIGH audit entry `DOCUMENT_REJECTED_INFECTED` (file name, size, SHA-256, signature) and an error log line `malware detected in upload` |
+| Error, timeout, unreachable, or **no signature database loaded** | Retried — 3 attempts in total — then 503 `SCANNER_UNAVAILABLE` | Nothing stored; error log `upload scan failed; upload refused`. The user uploads again later |
+
+**Deliberate deviation from the spec — owner decision [D-43](V04_ARCHITECTURE_PLAN.md#9a-decision-record-2026-09-23).** Spec §5.3.2 describes an asynchronous quarantine queue (`PENDING` → `SCANNING` → `CLEAN` / `INFECTED` / `SCAN_FAILED`, a quarantine area and a scan worker). It is not built and should not be: the uploader gets an immediate answer instead of a later silent deletion, unscanned bytes never reach persistent storage, and there is no worker that could crash and leave files stuck pending. With files capped at `UPLOAD_MAX_SIZE_BYTES` the synchronous scan meets the spec's rules — nothing unscanned is stored or served, infected files are not kept, every rejection is audited.
+
+**Operating `clamd`:**
+
+- Run `clamd` on a host the API reaches (a separate host or container is fine; nothing else should reach port 3310). For a local trial: `docker compose --profile clamav up -d clamav`.
+- `StreamMaxLength` in `clamd.conf` must be at least `UPLOAD_MAX_SIZE_BYTES` (clamd's default is 25 MB; the upload limit is 10 MB).
+- `freshclam` must update the signatures at least daily; it needs outbound HTTPS to the ClamAV mirrors (or a hospital mirror). Signatures that are only old (older than `CLAMAV_MAX_SIGNATURE_AGE_HOURS`) do not stop uploads, but every scan logs an error until they are refreshed — alert on it (§7). A `clamd` with **no** official signature database (its `VERSION` reply has no database number) is treated as misconfigured: uploads are refused with `SCANNER_UNAVAILABLE`, because such a scanner reports almost everything as clean.
+- Check before go-live:
+  1. From the API host: `printf 'zPING\0' | nc clamav.internal 3310` answers `PONG`, and `printf 'zVERSION\0' | nc clamav.internal 3310` shows a database number and a date from the last day (for example `ClamAV 1.4.3/27771/…`), not just `ClamAV 1.4.3`.
+  2. On the scanner host, scan the standalone [EICAR test file](https://www.eicar.org/download-anti-malware-testfile/) through the daemon: `clamdscan --stream eicar.com` reports `FOUND` with a name **without** an `.UNOFFICIAL` suffix (the suffix means a local signature file, not the official database). This is the check that proves the official signatures are loaded.
+  3. Through the app, upload a PDF containing the EICAR string: expect `UPLOAD_INFECTED` and a HIGH `DOCUMENT_REJECTED_INFECTED` audit entry. The app only accepts real PDFs and images, so the EICAR file cannot be uploaded on its own; if the official signatures match only the exact standalone file and let this PDF through, step 2 still covers the signatures and the rejection path is covered by the automated tests.
 
 ## 3. Processes and background jobs
 
@@ -101,7 +127,6 @@ The scripts, their environment contract and the verified drill are in [`ops/back
 
 | Gap | Effect | What is needed |
 | :--- | :--- | :--- |
-| **No malware scanner** (D-10) | The API will not start in production | A ClamAV adapter behind `UPLOAD_SCANNER=clamav` (spec §5.3) |
 | **Database roles: written, not yet applied** (spec §10.7) | [`ops/db`](../ops/db/README.md) creates the runtime, migration, backup and audit-reader roles and is tested in CI. Until they are applied and the URLs switched, the API still connects as the owner and could alter the schema (audit stays append-only by trigger) | Apply them on each server (README steps) and set `DATABASE_URL` / `MIGRATION_DATABASE_URL`; two spec items are open decisions (README, *Adaptations*) |
 | **Login limits are in memory** (`lib/throttle.ts`) | Correct for one API process. With several API instances, each counts separately, so the limits multiply | Run a single API instance, or move the counters to the database |
 | **Prisma CLI advisories** | `npm audit`: 4 high-severity advisories in the Prisma CLI's bundled dependencies (`mysql2`, `deepmerge-ts`). The CLI is a development/migration tool; the running API uses `@prisma/client` with the PostgreSQL adapter and does not load the MySQL driver. npm's suggested "fix" downgrades to Prisma 6 (breaking) and was **not** applied | Run migrations from the CI/release host rather than installing dev tools on the runtime host; upgrade Prisma when a patched release exists; re-run `npm audit` at every release |
@@ -119,4 +144,5 @@ The scripts, their environment contract and the verified drill are in [`ops/back
 | Logs | One JSON line per event on stdout with `requestId`; no personal data. Every response carries `X-Request-Id` |
 | Background jobs | `job_runs` (Administration → Jobs); the `worker_lease_status` view shows lease holders and heartbeats |
 | Audit integrity | `GET /api/v1/audit/verify` (Audit page); the `audit_chain_breaks` view must be empty |
+| Malware scanner | Error log lines `malware detected in upload`, `upload scan failed; upload refused` and `clamav signatures are stale`; HIGH audit `DOCUMENT_REJECTED_INFECTED` |
 | Break-glass use | CRITICAL in-app notification to every System Admin; `break_glass_events` |

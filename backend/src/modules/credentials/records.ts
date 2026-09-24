@@ -15,6 +15,7 @@ import { daysBetween, dbDate, isIsoDate, riyadhDate, toDbDate, type IsoDate } fr
 import { fromHijriIso, toHijriIso } from '../../lib/hijri.js';
 import { HttpError, notFound } from '../../lib/http-errors.js';
 import { Prisma, type Db, type DbClient } from '../../lib/prisma.js';
+import { scanOrReject, type UploadScanner } from '../../lib/scanner.js';
 import { checkUpload, type Storage } from '../../lib/uploads.js';
 import { refreshEligibility } from '../eligibility/state.service.js';
 import { unitScope, type AuthContext } from '../users/access.js';
@@ -129,7 +130,7 @@ function present(c: WithRelations, viewer: Viewer, today: IsoDate) {
   };
 }
 
-export function createRecordService(db: Db, storage: Storage, maxUploadBytes: number) {
+export function createRecordService(db: Db, storage: Storage, scanner: UploadScanner, maxUploadBytes: number) {
   async function load(tx: DbClient, id: number) {
     const c = await tx.credential.findUnique({ where: { id }, include: withRelations });
     if (!c) throw notFound('Credential not found');
@@ -324,6 +325,7 @@ export function createRecordService(db: Db, storage: Storage, maxUploadBytes: nu
       await viewerOf(db, auth, c.employeeId, ['OWN', 'HR']);
       if (c.status === 'Revoked') throw new HttpError(409, 'CREDENTIAL_REVOKED', 'Evidence cannot be added to a revoked credential');
       const checked = checkUpload('CREDENTIAL_EVIDENCE', bytes, contentType, fileName, maxUploadBytes);
+      const scannedBy = await scanOrReject(scanner, db, bytes, { actorUserId: auth.user.id, resource: 'credential', resourceId: id, ...checked, requestId });
       const storageKey = await storage.put(bytes);
       return db.$transaction(async (tx) => {
         const last = await tx.documentVersion.aggregate({ where: { credentialId: id }, _max: { version: true } });
@@ -331,12 +333,11 @@ export function createRecordService(db: Db, storage: Storage, maxUploadBytes: nu
           data: {
             credentialId: id, version: (last._max.version ?? 0) + 1, fileName: checked.fileName, mimeType: checked.mimeType, sizeBytes: checked.sizeBytes,
             sha256: checked.sha256, storageKey,
-            // D-10 (development): the size and magic-byte checks passed → CLEAN.
-            // Production cannot start without a real scanner (lib/uploads.ts).
+            // D-10: only bytes the scanner reported clean reach this point (lib/scanner.ts).
             scanStatus: 'CLEAN', uploadedById: auth.user.id,
           },
         });
-        await appendAudit(tx, { actorUserId: auth.user.id, action: 'DOCUMENT_UPLOADED', resource: 'credential', resourceId: id, changes: { documentId: doc.id, version: doc.version, mimeType: doc.mimeType, sizeBytes: doc.sizeBytes, sha256: doc.sha256 }, requestId });
+        await appendAudit(tx, { actorUserId: auth.user.id, action: 'DOCUMENT_UPLOADED', resource: 'credential', resourceId: id, changes: { documentId: doc.id, version: doc.version, mimeType: doc.mimeType, sizeBytes: doc.sizeBytes, sha256: doc.sha256, scanner: scannedBy }, requestId });
         await refresh(tx, c.employeeId, 'DOCUMENT_UPLOADED', auth, requestId);
         return { id: doc.id, version: doc.version };
       });

@@ -48,7 +48,7 @@ The reference is silent or open on these; the owner settled them. They add detai
 | §8.1 | Separation of duties: nobody acts on their own credential (D-26), approves a contract they created or submitted (D-30), or acts on their own contract or deletes their own employee record (D-37) | D-26, D-30, D-37 |
 | §8.1 | Audit trail readable by System Admins only until HR access is decided | D-20 |
 | §3.6 | Break-glass is built minimally: irrevocable event, HIGH audit, CRITICAL in-app alert to System Admins, 4-hour session. The SMS/e-mail alert to the CEO and IT Director waits for SMTP/SMS | D-9 |
-| §5.3 | Uploads: magic-byte and size checks; development marks files clean; **production refuses to start without a real virus scanner, and none is built yet** | D-10 |
+| §5.3 | Uploads: magic-byte and size checks, then a synchronous ClamAV (`clamd`) scan before storage; infected files are rejected and audited, never stored; scanner outages fail closed. Development may skip the scan (`dev-magic-bytes`); production refuses to start without `clamav`. **The spec's asynchronous quarantine queue and scan worker are deliberately not built** ([DEPLOYMENT.md §2.1](DEPLOYMENT.md#21-malware-scanner-clamav)) | D-10, **D-43** |
 | §14.2 | Attendance: the gap view and 15-minute alerts are built; the badge-system (PACS) feed waits for its interface contract | D-33 |
 | K1 | The Ada'a nurse-to-bed KPI is kept, labelled "thresholds not verified — MoH Ada'a card not in the repository" | D-11 |
 
@@ -84,7 +84,7 @@ These stay in the reference and get their own migration and module when schedule
 | :--- | :--- |
 | §3.2, §7.2, §7.6 | Invitation/claim flow, SMTP e-mail, mobile push (notification rows are stored with e-mail status SKIPPED) |
 | §3.5 | SSO, MFA |
-| §5.3 | ClamAV scanning and the document vault (production uploads are blocked until a scanner exists) |
+| §5.3 | The document vault (signed download URLs, separate quarantine storage). ClamAV scanning is built (D-10 row above) |
 | §5.4 | SCFHS credential verification integration |
 | §9.2 | Request-level forensic log table (JSON request logs exist, without personal data) |
 | §9.3 | Redis (not used; the database is read on every request) |
