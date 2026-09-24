@@ -63,3 +63,18 @@ export function useEmployeeAction() {
     onSuccess: () => Promise.all(['employees', 'contracts', 'eligibility'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
   });
 }
+
+// ── Registration invitations (spec §3.2): HR sends; the link goes only by e-mail ──
+export type InvitationStatus = 'OPEN' | 'CLAIMED' | 'REVOKED' | 'EXPIRED';
+export interface InvitationRow { id: number; email: string; createdAt: string; expiresAt: string; status: InvitationStatus }
+export const useInvitations = (employeeId: number | null, enabled: boolean) => useQuery({
+  queryKey: ['invitations', employeeId], enabled: enabled && employeeId !== null,
+  queryFn: () => http.get<{ items: InvitationRow[]; total: number }>(`/employees/${employeeId}/invitations`),
+});
+export function useInviteEmployee() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (employeeId: number) => http.post<{ id: number; email: string; expiresAt: string }>(`/employees/${employeeId}/invitations`),
+    onSuccess: (_d, employeeId) => qc.invalidateQueries({ queryKey: ['invitations', employeeId] }),
+  });
+}

@@ -14,7 +14,7 @@ import { toHijriShort } from '../../lib/hijri';
 import { phoneRule } from '../../lib/phone';
 import { useUnits } from '../administration/api';
 import { usePositions } from '../workforce/api';
-import { useEmployee, useEmployeeAction, useEmployees, useOnboardingDefaults, type EmployeeRow } from './api';
+import { useEmployee, useEmployeeAction, useEmployees, useInvitations, useInviteEmployee, useOnboardingDefaults, type EmployeeRow } from './api';
 
 const OPTIONAL_TEXT = ['middleName', 'jobTitle', 'fileNo', 'rankGrade', 'nationality', 'jobPostLocation', 'actualWorkPlace', 'specialty', 'primaryPhone', 'emergencyContactPhone'] as const;
 
@@ -162,6 +162,7 @@ export default function NursesPage() {
                 ['maritalStatus', e.maritalStatus ? t(`marital_${e.maritalStatus}`) : null], ['salarySar', e.salary],
               ] : []),
             ].map(([k, v]) => ({ key: k as string, label: t(k as string), children: (v as string | null | undefined) ?? '—' }))} />
+            {e.view === 'FULL' && canWrite && <AccountInvitation employeeId={e.id} />}
           </>
         )}
         {e && editing && (
@@ -183,6 +184,36 @@ export default function NursesPage() {
           <Form.Item name="reason" label={t('reason')} rules={[{ required: true, min: 3, whitespace: true }]}><Input maxLength={500} /></Form.Item>
         </Form>
       </Modal>
+    </Card>
+  );
+}
+
+/** Spec §3.2: HR invites the employee to create their own login; the link travels only by e-mail. */
+function AccountInvitation({ employeeId }: { employeeId: number }) {
+  const { t } = useTranslation();
+  const { message } = App.useApp();
+  const invitations = useInvitations(employeeId, true);
+  const invite = useInviteEmployee();
+  const latest = invitations.data?.items[0];
+  const claimed = latest?.status === 'CLAIMED';
+  return (
+    <Card size="small" title={t('loginAccount')} style={{ marginTop: 16 }}>
+      <p style={{ marginTop: 0 }}>
+        {latest
+          ? t('invitationSummary', { status: t(`invitationStatus_${latest.status}`), sent: dayjs(latest.createdAt).format('YYYY-MM-DD HH:mm'), email: latest.email })
+          : t('invitationNone')}
+      </p>
+      {!claimed && (
+        <>
+          <p style={{ color: 'var(--ant-color-text-secondary)' }}>{t('inviteHint')}</p>
+          <Button type="primary" loading={invite.isPending} onClick={async () => {
+            try {
+              const out = await invite.mutateAsync(employeeId);
+              message.success(t('inviteSent', { email: out.email }));
+            } catch (err) { message.error(describeApiError(err)); }
+          }}>{latest ? t('inviteResend') : t('inviteEmployee')}</Button>
+        </>
+      )}
     </Card>
   );
 }

@@ -6,6 +6,7 @@ import { PasswordSchema } from '../../lib/passwords.js';
 import { constantTimeEqual } from '../../lib/tokens.js';
 import { authOf } from '../../middleware/authorize.js';
 import type { AuthService, IssuedSession } from './service.js';
+import { ClaimBody, PreviewBody, type InvitationService } from '../users/invitations.js';
 
 export const REFRESH_COOKIE = 'nurseapp_refresh';
 export const CSRF_COOKIE = 'nurseapp_csrf';
@@ -15,7 +16,7 @@ const REFRESH_PATH = '/api/v1/auth';
 const LoginBody = z.strictObject({ email: z.string().min(1).max(254), password: z.string().min(1).max(1024) });
 const PasswordBody = z.strictObject({ currentPassword: z.string().min(1).max(1024), newPassword: PasswordSchema });
 
-export function createAuthRouter(env: Env, auth: AuthService, authenticate: RequestHandler) {
+export function createAuthRouter(env: Env, auth: AuthService, authenticate: RequestHandler, invitations: InvitationService) {
   const router = Router();
   const secure = env.NODE_ENV === 'production';
 
@@ -41,6 +42,27 @@ export function createAuthRouter(env: Env, auth: AuthService, authenticate: Requ
     const cookieToken = cookies[CSRF_COOKIE] ?? '';
     if (!cookieToken || !header || !constantTimeEqual(cookieToken, header)) throw new HttpError(403, 'CSRF_FAILED', 'Missing or invalid CSRF token');
   };
+
+  const withRetryAfter = async (res: Response, fn: () => Promise<unknown>) => {
+    try { return await fn(); } catch (e) {
+      if (e instanceof HttpError && e.status === 429) {
+        const d = e.details as { retryAfterSeconds?: number } | undefined;
+        if (d?.retryAfterSeconds) res.set('Retry-After', String(d.retryAfterSeconds));
+      }
+      throw e;
+    }
+  };
+
+  // Registration by invitation (spec §3.2): no session exists yet, so — like
+  // login — the Origin check stands in for CSRF protection.
+  router.post('/invitations/preview', async (req, res) => {
+    requireAppOrigin(req.get('origin'));
+    res.json(await withRetryAfter(res, () => invitations.preview(PreviewBody.parse(req.body), req.ip ?? 'unknown')));
+  });
+  router.post('/invitations/claim', async (req, res) => {
+    requireAppOrigin(req.get('origin'));
+    res.status(201).json(await withRetryAfter(res, () => invitations.claim(ClaimBody.parse(req.body), req.ip ?? 'unknown', res.locals.requestId)));
+  });
 
   // Login has no session yet, so no CSRF token exists; the Origin check stops
   // another site from signing a victim into an attacker's account (login CSRF).

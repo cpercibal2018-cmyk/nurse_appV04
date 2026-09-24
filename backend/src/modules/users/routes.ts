@@ -7,6 +7,7 @@ import { createApprovalService, DecideBody, ListApprovalsQuery } from '../admini
 import { BaselinePreviewBody, BaselineRequestBody, type BaselineImportService } from '../administration/baseline-import.js';
 import { createPamService, ElevateBody } from '../administration/pam.js';
 import { CreateAccountBody, ListAccountsQuery, UpdateAccountBody, type createAccountService } from './accounts.js';
+import type { InvitationService } from './invitations.js';
 import { ACCESS_MATRIX, PERMISSIONS } from './permissions.js';
 import type { CatalogService } from '../credentials/catalog.js';
 import { GrantBody, ListQuery, RevokeBody, UpdateBody, type RoleAssignmentService } from './role-assignments.js';
@@ -20,12 +21,20 @@ export function createUsersRouter(
   roles: RoleAssignmentService,
   catalog: CatalogService,
   baseline: BaselineImportService,
+  invitations: InvitationService,
 ) {
   const router = Router();
   const approvals = createApprovalService(db, roles, catalog, baseline);
   const pam = createPamService(db);
 
   // ── Accounts ──────────────────────────────────────────────────────────────
+  // Registration invitations (spec §3.2): the link is e-mailed, never returned.
+  router.post('/employees/:id/invitations', authorize('accounts.write'), async (req, res) => {
+    res.status(201).json(await invitations.issue(authOf(res), IdParam.parse(req.params).id, res.locals.requestId));
+  });
+  router.get('/employees/:id/invitations', authorize('accounts.read'), async (req, res) => {
+    res.json(await invitations.list(authOf(res), IdParam.parse(req.params).id));
+  });
   router.get('/users', authorize('accounts.read'), async (req, res) => {
     res.json(await accounts.list(authOf(res), ListAccountsQuery.parse(req.query)));
   });

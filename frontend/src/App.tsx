@@ -13,6 +13,7 @@ import { usePreferences } from './hooks/usePreferences';
 const loadLayout = () => import('./layouts/AppLayout').then((m) => ({ default: m.AppLayout }));
 const AppLayout = lazy(loadLayout);
 const LoginPage = lazy(() => import('./modules/auth/LoginPage'));
+const ClaimPage = lazy(() => import('./modules/auth/ClaimPage'));
 const NotFound = lazy(() => import('./components/NotFound'));
 
 /** Waits for the startup session check, then either renders the page or sends the user to /login. */
@@ -64,6 +65,8 @@ export function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginRoute />} />
+          {/* Registration by invitation (spec §3.2): public, whatever the session state. */}
+          <Route path="/claim" element={<Suspense fallback={<PageSkeleton />}><ClaimPage /></Suspense>} />
           {MODULES.map(({ path, Page }) => (
             <Route key={path} path={path} element={<RequireSession><Page /></RequireSession>} />
           ))}

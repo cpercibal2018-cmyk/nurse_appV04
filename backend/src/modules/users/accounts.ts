@@ -1,8 +1,8 @@
 // Login accounts (spec §8.1 Accounts: "Provision and administer within
 // assigned scope"). An account's scope is its linked employee's unit; an
 // account without an employee link can only be administered system-wide.
-// Invitation/claim (spec §3.2) is deferred until SMTP exists (plan §6), so HR
-// provisions accounts with an initial password.
+// HR can still provision an account with an initial password; registration by
+// invitation (spec §3.2) is in invitations.ts.
 
 import { z } from 'zod';
 import { appendAudit } from '../../lib/audit.js';
