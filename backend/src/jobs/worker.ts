@@ -5,6 +5,7 @@
 import dotenv from 'dotenv';
 import { loadEnv } from '../config/env.js';
 import { assertResidency } from '../config/residency.js';
+import { assertRuntimeRole } from '../lib/db-role.js';
 import { createPrisma } from '../lib/prisma.js';
 import { describeError, logger } from '../lib/logger.js';
 import { startScheduler } from './scheduler.js';
@@ -14,6 +15,8 @@ const env = loadEnv();
 assertResidency({ region: env.DATA_RESIDENCY_REGION, allowed: env.PDPL_ALLOWED_REGIONS, isProduction: env.NODE_ENV === 'production' });
 
 const db = createPrisma(env.DATABASE_URL);
+// Spec §10.7: production runs as the data-only runtime role, never the owner.
+await assertRuntimeRole(db, env.NODE_ENV === 'production');
 const stop = startScheduler(db);
 
 function shutdown(signal: string) {
