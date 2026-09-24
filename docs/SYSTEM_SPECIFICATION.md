@@ -47,7 +47,7 @@ The reference is silent or open on these; the owner settled them. They add detai
 | §8.1 | Organisation structure (departments, units, positions, CSV import) is hospital-wide configuration; unit-scoped HR manages beds and coverage targets | D-34 |
 | §8.1 | Separation of duties: nobody acts on their own credential (D-26), approves a contract they created or submitted (D-30), or acts on their own contract or deletes their own employee record (D-37) | D-26, D-30, D-37 |
 | §8.1 | Audit trail readable by System Admins only until HR access is decided | D-20 |
-| §3.6 | Break-glass is built minimally: irrevocable event, HIGH audit, CRITICAL in-app alert to System Admins, 4-hour session. The SMS/e-mail alert to the CEO and IT Director waits for SMTP/SMS | D-9 |
+| §3.6 | Break-glass is built minimally: irrevocable event, HIGH audit, CRITICAL in-app alert to System Admins, 4-hour session; e-mail to System Admins and to the CEO and IT Director (`BREAK_GLASS_ALERT_EMAILS`). The SMS alert waits for the SMS gateway (D-48) | D-9, D-47 |
 | §5.3 | Uploads: magic-byte and size checks, then a synchronous ClamAV (`clamd`) scan before storage; infected files are rejected and audited, never stored; scanner outages fail closed. Development may skip the scan (`dev-magic-bytes`); production refuses to start without `clamav`. **The spec's asynchronous quarantine queue and scan worker are deliberately not built** ([DEPLOYMENT.md §2.1](DEPLOYMENT.md#21-malware-scanner-clamav)) | D-10, **D-43** |
 | §14.2 | Attendance: the gap view and 15-minute alerts are built; the badge-system (PACS) feed waits for its interface contract | D-33 |
 | K1 | The Ada'a nurse-to-bed KPI is kept, labelled "thresholds not verified — MoH Ada'a card not in the repository" | D-11 |
@@ -70,7 +70,7 @@ The reference (and the owner, so far) gives no rule for these. V04 builds nothin
 | Agency workforce | Not built |
 | Leave and absence | Not built |
 | HR access to the audit trail | System Admin only (D-20) |
-| Password reset | Not built (needs SMTP and an identity decision) |
+| Password reset | Not built (e-mail now exists, D-47; still needs an identity decision) |
 | Unique contact e-mail | Not enforced (D-19) |
 | Ada'a KPI thresholds | Values from V03, source card not in the repository (D-11) |
 | Badge-feed contract (auth, format, delivery) | Not built (D-33) |
@@ -82,7 +82,7 @@ These stay in the reference and get their own migration and module when schedule
 
 | Spec | Capability |
 | :--- | :--- |
-| §3.2, §7.2, §7.6 | Invitation/claim flow, SMTP e-mail, mobile push (notification rows are stored with e-mail status SKIPPED) |
+| §3.2, §7.6 | Invitation/claim flow, mobile push. (SMTP e-mail, §7.2, is built — D-47; the §7.4 health endpoint is replaced by the monitoring query in DEPLOYMENT.md §7) |
 | §3.5 | SSO, MFA |
 | §5.3 | The document vault (signed download URLs, separate quarantine storage). ClamAV scanning is built (D-10 row above) |
 | §5.4 | SCFHS credential verification integration |

@@ -711,27 +711,52 @@ enum DeliveryStatus {
 
 /// One row per recipient (spec §7.1, rule N2). eventKey dedups rescans (N3).
 model Notification {
-  id            Int                  @id @default(autoincrement())
-  recipientId   Int                  @map("recipient_id")
-  employeeId    Int?                 @map("employee_id") // subject of the event, if any
-  type          NotificationType
-  priority      NotificationPriority @default(MEDIUM)
-  title         String
-  message       String
-  titleAr       String?              @map("title_ar")
-  messageAr     String?              @map("message_ar")
-  eventKey      String?              @map("event_key")
-  readAt        DateTime?            @map("read_at") @db.Timestamptz
-  emailStatus   DeliveryStatus       @default(SKIPPED) @map("email_status")
-  emailAttempts Int                  @default(0) @map("email_attempts")
-  emailLastAt   DateTime?            @map("email_last_at") @db.Timestamptz
-  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  id             Int                  @id @default(autoincrement())
+  recipientId    Int                  @map("recipient_id")
+  employeeId     Int?                 @map("employee_id") // subject of the event, if any
+  type           NotificationType
+  priority       NotificationPriority @default(MEDIUM)
+  title          String
+  message        String
+  titleAr        String?              @map("title_ar")
+  messageAr      String?              @map("message_ar")
+  eventKey       String?              @map("event_key")
+  readAt         DateTime?            @map("read_at") @db.Timestamptz
+  /// Outbox state (spec §7.2, D-47): PENDING until the e-mail dispatcher sends it,
+  /// or SKIPPED when e-mail is off or the recipient is inactive.
+  emailStatus    DeliveryStatus       @default(PENDING) @map("email_status")
+  emailAttempts  Int                  @default(0) @map("email_attempts")
+  emailLastAt    DateTime?            @map("email_last_at") @db.Timestamptz
+  emailLastError String?              @map("email_last_error") // relay response code/message only — no content
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz
 
   recipient User @relation(fields: [recipientId], references: [id])
 
   @@unique([recipientId, eventKey])
   @@index([recipientId, readAt])
+  @@index([emailStatus, emailLastAt])
   @@map("notifications")
+}
+
+/// E-mails to people without an account (spec §3.6: the break-glass alert to the
+/// CEO and IT Director; D-47). Sent by the same dispatcher as notification e-mails.
+model EmailOutbox {
+  id        Int                  @id @default(autoincrement())
+  toAddress String               @map("to_address")
+  subject   String
+  bodyText  String               @map("body_text")
+  bodyHtml  String               @map("body_html")
+  priority  NotificationPriority @default(MEDIUM)
+  eventKey  String               @map("event_key")
+  status    DeliveryStatus       @default(PENDING)
+  attempts  Int                  @default(0)
+  lastAt    DateTime?            @map("last_at") @db.Timestamptz
+  lastError String?              @map("last_error")
+  createdAt DateTime             @default(now()) @map("created_at") @db.Timestamptz
+
+  @@unique([toAddress, eventKey])
+  @@index([status, lastAt])
+  @@map("email_outbox")
 }
 
 // ════════════════════════════════════════════════════════════════════════════

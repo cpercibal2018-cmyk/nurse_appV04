@@ -35,6 +35,13 @@ Every backend setting is in [`.env.example`](../.env.example) and is validated a
 | `CLAMAV_HOST` / `CLAMAV_PORT` | — / 3310 | The `clamd` TCP endpoint; the host is required with `clamav` |
 | `CLAMAV_TIMEOUT_MS` | 30000 | Per `clamd` call (spec §5.3.2) |
 | `CLAMAV_MAX_SIGNATURE_AGE_HOURS` | 48 | Older signatures log `clamav signatures are stale` (spec §5.3.2 rule 7) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` | — / 587 / false | The hospital relay (D-47); empty = e-mail off. STARTTLS is required on 587; `true` for implicit TLS on 465 (§2.2) |
+| `SMTP_USER` / `SMTP_PASS` | — | The relay's service account; the password from the deployment secrets |
+| `SMTP_FROM` / `SMTP_REPLY_TO` | — | Sender (required with `SMTP_HOST`) and a monitored HR mailbox |
+| `SMTP_TLS_REJECT_UNAUTHORIZED` | true | Verify the relay certificate; `false` is refused in production |
+| `SMTP_RETRY_MAX` / `SMTP_RETRY_DELAY_SECONDS` | 8 / 60 | Spec §7.2 |
+| `APP_BASE_URL` | `CORS_ORIGIN` | The public app URL used in e-mail links |
+| `BREAK_GLASS_ALERT_EMAILS` | — | Comma-separated: the CEO and IT Director (spec §3.6) |
 | `TRUST_PROXY` | false | `true` behind the proxy, so login limits and session history see the client address |
 | `JOBS_MODE` | in-process | `worker` on the API in production (§3) |
 | `DATA_RESIDENCY_REGION` / `PDPL_ALLOWED_REGIONS` | local / local | A KSA region id and its allowlist; `local` is refused in production. Never `me-south-1` (Bahrain) or `me-central-1` (UAE) |
@@ -68,6 +75,22 @@ Every upload (credential evidence and contract copies) goes: size and type check
   | Size limit | A file of `UPLOAD_MAX_SIZE_BYTES` → `OK` | Raise `StreamMaxLength` in `clamd.conf` |
 
   Then upload one real document through the app and confirm it is accepted. (A PDF with the EICAR string inside it may or may not be flagged by the official signatures, which match the standalone test file; the rejection path itself is covered by the automated tests.)
+
+### 2.2 E-mail (hospital SMTP relay)
+
+Every in-app notification is also e-mailed to the recipient's account address, and a break-glass sign-in e-mails each `BREAK_GLASS_ALERT_EMAILS` address (spec §3.6). Notifications are an outbox (D-47): a new row is `PENDING`, and the **e-mail dispatcher** — in the worker (or the API with `JOBS_MODE=in-process`), every 60 seconds under a 10-minute lease (spec §7.2) — sends it through the relay:
+
+| Outcome | Row becomes |
+| :--- | :--- |
+| Relay accepted it | `SENT` |
+| Relay refused or unreachable | stays `PENDING`, retried every `SMTP_RETRY_DELAY_SECONDS`; after `SMTP_RETRY_MAX` attempts `FAILED`, with the relay's error in `email_last_error` and an error log `e-mail delivery failed; giving up` |
+| E-mail off (`SMTP_HOST` empty) or the recipient deactivated | `SKIPPED` |
+
+Delivery is at-least-once: a crash after the relay accepted a message but before the row is updated sends it again, with the same `Message-ID`. Each message is plain text + HTML (UTF-8, English and Arabic), has no external images, and links only to `APP_BASE_URL`. Notifications stored before this release keep their status and are never e-mailed.
+
+**Prerequisites from hospital IT:** the relay host and port, a service account, the sender and reply-to addresses, the relay's CA certificate if it is not publicly trusted (then set `NODE_EXTRA_CA_CERTS`), and — because production runs on Google Cloud (D-49) while the relay is on the hospital network — **private connectivity from the Google Cloud project to the relay** (Cloud VPN or Interconnect), with the relay allowing that source range.
+
+**Go-live checklist** (spec §7.3): send one notification to a staging mailbox and check it in Outlook and on a phone (Arabic renders, From / Reply-To correct); run the expiry scan and confirm the e-mail arrives within about a minute; stop the relay and confirm retries and `FAILED` after the last attempt, then restart it and confirm new mail flows; sign in with the break-glass account and confirm the CEO and IT Director e-mails arrive.
 
 ## 3. Processes and background jobs
 
@@ -138,7 +161,7 @@ The scripts, their environment contract and the verified drill are in [`ops/back
 | **Database roles: to be applied on each server** (spec §10.7) | [`ops/db`](../ops/db/README.md) holds the roles, grants and a read-only check (`verify.sql`), all tested in CI; the open spec items are decided (D-44, D-45). The API and worker **refuse to start in production** until `DATABASE_URL` is a data-only login | On each server: the README steps 1–5 (a DBA, about 15 minutes), `verify.sql` all PASS, then switch the URLs |
 | **Prisma CLI advisories** | `npm audit`: 4 high-severity advisories in the Prisma CLI's bundled dependencies (`mysql2`, `deepmerge-ts`). The CLI is a development/migration tool; the running API uses `@prisma/client` with the PostgreSQL adapter and does not load the MySQL driver. npm's suggested "fix" downgrades to Prisma 6 (breaking) and was **not** applied | Run migrations from the CI/release host rather than installing dev tools on the runtime host; upgrade Prisma when a patched release exists; re-run `npm audit` at every release |
 | **`pg` 9 not yet usable** | Inside an interactive transaction Prisma 7.10's query interpreter reads the relations of a multi-relation `include` concurrently on the transaction's single `pg` client ([prisma/prisma#29407](https://github.com/prisma/prisma/issues/29407)). `pg` 8 queues the queries (results are correct) but prints its "client is already executing a query" deprecation, which `pg` 9 turns into a failure. The application's own code issues transaction queries one at a time | Stay on `pg` 8 until a Prisma release with the fix; then upgrade both together and run the full test suite |
-| **No SMTP / SMS** | Reminders are in-app only; the break-glass alert does not reach the CEO and IT Director (spec §3.6); no password reset or invitation e-mails | An SMTP (and SMS) decision (spec §7.2) |
+| **No SMS; no password reset or invitation e-mails** | E-mail is built (§2.2) but needs the relay and the private link from Google Cloud. SMS (the break-glass alert by text, D-48) and the password-reset / invitation flows (spec §3.2) are not built yet | The hospital SMS gateway's API details (D-48); the invitation / reset flows |
 | **No badge feed** (D-33) | Attendance gaps and alerts only work once events are loaded into `attendance_events` | The PACS interface contract |
 | **No container images or blue/green** (spec §10.4) | Deployment is manual (§4) | Dockerfiles and a pipeline, when the hosting decision is made |
 
@@ -151,4 +174,5 @@ The scripts, their environment contract and the verified drill are in [`ops/back
 | Background jobs | `job_runs` (Administration → Jobs); the `worker_lease_status` view shows lease holders and heartbeats |
 | Audit integrity | `GET /api/v1/audit/verify` (Audit page); the `audit_chain_breaks` view must be empty |
 | Malware scanner | Error log lines `malware detected in upload`, `upload scan failed; upload refused` and `clamav signatures are stale`; HIGH audit `DOCUMENT_REJECTED_INFECTED` |
-| Break-glass use | CRITICAL in-app notification to every System Admin; `break_glass_events` |
+| Break-glass use | CRITICAL in-app notification and e-mail to every System Admin; e-mail to `BREAK_GLASS_ALERT_EMAILS`; `break_glass_events` |
+| E-mail delivery | Error log `e-mail delivery failed; giving up`. Backlog: `SELECT email_status, count(*), min(created_at) FROM notifications WHERE created_at > now() - interval '1 day' GROUP BY 1` — a growing `PENDING` count or old `min` means the relay or the worker is down; the same for `email_outbox.status` |
