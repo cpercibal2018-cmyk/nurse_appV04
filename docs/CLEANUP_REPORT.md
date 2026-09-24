@@ -141,7 +141,7 @@ Nothing in this list blocks development use; all of it blocks production. Detail
 | Container images, reverse-proxy configuration, TLS (B-20) | Operations |
 | `archive_timeout` / RPO (B-22), key management (B-18), hosting (U1), credential policy (U2), SCFHS (U3) | Owner |
 | HR access to the audit trail (D-20) | Owner — REQUIREMENT NOT ESTABLISHED |
-| HTTPS browser evidence for the refresh cookie (B-03) | Needs a signed-in browser session; not run by the assistant |
+| ~~HTTPS browser evidence for the refresh cookie (B-03)~~ **2026-09-24:** automated — [ops/e2e](../ops/e2e/README.md), run by CI | Development |
 
 ## 4. Observations from this run
 

@@ -56,12 +56,26 @@ jobs:
           NODE_ENV: production
         run: npm run build -w frontend
 
-  # The release images (ops/gcp, D-49) must keep building; nothing is pushed here.
+  # The release images (ops/gcp, D-49) must keep building; nothing is pushed
+  # here. They are then tested as deployed: the HTTPS browser test of the
+  # session cookies (B-03, ops/e2e/README.md).
   images:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - run: docker buildx build -f backend/Dockerfile --target runtime -t nurseapp/api:ci .
-      - run: docker buildx build -f backend/Dockerfile --target migrate -t nurseapp/migrate:ci .
-      - run: docker buildx build -f frontend/Dockerfile -t nurseapp/web:ci .
+      - run: docker buildx build --load -f backend/Dockerfile --target runtime -t nurseapp/api:ci .
+      - run: docker buildx build --load -f backend/Dockerfile --target migrate -t nurseapp/migrate:ci .
+      - run: docker buildx build --load -f frontend/Dockerfile -t nurseapp/web:ci .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ops/e2e/package-lock.json
+      - name: Install the browser test
+        working-directory: ops/e2e
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: HTTPS browser test of the session cookies
+        run: TAG=ci ops/e2e/run.sh
