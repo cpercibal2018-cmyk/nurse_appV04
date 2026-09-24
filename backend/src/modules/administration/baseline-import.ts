@@ -113,13 +113,13 @@ export async function previewBaseline(tx: DbClient, file: BaselineFile): Promise
     return d;
   };
 
-  const [depts, units, positions, cats, tpls] = await Promise.all([
-    tx.department.findMany(),
-    tx.unit.findMany({ include: { department: { select: { code: true } } } }),
-    tx.position.findMany(),
-    tx.credentialCategory.findMany(),
-    tx.credentialTemplate.findMany({ include: WITH_FIELDS }),
-  ]);
+  // Sequential on purpose: `tx` may be an interactive transaction, which pins a
+  // single pg client — concurrent queries on it are deprecated (removed in pg 9).
+  const depts = await tx.department.findMany();
+  const units = await tx.unit.findMany({ include: { department: { select: { code: true } } } });
+  const positions = await tx.position.findMany();
+  const cats = await tx.credentialCategory.findMany();
+  const tpls = await tx.credentialTemplate.findMany({ include: WITH_FIELDS });
   const dbDept = new Map(depts.map((d) => [d.code, d]));
   const dbUnit = new Map(units.map((u) => [u.code, u]));
   const dbPos = new Map(positions.map((p) => [p.code, p]));

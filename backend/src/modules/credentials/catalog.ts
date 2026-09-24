@@ -274,11 +274,10 @@ export function createCatalogService(db: Db) {
   }
 
   async function assertRequirementTargets(tx: DbClient, r: { templateId: number; unitId: number; positionCode: string | null }) {
-    const [tpl, unit, pos] = await Promise.all([
-      tx.credentialTemplate.findUnique({ where: { id: r.templateId }, select: { isActive: true } }),
-      tx.unit.findUnique({ where: { id: r.unitId }, select: { id: true } }),
-      r.positionCode ? tx.position.findUnique({ where: { code: r.positionCode }, select: { isActive: true } }) : Promise.resolve({ isActive: true }),
-    ]);
+    // Sequential: `tx` is a transaction client (one pinned pg connection; no concurrent queries).
+    const tpl = await tx.credentialTemplate.findUnique({ where: { id: r.templateId }, select: { isActive: true } });
+    const unit = await tx.unit.findUnique({ where: { id: r.unitId }, select: { id: true } });
+    const pos = r.positionCode ? await tx.position.findUnique({ where: { code: r.positionCode }, select: { isActive: true } }) : { isActive: true };
     if (!tpl) throw new HttpError(422, 'TEMPLATE_NOT_FOUND', 'The credential template does not exist');
     if (!tpl.isActive) throw new HttpError(422, 'TEMPLATE_INACTIVE', 'The credential template is inactive');
     if (!unit) throw new HttpError(422, 'UNIT_NOT_FOUND', 'The unit does not exist');

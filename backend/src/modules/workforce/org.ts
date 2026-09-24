@@ -267,7 +267,9 @@ export function createOrgService(db: Db) {
       await assertSystemWide(db, auth);
       const rows = parseUnitsCsv(body.csv);
       return db.$transaction(async (tx) => {
-        const [departments, units] = await Promise.all([tx.department.findMany(), tx.unit.findMany()]);
+        // Sequential: inside a transaction (one pinned pg connection; no concurrent queries).
+        const departments = await tx.department.findMany();
+        const units = await tx.unit.findMany();
         // Codes compare without case (the API stores them upper-case; older rows may not be).
         const deptByCode = new Map(departments.map((d) => [d.code.toUpperCase(), d]));
         const unitByCode = new Map(units.map((u) => [u.code.toUpperCase(), u]));
