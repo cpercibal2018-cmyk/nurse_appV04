@@ -303,6 +303,7 @@ const en = {
   schedulable: 'Schedulable',
   schedulableHint: 'Changing "schedulable" re-evaluates the eligibility of everyone in this position.',
   searchJobOrName: 'Job number or name',
+  searchEmailOrName: 'E-mail or name',
   specialty: 'Specialty',
   system: 'System',
   tier: 'Tier',
@@ -426,6 +427,20 @@ const en = {
   invitationStatus_CLAIMED: 'Account created',
   invitationStatus_REVOKED: 'Replaced',
   invitationStatus_EXPIRED: 'Expired',
+  // Password reset (D-50)
+  forgotPassword: 'Forgot password?',
+  resetRequestTitle: 'Reset your password',
+  resetRequestIntro: 'Enter the e-mail address of your account. Staff accounts receive a link that works for 30 minutes. HR, supervisor and administrator accounts are reset by HR — contact them.',
+  resetSendLink: 'Send reset link',
+  resetRequested: 'Check your e-mail',
+  resetRequestedHint: 'If this address belongs to a staff account, a reset link is on its way. Nothing arrived? HR can send you a link.',
+  resetChooseTitle: 'Choose a new password',
+  resetSignsOut: 'All your current sessions will be signed out.',
+  resetSave: 'Save new password',
+  resetDone: 'Your password has been changed. Sign in with the new password.',
+  backToLogin: 'Back to sign in',
+  sendResetLink: 'Send reset link',
+  resetLinkSent: 'Reset link e-mailed to {{email}}; it works for 24 hours.',
 };
 
 const ar: Record<keyof typeof en, string> = {
@@ -726,6 +741,7 @@ const ar: Record<keyof typeof en, string> = {
   schedulable: 'قابل للجدولة',
   schedulableHint: 'تغيير "قابل للجدولة" يعيد تقييم أهلية جميع شاغلي هذا المنصب.',
   searchJobOrName: 'الرقم الوظيفي أو الاسم',
+  searchEmailOrName: 'البريد الإلكتروني أو الاسم',
   specialty: 'التخصص',
   system: 'النظام',
   tier: 'المستوى',
@@ -849,6 +865,20 @@ const ar: Record<keyof typeof en, string> = {
   invitationStatus_CLAIMED: 'تم إنشاء الحساب',
   invitationStatus_REVOKED: 'مُستبدلة',
   invitationStatus_EXPIRED: 'منتهية',
+  // إعادة تعيين كلمة المرور (D-50)
+  forgotPassword: 'نسيت كلمة المرور؟',
+  resetRequestTitle: 'إعادة تعيين كلمة المرور',
+  resetRequestIntro: 'أدخل البريد الإلكتروني لحسابك. تتلقى حسابات الموظفين رابطاً يعمل لمدة 30 دقيقة. أما حسابات الموارد البشرية والمشرفين والمسؤولين فتعيدها الموارد البشرية — تواصل معهم.',
+  resetSendLink: 'إرسال رابط إعادة التعيين',
+  resetRequested: 'تحقق من بريدك الإلكتروني',
+  resetRequestedHint: 'إذا كان هذا العنوان لحساب موظف فرابط إعادة التعيين في طريقه إليك. لم يصلك شيء؟ يمكن للموارد البشرية إرسال رابط.',
+  resetChooseTitle: 'اختر كلمة مرور جديدة',
+  resetSignsOut: 'سيتم تسجيل خروجك من جميع الجلسات الحالية.',
+  resetSave: 'حفظ كلمة المرور الجديدة',
+  resetDone: 'تم تغيير كلمة المرور. سجّل الدخول بكلمة المرور الجديدة.',
+  backToLogin: 'العودة إلى تسجيل الدخول',
+  sendResetLink: 'إرسال رابط إعادة التعيين',
+  resetLinkSent: 'أُرسل رابط إعادة التعيين إلى {{email}}؛ يعمل لمدة 24 ساعة.',
 };
 
 export type TranslationKey = keyof typeof en;

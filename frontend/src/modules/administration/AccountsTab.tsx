@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { App, Button, Drawer, Form, Input, InputNumber, Popconfirm, Table, Tag } from 'antd';
+import { App, Button, Drawer, Form, Input, InputNumber, Popconfirm, Space, Table, Tag } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { describeApiError } from '../../lib/errors';
 import { useAuth } from '../../hooks/useAuth';
+import { http } from '../../services/http';
 import { useAccounts, useCreateAccount, useUpdateAccount, type Account } from './api';
 
 interface NewAccount { email: string; displayName: string; password: string; employeeId?: number }
@@ -11,7 +12,8 @@ export function AccountsTab() {
   const { t } = useTranslation();
   const { message } = App.useApp();
   const me = useAuth((s) => s.user);
-  const accounts = useAccounts();
+  const [q, setQ] = useState('');
+  const accounts = useAccounts(q);
   const create = useCreateAccount();
   const update = useUpdateAccount();
   const [open, setOpen] = useState(false);
@@ -39,10 +41,23 @@ export function AccountsTab() {
     }
   }
 
+  // D-50: the link goes to the account's own e-mail; HR confirms who is asking first.
+  async function sendReset(a: Account) {
+    try {
+      const out = await http.post<{ email: string }>(`/users/${a.id}/password-reset`);
+      message.success(t('resetLinkSent', { email: out.email }));
+    } catch (e) {
+      message.error(describeApiError(e));
+    }
+  }
+
   return (
     <>
       <div style={{ marginBottom: 12 }}>
-        <Button type="primary" onClick={() => { setKey(crypto.randomUUID()); setOpen(true); }}>{t('newAccount')}</Button>
+        <Space wrap>
+          <Button type="primary" onClick={() => { setKey(crypto.randomUUID()); setOpen(true); }}>{t('newAccount')}</Button>
+          <Input.Search allowClear placeholder={t('searchEmailOrName')} style={{ width: 280 }} onSearch={(v) => setQ(v.trim())} />
+        </Space>
       </div>
       <Table<Account>
         rowKey="id"
@@ -59,9 +74,16 @@ export function AccountsTab() {
           { title: t('lastLogin'), render: (_, a) => a.lastLoginAt ? new Date(a.lastLoginAt).toLocaleString() : t('never') },
           {
             title: '', render: (_, a) => a.isBreakGlass || a.id === me?.id ? null : (
-              <Popconfirm title={a.isActive ? t('deactivate') : t('activate')} onConfirm={() => toggle(a)}>
-                <Button size="small" danger={a.isActive}>{a.isActive ? t('deactivate') : t('activate')}</Button>
-              </Popconfirm>
+              <Space>
+                {a.isActive && (
+                  <Popconfirm title={t('sendResetLink')} description={a.email} onConfirm={() => sendReset(a)}>
+                    <Button size="small">{t('sendResetLink')}</Button>
+                  </Popconfirm>
+                )}
+                <Popconfirm title={a.isActive ? t('deactivate') : t('activate')} onConfirm={() => toggle(a)}>
+                  <Button size="small" danger={a.isActive}>{a.isActive ? t('deactivate') : t('activate')}</Button>
+                </Popconfirm>
+              </Space>
             ),
           },
         ]}

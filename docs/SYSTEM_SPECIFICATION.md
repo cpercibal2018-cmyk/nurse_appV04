@@ -70,7 +70,7 @@ The reference (and the owner, so far) gives no rule for these. V04 builds nothin
 | Agency workforce | Not built |
 | Leave and absence | Not built |
 | HR access to the audit trail | System Admin only (D-20) |
-| Password reset | Not built (e-mail now exists, D-47; still needs an identity decision) |
+| Password reset | Built (D-50): self-service by e-mail for staff accounts (30-minute link); HR / System Admin sends the link for HR, supervisor and admin accounts (24 hours); break-glass never |
 | Unique contact e-mail | Not enforced (D-19) |
 | Ada'a KPI thresholds | Values from V03, source card not in the repository (D-11) |
 | Badge-feed contract (auth, format, delivery) | Not built (D-33) |

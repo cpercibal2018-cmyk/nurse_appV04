@@ -46,6 +46,8 @@ const PUBLIC = new Set([
   'GET /api/v1/health', 'POST /api/v1/auth/login', 'POST /api/v1/auth/refresh', 'POST /api/v1/auth/logout',
   // Registration by invitation (spec §3.2): no account exists yet; the token, Job Number, Origin check and throttle guard them.
   'POST /api/v1/auth/invitations/preview', 'POST /api/v1/auth/invitations/claim',
+  // Password reset (D-50): the e-mailed token, Origin check and throttles guard them.
+  'POST /api/v1/auth/password-reset/request', 'POST /api/v1/auth/password-reset/complete',
 ]);
 
 /** Signed-in routes without a route gate: the service checks own-or-scoped access. Reviewed list. */

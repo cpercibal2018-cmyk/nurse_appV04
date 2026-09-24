@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Button, Card, Descriptions, Form, Input, Result } from 'antd';
 import { GlobalOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
@@ -16,12 +16,18 @@ const tokenFromHash = () => new URLSearchParams(window.location.hash.slice(1)).g
 export default function ClaimPage() {
   const { t } = useTranslation();
   const { language, setLanguage } = usePreferences();
-  const [token] = useState(tokenFromHash);
+  const [token, setToken] = useState(tokenFromHash);
   const [jobNumber, setJobNumber] = useState('');
   const [preview, setPreview] = useState<Preview | null>(null);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // A second invitation link opened in the same tab changes only the "#" part: start over with it.
+  useEffect(() => {
+    const onHash = () => { setToken(tokenFromHash()); setPreview(null); setDone(false); setError(null); };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
 
   async function attempt(fn: () => Promise<void>) {
     setBusy(true); setError(null);

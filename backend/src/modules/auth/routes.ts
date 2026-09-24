@@ -7,6 +7,7 @@ import { constantTimeEqual } from '../../lib/tokens.js';
 import { authOf } from '../../middleware/authorize.js';
 import type { AuthService, IssuedSession } from './service.js';
 import { ClaimBody, PreviewBody, type InvitationService } from '../users/invitations.js';
+import { CompleteResetBody, RequestResetBody, type PasswordResetService } from '../users/password-reset.js';
 
 export const REFRESH_COOKIE = 'nurseapp_refresh';
 export const CSRF_COOKIE = 'nurseapp_csrf';
@@ -16,7 +17,7 @@ const REFRESH_PATH = '/api/v1/auth';
 const LoginBody = z.strictObject({ email: z.string().min(1).max(254), password: z.string().min(1).max(1024) });
 const PasswordBody = z.strictObject({ currentPassword: z.string().min(1).max(1024), newPassword: PasswordSchema });
 
-export function createAuthRouter(env: Env, auth: AuthService, authenticate: RequestHandler, invitations: InvitationService) {
+export function createAuthRouter(env: Env, auth: AuthService, authenticate: RequestHandler, invitations: InvitationService, resets: PasswordResetService) {
   const router = Router();
   const secure = env.NODE_ENV === 'production';
 
@@ -62,6 +63,19 @@ export function createAuthRouter(env: Env, auth: AuthService, authenticate: Requ
   router.post('/invitations/claim', async (req, res) => {
     requireAppOrigin(req.get('origin'));
     res.status(201).json(await withRetryAfter(res, () => invitations.claim(ClaimBody.parse(req.body), req.ip ?? 'unknown', res.locals.requestId)));
+  });
+
+  // Password reset (D-50). "request" answers 202 whatever the address, so it
+  // reveals nothing; only staff accounts get a self-service link.
+  router.post('/password-reset/request', async (req, res) => {
+    requireAppOrigin(req.get('origin'));
+    await withRetryAfter(res, () => resets.request(RequestResetBody.parse(req.body), req.ip ?? 'unknown', res.locals.requestId));
+    res.status(202).json({ accepted: true });
+  });
+  router.post('/password-reset/complete', async (req, res) => {
+    requireAppOrigin(req.get('origin'));
+    await withRetryAfter(res, () => resets.complete(CompleteResetBody.parse(req.body), req.ip ?? 'unknown', res.locals.requestId));
+    res.status(204).end();
   });
 
   // Login has no session yet, so no CSRF token exists; the Origin check stops

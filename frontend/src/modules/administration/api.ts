@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { http } from '../../services/http';
 import type { AppRole, Paged, ScopeType } from '../../types/api';
 
@@ -76,7 +76,11 @@ const keys = {
   pam: ['pam'] as const,
 };
 
-export const useAccounts = () => useQuery({ queryKey: keys.accounts, queryFn: () => http.get<Paged<Account>>('/users') });
+/** Accounts, optionally filtered on the server by e-mail or display name. */
+export const useAccounts = (q = '') => useQuery({
+  queryKey: [...keys.accounts, q], placeholderData: keepPreviousData,
+  queryFn: () => http.get<Paged<Account>>(q ? `/users?q=${encodeURIComponent(q)}` : '/users'),
+});
 export const useAssignments = () => useQuery({ queryKey: keys.assignments, queryFn: () => http.get<Paged<Assignment>>('/role-assignments') });
 export const useApprovals = () => useQuery({ queryKey: keys.approvals, queryFn: () => http.get<Paged<ApprovalRequest>>('/approvals?status=PENDING') });
 export const usePamStatus = () => useQuery({ queryKey: keys.pam, queryFn: () => http.get<{ eligible: boolean; active: boolean; expiresAt: string | null }>('/pam/status') });

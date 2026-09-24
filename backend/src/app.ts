@@ -15,6 +15,7 @@ import { createAccountService } from './modules/users/accounts.js';
 import { createRoleAssignmentService } from './modules/users/role-assignments.js';
 import { createUsersRouter } from './modules/users/routes.js';
 import { createInvitationService } from './modules/users/invitations.js';
+import { createPasswordResetService } from './modules/users/password-reset.js';
 import { createBaselineImportService } from './modules/administration/baseline-import.js';
 import { createCatalogService } from './modules/credentials/catalog.js';
 import { createRecordService } from './modules/credentials/records.js';
@@ -68,9 +69,10 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
 
   const tokens = createTokenService(env.JWT_SECRET, env.ACCESS_TOKEN_TTL_SECONDS);
   const authenticate = createAuthenticate(db, tokens, env.CORS_ORIGIN);
+  const accountThrottle = createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_ACCOUNT, throttleNamespace);
   const auth = createAuthService({
     db, env, tokens, passwords,
-    accountThrottle: createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_ACCOUNT, throttleNamespace),
+    accountThrottle,
     clientThrottle: createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_CLIENT, throttleNamespace),
   });
 
@@ -78,7 +80,11 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
     db, passwords, baseUrl: env.APP_BASE_URL ?? env.CORS_ORIGIN, mailEnabled: Boolean(env.SMTP_HOST),
     throttle: createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_CLIENT, throttleNamespace),
   });
-  app.use('/api/v1/auth', createAuthRouter(env, auth, authenticate, invitations));
+  const passwordResets = createPasswordResetService({
+    db, passwords, accountThrottle, baseUrl: env.APP_BASE_URL ?? env.CORS_ORIGIN, mailEnabled: Boolean(env.SMTP_HOST),
+    clientThrottle: createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_CLIENT, throttleNamespace),
+  });
+  app.use('/api/v1/auth', createAuthRouter(env, auth, authenticate, invitations, passwordResets));
 
   // Everything else under /api/v1 requires a signed-in caller. One protected
   // router, so authentication runs once per request; each domain module adds
@@ -86,7 +92,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   const api = Router();
   api.use(authenticate);
   const catalog = createCatalogService(db);
-  api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db), catalog, createBaselineImportService(db), invitations));
+  api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db), catalog, createBaselineImportService(db), invitations, passwordResets));
   api.use(createWorkforceRouter(db, createOrgService(db)));
   api.use(createNursesRouter(db, createNurseService(db)));
   api.use(createSchedulingRouter(db, createSchedulingService(db), createAttendanceService(db)));

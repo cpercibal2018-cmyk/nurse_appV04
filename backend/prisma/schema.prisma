@@ -67,6 +67,8 @@ model User {
   privilegedSession  PrivilegedSession?
   invitationsIssued  Invitation[]       @relation("issuer")
   invitationClaimed  Invitation?        @relation("claimant")
+  passwordResets     PasswordReset[]    @relation("resetFor")
+  resetsIssued       PasswordReset[]    @relation("resetIssuer")
   notifications      Notification[]
 
   @@map("users")
@@ -828,6 +830,27 @@ model Invitation {
 
   @@index([employeeId, createdAt])
   @@map("invitations")
+}
+
+/// Password reset links (decision D-50). SELF: requested on the sign-in page, staff
+/// accounts only, 30 minutes. ASSISTED: sent by HR / a System Admin, any active
+/// non-break-glass account, 24 hours. Only a SHA-256 of the token is stored.
+model PasswordReset {
+  id            Int       @id @default(autoincrement())
+  userId        Int       @map("user_id")
+  mode          String // SELF | ASSISTED (CHECK in SQL)
+  tokenHash     String    @unique @map("token_hash")
+  requestedById Int?      @map("requested_by_id") // null for SELF
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  usedAt        DateTime? @map("used_at") @db.Timestamptz
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz
+
+  user        User  @relation("resetFor", fields: [userId], references: [id])
+  requestedBy User? @relation("resetIssuer", fields: [requestedById], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("password_resets")
 }
 
 model IdempotencyKey {

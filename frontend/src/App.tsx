@@ -14,6 +14,7 @@ const loadLayout = () => import('./layouts/AppLayout').then((m) => ({ default: m
 const AppLayout = lazy(loadLayout);
 const LoginPage = lazy(() => import('./modules/auth/LoginPage'));
 const ClaimPage = lazy(() => import('./modules/auth/ClaimPage'));
+const ResetPasswordPage = lazy(() => import('./modules/auth/ResetPasswordPage'));
 const NotFound = lazy(() => import('./components/NotFound'));
 
 /** Waits for the startup session check, then either renders the page or sends the user to /login. */
@@ -67,6 +68,8 @@ export function App() {
           <Route path="/login" element={<LoginRoute />} />
           {/* Registration by invitation (spec §3.2): public, whatever the session state. */}
           <Route path="/claim" element={<Suspense fallback={<PageSkeleton />}><ClaimPage /></Suspense>} />
+          {/* Password reset (D-50): public. */}
+          <Route path="/reset-password" element={<Suspense fallback={<PageSkeleton />}><ResetPasswordPage /></Suspense>} />
           {MODULES.map(({ path, Page }) => (
             <Route key={path} path={path} element={<RequireSession><Page /></RequireSession>} />
           ))}
