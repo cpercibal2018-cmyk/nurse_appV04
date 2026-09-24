@@ -40,12 +40,14 @@ export interface AppDeps {
   passwords?: PasswordService;
   /** Injectable so tests can simulate infected files and scanner outages; defaults to env.UPLOAD_SCANNER. */
   scanner?: UploadScanner;
+  /** Prefix for sign-in throttle keys, so test apps sharing one database do not share counters. */
+  throttleNamespace?: string;
 }
 
 const HEALTH_DB_TIMEOUT_MS = 2000;
 
 /** Builds the Express application without starting a listener (tests use it directly). */
-export function createApp({ env, db, passwords = createPasswordService(env.BCRYPT_ROUNDS), scanner = createScanner(env) }: AppDeps) {
+export function createApp({ env, db, passwords = createPasswordService(env.BCRYPT_ROUNDS), scanner = createScanner(env), throttleNamespace = '' }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   if (env.TRUST_PROXY) app.set('trust proxy', 1); // one hop: the hospital reverse proxy
@@ -67,8 +69,8 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   const authenticate = createAuthenticate(db, tokens, env.CORS_ORIGIN);
   const auth = createAuthService({
     db, env, tokens, passwords,
-    accountThrottle: createThrottle(env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_ACCOUNT),
-    clientThrottle: createThrottle(env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_CLIENT),
+    accountThrottle: createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_ACCOUNT, throttleNamespace),
+    clientThrottle: createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_CLIENT, throttleNamespace),
   });
 
   app.use('/api/v1/auth', createAuthRouter(env, auth, authenticate));

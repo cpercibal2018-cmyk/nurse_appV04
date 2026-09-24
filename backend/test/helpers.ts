@@ -29,7 +29,8 @@ export function testEnv(overrides: Record<string, string> = {}): Env {
 export const fastPasswords = createPasswordService(4);
 
 export function testApp(db: Db, envOverrides: Record<string, string> = {}): Express {
-  return createApp({ env: testEnv(envOverrides), db, passwords: fastPasswords });
+  // Each test app gets its own throttle keys: every request comes from the same address.
+  return createApp({ env: testEnv(envOverrides), db, passwords: fastPasswords, throttleNamespace: uniq('app') + ':' });
 }
 
 export function openDb(): Db {

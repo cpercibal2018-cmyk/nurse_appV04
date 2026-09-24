@@ -1,43 +1,47 @@
-// Fixed-window failure counter for login attempts (spec §3.3 "account/client
-// attempt limits"). In memory: correct for the single API process V04 runs;
-// a multi-instance deployment needs a shared store (recorded in DEPLOYMENT.md).
+// Fixed-window failure counter for sign-in attempts (spec §3.3 "account/client
+// attempt limits"; decision D-46). Counters live in PostgreSQL, so every API
+// instance shares them and a restart does not reset them. Each failure is one
+// atomic upsert; the window runs on the database clock, so instances with
+// drifting clocks still agree. Keys are stored as SHA-256 hashes.
 
-export function createThrottle(windowSeconds: number, max: number) {
-  const hits = new Map<string, { count: number; resetAt: number }>();
-  const windowMs = windowSeconds * 1000;
-  // Expired entries are otherwise dropped only when their own key is looked up
-  // again, so unique keys (sprayed e-mails, one-off client addresses) would
-  // accumulate for the life of the process. A sweep at most once per window
-  // bounds the map to keys that failed within the last two windows.
+import crypto from 'node:crypto';
+import type { DbClient } from './prisma.js';
+
+export function createThrottle(db: DbClient, windowSeconds: number, max: number, namespace = '') {
+  const hash = (key: string) => crypto.createHash('sha256').update(namespace + key).digest('hex');
+  // Expired rows are otherwise dropped only when their key fails again, so
+  // unique keys (sprayed e-mails, one-off addresses) would accumulate. Each
+  // process sweeps at most once per window.
   let nextSweepAt = 0;
 
-  function live(key: string, now: number) {
-    const h = hits.get(key);
-    if (h && h.resetAt <= now) { hits.delete(key); return undefined; }
-    return h;
-  }
-
-  function sweep(now: number) {
+  async function sweep() {
+    const now = Date.now();
     if (now < nextSweepAt) return;
-    nextSweepAt = now + windowMs;
-    for (const [key, h] of hits) if (h.resetAt <= now) hits.delete(key);
+    nextSweepAt = now + windowSeconds * 1000;
+    await db.$executeRaw`DELETE FROM login_throttle WHERE reset_at <= now()`;
   }
 
   return {
     /** Seconds until the key may try again, or 0 when it is not blocked. */
-    blockedFor(key: string, now = Date.now()): number {
-      const h = live(key, now);
-      return h && h.count >= max ? Math.ceil((h.resetAt - now) / 1000) : 0;
+    async blockedFor(key: string): Promise<number> {
+      const rows = await db.$queryRaw<Array<{ wait: number }>>`
+        SELECT ceil(extract(epoch FROM reset_at - now()))::int AS wait
+          FROM login_throttle WHERE key_hash = ${hash(key)} AND count >= ${max} AND reset_at > now()`;
+      return rows[0]?.wait ?? 0;
     },
-    fail(key: string, now = Date.now()) {
-      sweep(now);
-      const h = live(key, now);
-      if (h) h.count += 1;
-      else hits.set(key, { count: 1, resetAt: now + windowMs });
+    /** Counts one failure; a key whose window has ended starts a new one. */
+    async fail(key: string) {
+      await db.$executeRaw`
+        INSERT INTO login_throttle (key_hash, count, reset_at)
+        VALUES (${hash(key)}, 1, now() + make_interval(secs => ${windowSeconds}))
+        ON CONFLICT (key_hash) DO UPDATE SET
+          count    = CASE WHEN login_throttle.reset_at <= now() THEN 1 ELSE login_throttle.count + 1 END,
+          reset_at = CASE WHEN login_throttle.reset_at <= now() THEN EXCLUDED.reset_at ELSE login_throttle.reset_at END`;
+      await sweep();
     },
-    reset(key: string) { hits.delete(key); },
-    /** Keys currently held (expired ones included until the next sweep) — for tests and metrics. */
-    get size() { return hits.size; },
+    async reset(key: string) {
+      await db.$executeRaw`DELETE FROM login_throttle WHERE key_hash = ${hash(key)}`;
+    },
   };
 }
 

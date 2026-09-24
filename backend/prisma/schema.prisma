@@ -767,6 +767,18 @@ enum IdempotencyStatus {
   FAILED
 }
 
+/// Failed sign-in counters shared by every API instance (spec §3.3; decision D-46).
+/// Fixed window per key; keys are SHA-256 hashes of "acct:<email>" or "ip:<address>",
+/// so no e-mail or address is stored. Expired rows are swept by the API.
+model LoginThrottle {
+  keyHash String   @id @map("key_hash")
+  count   Int
+  resetAt DateTime @map("reset_at") @db.Timestamptz
+
+  @@index([resetAt])
+  @@map("login_throttle")
+}
+
 model IdempotencyKey {
   id                       Int               @id @default(autoincrement())
   key                      String
