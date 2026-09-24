@@ -57,10 +57,17 @@ Every upload (credential evidence and contract copies) goes: size and type check
 - Run `clamd` on a host the API reaches (a separate host or container is fine; nothing else should reach port 3310). For a local trial: `docker compose --profile clamav up -d clamav`.
 - `StreamMaxLength` in `clamd.conf` must be at least `UPLOAD_MAX_SIZE_BYTES` (clamd's default is 25 MB; the upload limit is 10 MB).
 - `freshclam` must update the signatures at least daily; it needs outbound HTTPS to the ClamAV mirrors (or a hospital mirror). Signatures that are only old (older than `CLAMAV_MAX_SIGNATURE_AGE_HOURS`) do not stop uploads, but every scan logs an error until they are refreshed — alert on it (§7). A `clamd` with **no** official signature database (its `VERSION` reply has no database number) is treated as misconfigured: uploads are refused with `SCANNER_UNAVAILABLE`, because such a scanner reports almost everything as clean.
-- Check before go-live:
-  1. From the API host: `printf 'zPING\0' | nc clamav.internal 3310` answers `PONG`, and `printf 'zVERSION\0' | nc clamav.internal 3310` shows a database number and a date from the last day (for example `ClamAV 1.4.3/27771/…`), not just `ClamAV 1.4.3`.
-  2. On the scanner host, scan the standalone [EICAR test file](https://www.eicar.org/download-anti-malware-testfile/) through the daemon: `clamdscan --stream eicar.com` reports `FOUND` with a name **without** an `.UNOFFICIAL` suffix (the suffix means a local signature file, not the official database). This is the check that proves the official signatures are loaded.
-  3. Through the app, upload a PDF containing the EICAR string: expect `UPLOAD_INFECTED` and a HIGH `DOCUMENT_REJECTED_INFECTED` audit entry. The app only accepts real PDFs and images, so the EICAR file cannot be uploaded on its own; if the official signatures match only the exact standalone file and let this PDF through, step 2 still covers the signatures and the rejection path is covered by the automated tests.
+- **Go-live check** — from the API host, before enabling uploads: [`ops/clamav/go-live-check.sh`](../ops/clamav/go-live-check.sh) `clamav.internal 3310`. It talks to `clamd` the way the API does (bash only, no `clamdscan` or `nc`) and exits non-zero unless all five checks pass:
+
+  | Check | Passes when | Typical fix when it fails |
+  | :--- | :--- | :--- |
+  | Reachable | `PING` → `PONG` | Firewall between the API and the scanner host, host name or port |
+  | Signatures | `VERSION` carries a database number, dated within 24 h (`CHECK_MAX_AGE_HOURS`) | Run / enable `freshclam`; allow its outbound HTTPS or configure the internal mirror |
+  | Detection | The standalone EICAR file is `FOUND` under an official name — no `.UNOFFICIAL` suffix | The official database is not loaded (see Signatures) |
+  | Clean | A small PDF → `OK` | — |
+  | Size limit | A file of `UPLOAD_MAX_SIZE_BYTES` → `OK` | Raise `StreamMaxLength` in `clamd.conf` |
+
+  Then upload one real document through the app and confirm it is accepted. (A PDF with the EICAR string inside it may or may not be flagged by the official signatures, which match the standalone test file; the rejection path itself is covered by the automated tests.)
 
 ## 3. Processes and background jobs
 
