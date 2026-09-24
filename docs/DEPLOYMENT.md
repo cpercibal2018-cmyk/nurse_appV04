@@ -122,6 +122,8 @@ psql -U postgres -d <database> -v ON_ERROR_STOP=1 -f ops/db/verify.sql   # every
 curl -fsS https://<host>/api/v1/health   # 200 {"status":"ok","database":"up"}; 503 when the database is down
 ```
 
+CI has already run the HTTPS browser test of the session cookies against the release images ([ops/e2e](../ops/e2e/README.md)).
+
 After a release, a System Admin should open **Audit → Verify chain** (expected: intact) and **Administration → Jobs** (expected: recent runs completed).
 
 **First release after commit 10b:** the reminder job sends each record's current milestone once under the new milestone keys (D-39); contracts that already ended without a renewal get one "Contract ended" notice.
