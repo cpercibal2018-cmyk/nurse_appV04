@@ -71,6 +71,15 @@ export function createApprovalService(db: Db, roles: RoleAssignmentService, cata
     return req;
   }
 
+  async function lockPendingForWithdrawal(tx: Parameters<Parameters<Db['$transaction']>[0]>[0], id: number) {
+    const rows = await tx.$queryRaw<LockedRow[]>`
+      SELECT id, initiator_id, status::text AS status, action_type, payload FROM approval_requests WHERE id = ${id} FOR UPDATE`;
+    const req = rows[0];
+    if (!req) throw notFound('Approval request not found');
+    if (req.status !== 'PENDING') throw new HttpError(409, 'APPROVAL_NOT_PENDING', `This request is already ${req.status}`);
+    return req;
+  }
+
   async function approve(auth: AuthContext, id: number, reason: string, requestId?: string) {
     return db.$transaction(async (tx) => {
       const req = await lockPending(tx, id, auth.user.id);
@@ -105,7 +114,7 @@ export function createApprovalService(db: Db, roles: RoleAssignmentService, cata
 
   async function withdraw(auth: AuthContext, id: number, reason: string, requestId?: string) {
     return db.$transaction(async (tx) => {
-      const req = await lockPending(tx, id, auth.user.id);
+      const req = await lockPendingForWithdrawal(tx, id);
       if (req.initiator_id !== auth.user.id) {
         throw new HttpError(403, 'WITHDRAWAL_NOT_OWNER', 'Only the initiator can withdraw this approval request');
       }
