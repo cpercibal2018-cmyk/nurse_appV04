@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Alert, Button, Card, Form, Input } from 'antd';
 import { GlobalOutlined, LockOutlined, UserOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../../hooks/useAuth';
 import { usePreferences } from '../../hooks/usePreferences';
 import { ApiError } from '../../services/http';
@@ -49,6 +49,7 @@ export default function LoginPage() {
             <Input.Password prefix={<LockOutlined />} autoComplete="current-password" />
           </Form.Item>
           <Button type="primary" htmlType="submit" block size="large" loading={busy}>{t('login')}</Button>
+          <div style={{ marginTop: 12, textAlign: 'center' }}><Link to="/reset-password">{t('forgotPassword')}</Link></div>
         </Form>
         <div style={{ marginTop: 16, textAlign: 'center' }}>
           <Button type="text" icon={<GlobalOutlined />} onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}>

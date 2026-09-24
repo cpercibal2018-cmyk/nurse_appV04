@@ -33,7 +33,7 @@ export const ListAccountsQuery = z.object({
 
 const outOfScope = () => new HttpError(403, 'SCOPE_NOT_COVERED', 'This account is outside your assigned scope');
 
-async function assertEmployeeInScope(db: DbClient, scope: UnitScope, employeeId: number | null | undefined) {
+export async function assertEmployeeInScope(db: DbClient, scope: UnitScope, employeeId: number | null | undefined) {
   if (employeeId == null) {
     if (!scope.all) throw new HttpError(403, 'SCOPE_NOT_COVERED', 'Only system-wide administrators can manage accounts without an employee link');
     return;
