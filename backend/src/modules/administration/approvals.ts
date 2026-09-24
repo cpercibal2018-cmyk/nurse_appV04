@@ -20,7 +20,7 @@ const isCatalog = (p: ApprovalPayload): p is CatalogApprovalPayload => isCatalog
 export const DecideBody = z.strictObject({
   reason: z.string().trim().min(5, 'A decision needs a reason of at least 5 characters (R4)').max(1000),
 });
-export const ListApprovalsQuery = z.object({ status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'EXECUTED']).default('PENDING') });
+export const ListApprovalsQuery = z.object({ status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'EXECUTED', 'WITHDRAWN']).default('PENDING') });
 
 const ADMIN_ROLES = ['HR_ADMIN', 'SYSTEM_ADMIN'] as const;
 /** GET /approvals returns at most this many rows the caller may decide. */
@@ -90,6 +90,15 @@ export function createApprovalService(db: Db, roles: RoleAssignmentService, cata
     return req;
   }
 
+  async function lockPendingForWithdrawal(tx: Parameters<Parameters<Db['$transaction']>[0]>[0], id: number) {
+    const rows = await tx.$queryRaw<LockedRow[]>`
+      SELECT id, initiator_id, status::text AS status, action_type, payload FROM approval_requests WHERE id = ${id} FOR UPDATE`;
+    const req = rows[0];
+    if (!req) throw notFound('Approval request not found');
+    if (req.status !== 'PENDING') throw new HttpError(409, 'APPROVAL_NOT_PENDING', `This request is already ${req.status}`);
+    return req;
+  }
+
   async function approve(auth: AuthContext, id: number, reason: string, requestId?: string) {
     return db.$transaction(async (tx) => {
       const req = await lockPending(tx, id, auth.user.id);
@@ -122,5 +131,24 @@ export function createApprovalService(db: Db, roles: RoleAssignmentService, cata
     });
   }
 
-  return { list, approve, reject };
+  async function withdraw(auth: AuthContext, id: number, reason: string, requestId?: string) {
+    return db.$transaction(async (tx) => {
+      const req = await lockPendingForWithdrawal(tx, id);
+      if (req.initiator_id !== auth.user.id) {
+        throw new HttpError(403, 'WITHDRAWAL_NOT_OWNER', 'Only the initiator can withdraw this approval request');
+      }
+      const now = new Date();
+      await tx.approvalRequest.update({
+        where: { id },
+        data: { status: 'WITHDRAWN', reason, decidedAt: now, withdrawnAt: now },
+      });
+      await appendAudit(tx, {
+        actorUserId: auth.user.id, action: 'APPROVAL_WITHDRAWN', resource: 'approval_request', resourceId: id,
+        changes: { initiatorId: req.initiator_id, actionType: req.action_type, reason }, requestId, priority: 'HIGH',
+      });
+      return { id, status: 'WITHDRAWN' as const };
+    });
+  }
+
+  return { list, approve, reject, withdraw };
 }
