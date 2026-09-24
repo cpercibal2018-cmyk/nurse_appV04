@@ -17,6 +17,7 @@ The **database owner** (the login that created the database, `aigh` in developme
 | :--- | :--- | :--- |
 | [`01_roles.sql`](01_roles.sql) | a **superuser**, connected to the application database | Once per PostgreSQL server |
 | [`02_grants.sql`](02_grants.sql) | the **database owner**, connected to the database | After `01_roles.sql`, and again after **every** `prisma migrate deploy` |
+| [`verify.sql`](verify.sql) | a **superuser**, connected to the database | After setting up, and after every release — read-only; prints PASS / FAIL / WARN per rule and exits non-zero on any FAIL |
 
 Both are idempotent. [`backend/test/db-roles.test.ts`](../../backend/test/db-roles.test.ts) runs them on brand-new databases with uniquely named roles and checks every line of the table above (it runs in CI, whose login is a superuser; locally it is skipped unless the test login may create roles).
 
@@ -36,26 +37,32 @@ Both are idempotent. [`backend/test/db-roles.test.ts`](../../backend/test/db-rol
 
 # 3. As the database owner — hands the objects to the migration role and grants the rest
 & "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U aigh -d nurseapp_v04 -f ops\db\02_grants.sql
+
+# 4. As the superuser — confirm; every row must read PASS ("all checks passed", exit code 0)
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -d nurseapp_v04 -v ON_ERROR_STOP=1 -f ops\db\verify.sql
 ```
 
-Then, in `backend/.env`:
+Then, in `backend/.env` (step 5), and restart the API and the worker:
 
 ```
 DATABASE_URL=postgresql://nurseapp_runtime:<runtime password>@localhost:5432/nurseapp_v04
 MIGRATION_DATABASE_URL=postgresql://nurseapp_migration:<migration password>@localhost:5432/nurseapp_v04
 ```
 
+**Production refuses to start until this is done.** With `NODE_ENV=production` the API and the worker check the login they connect as, and stop with `DatabaseRoleError` if it is a superuser, owns the tables, can create objects in `public` or can rewrite `audit_entries` (`backend/src/lib/db-role.ts`). The check is by capability, not by name. After the switch, run `verify.sql` once more: check 11 turns WARN while any API or worker session is still connected as the owner.
+
 Without `MIGRATION_DATABASE_URL`, migrations use `DATABASE_URL` — which, once it is the runtime role, can no longer migrate. Passwords with `@ : / ? # %` must be URL-encoded. Roles are per server; grants are per database — repeat step 3 (and set the URLs) for each database, e.g. `nurseapp_test` if the tests should also run as these roles (they do not need to: the test suite creates its own databases).
 
 ## Fresh installation
 
-`01_roles.sql` → passwords → `02_grants.sql` on the empty database (it creates the two extensions) → `prisma migrate deploy` with `MIGRATION_DATABASE_URL` → `02_grants.sql` again → bootstrap as the runtime role. [DEPLOYMENT.md §4](../../docs/DEPLOYMENT.md#first-installation-empty-database) lists the full order.
+`01_roles.sql` → passwords → `02_grants.sql` on the empty database (it creates the two extensions) → `prisma migrate deploy` with `MIGRATION_DATABASE_URL` → `02_grants.sql` again → `verify.sql` → bootstrap as the runtime role. [DEPLOYMENT.md §4](../../docs/DEPLOYMENT.md#first-installation-empty-database) lists the full order.
 
 ## After every migration
 
 ```
 npm run db:deploy -w backend        # as nurseapp_migration (MIGRATION_DATABASE_URL)
 psql -U <owner> -d <database> -f ops/db/02_grants.sql
+psql -U postgres -d <database> -v ON_ERROR_STOP=1 -f ops/db/verify.sql
 ```
 
 New tables are usable by the runtime at once (default privileges); re-running `02_grants.sql` re-applies the table-specific refusals (audit, journal) to anything a migration recreated.

@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import pg from 'pg';
 import { bootstrapAdministrators } from '../src/cli/bootstrap.js';
 import { findChainBreaks } from '../src/lib/audit.js';
+import { assertRuntimeRole, runtimeRoleProblems } from '../src/lib/db-role.js';
 import { createPasswordService } from '../src/lib/passwords.js';
 import { createPrisma, type Db } from '../src/lib/prisma.js';
 import { applyBaseline, parseBaseline } from '../src/modules/administration/baseline-import.js';
@@ -150,6 +151,38 @@ describeRoles(`database roles (spec §10.7)${allowed ? '' : ' — skipped: the t
       const mg = urlAs(base, 'migration');
       expect(await attempt(mg, `ALTER TABLE units ADD COLUMN tmp_role_check int`)).toBe('ok');
       expect(await attempt(mg, `ALTER TABLE units DROP COLUMN tmp_role_check`)).toBe('ok');
+    });
+
+    it('production start-up accepts only a data-only login (runtime), never the migration role or a superuser', async () => {
+      expect(await runtimeRoleProblems(runtime)).toEqual([]);
+      await expect(assertRuntimeRole(runtime, true)).resolves.toBeUndefined();
+      const migration = createPrisma(urlAs(base, 'migration'));
+      const superuser = createPrisma(base);
+      try {
+        expect((await runtimeRoleProblems(migration)).join('; ')).toMatch(/owns the tables/);
+        await expect(assertRuntimeRole(migration, true)).rejects.toThrow(/data-only runtime role in production/);
+        expect((await runtimeRoleProblems(superuser)).join('; ')).toMatch(/is a superuser/);
+        await expect(assertRuntimeRole(superuser, false)).resolves.toBeUndefined(); // development is not checked
+      } finally {
+        await migration.$disconnect();
+        await superuser.$disconnect();
+      }
+    });
+
+    it('verify.sql passes on the applied roles, and fails (non-zero) when a grant drifts', async () => {
+      const results = await run(base, script('verify.sql')) as unknown as Array<{ command: string; rows: Array<{ status: string; check: string; detail: string }> }>;
+      const table = results.find((r) => r.command === 'SELECT' && r.rows[0]?.status)!.rows;
+      expect(table).toHaveLength(11);
+      expect(table.filter((r) => r.status === 'FAIL')).toEqual([]);
+
+      await run(base, `GRANT UPDATE ON audit_entries TO ${roleName('runtime')}`);
+      try {
+        expect(await runtimeRoleProblems(runtime)).toEqual([`"${roleName('runtime')}" can rewrite audit_entries`]);
+        await expect(run(base, script('verify.sql'))).rejects.toThrow(/1 check\(s\) FAILED/);
+      } finally {
+        await run(base, script('02_grants.sql')); // re-applying the grants restores the refusal
+      }
+      expect(await runtimeRoleProblems(runtime)).toEqual([]);
     });
   });
 

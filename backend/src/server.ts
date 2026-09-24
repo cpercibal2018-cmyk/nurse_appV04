@@ -3,6 +3,7 @@ import { createApp } from './app.js';
 import { loadEnv } from './config/env.js';
 import { assertResidency } from './config/residency.js';
 import { assertUploadScanner } from './lib/scanner.js';
+import { assertRuntimeRole } from './lib/db-role.js';
 import { createPrisma } from './lib/prisma.js';
 import { describeError, logger } from './lib/logger.js';
 import { startScheduler } from './jobs/scheduler.js';
@@ -20,6 +21,8 @@ assertResidency({
 assertUploadScanner(env, env.NODE_ENV === 'production');
 
 const db = createPrisma(env.DATABASE_URL);
+// Spec §10.7: production runs as the data-only runtime role, never the owner.
+await assertRuntimeRole(db, env.NODE_ENV === 'production');
 const app = createApp({ env, db });
 
 // Jobs run here only in development; production runs `npm run worker` (plan: Jobs).
