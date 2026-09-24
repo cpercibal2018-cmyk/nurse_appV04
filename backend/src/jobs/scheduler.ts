@@ -11,12 +11,14 @@
 //   daily-transition  00:05 daily  — date-driven state (§6.1 "midnight")
 //   expiry-scan       06:00 daily  — reminders (§7.1)
 //   attendance-alerts every 15 min — coverage gaps (§14.2)
+//   consistency-audit 03:00 daily  — eligibility anti-drift sample (§10.8)
 
 import type { Db } from '../lib/prisma.js';
 import { riyadhDate } from '../lib/dates.js';
 import { describeError, logger } from '../lib/logger.js';
 import { withLease } from '../lib/worker-lease.js';
 import { attendanceAlerts } from './attendance-alerts.js';
+import { consistencyAudit } from './consistency-audit.js';
 import { dailyTransition } from './daily-transition.js';
 import { expiryScan } from './expiry-scan.js';
 
@@ -32,18 +34,21 @@ export interface JobDefinition {
   /** The run key for `now`, or null when nothing is due yet. */
   periodKey: (now: Date) => string | null;
   run: (db: Db, now: Date) => Promise<Record<string, unknown>>;
+  /** A completed run older than this means the job is not running (business health, §10.8). */
+  maxAgeMinutes: number;
 }
 
 const dailyAt = (name: string, hhmm: string) => (now: Date) => (riyadhTime(now) >= hhmm ? `${name}:${riyadhDate(now)}` : null);
 
 export const JOBS: JobDefinition[] = [
-  { name: 'daily-transition', schedule: 'daily 00:05 Asia/Riyadh', periodKey: dailyAt('daily-transition', '00:05'), run: dailyTransition },
-  { name: 'expiry-scan', schedule: 'daily 06:00 Asia/Riyadh', periodKey: dailyAt('expiry-scan', '06:00'), run: expiryScan },
+  { name: 'daily-transition', schedule: 'daily 00:05 Asia/Riyadh', periodKey: dailyAt('daily-transition', '00:05'), run: dailyTransition, maxAgeMinutes: 26 * 60 },
+  { name: 'expiry-scan', schedule: 'daily 06:00 Asia/Riyadh', periodKey: dailyAt('expiry-scan', '06:00'), run: expiryScan, maxAgeMinutes: 26 * 60 },
   {
     name: 'attendance-alerts', schedule: 'every 15 minutes',
     periodKey: (now) => { const [h, m] = riyadhTime(now).split(':').map(Number); return `attendance-alerts:${riyadhDate(now)}T${String(h).padStart(2, '0')}:${String(Math.floor(m! / 15) * 15).padStart(2, '0')}`; },
-    run: attendanceAlerts,
+    run: attendanceAlerts, maxAgeMinutes: 60,
   },
+  { name: 'consistency-audit', schedule: 'daily 03:00 Asia/Riyadh', periodKey: dailyAt('consistency-audit', '03:00'), run: consistencyAudit, maxAgeMinutes: 26 * 60 },
 ];
 
 export type RunOutcome = { job: string; runKey: string; status: 'COMPLETED' | 'FAILED' | 'SKIPPED'; summary?: Record<string, unknown>; error?: string };

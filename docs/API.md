@@ -178,6 +178,7 @@ Eligibility in every response is the **live engine for the shift date** (L7), no
 | GET | `/api/v1/audit?resource&resourceId&actor&action&priority&from&to&page` | Search, newest first; BIGINT ids as strings; actor names resolved | **SA only (D-20)** | spec §9.1 |
 | GET | `/api/v1/audit/verify` | Chain check (`audit_chain_breaks` view: link and content) | SA | spec §9.1, A3 |
 | GET | `/api/v1/admin/jobs` | Jobs, schedules and last 10 runs each | SA | plan "Jobs" |
+| GET | `/api/v1/system/health/business` | Business health: `{status: HEALTHY \| ATTENTION, issues[], eligibility {lastAuditAt, lastChecked, lastDrifted, checked7d, drifts7d, driftRate7d, recentDrifts[]}, jobs[] {lastCompletedAt, ageMinutes, stale, lastAttemptFailed}, email {pendingOver15Minutes, failedLast24Hours, lastSentAt}}` | SA (`jobs.read`) | spec §10.8 |
 | POST | `/api/v1/admin/jobs/:name/run` | Run now under its own run key (never consumes the scheduled period); HIGH audit | SA | plan "Jobs" |
 
 **Scheduled jobs** (`backend/src/jobs/`; in the API process when `JOBS_MODE=in-process`, in `npm run worker` when `worker`). Each run is a unique `job_runs.run_key`, taken under a worker lease (spec §10.3):

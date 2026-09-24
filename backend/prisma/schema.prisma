@@ -328,9 +328,10 @@ model Employee {
   createdAt             DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt             DateTime       @updatedAt @map("updated_at") @db.Timestamptz
 
-  unit             Unit?              @relation(fields: [unitId], references: [id])
-  position         Position           @relation(fields: [positionCode], references: [code])
+  unit             Unit?                 @relation(fields: [unitId], references: [id])
+  position         Position              @relation(fields: [positionCode], references: [code])
   user             User?
+  driftFindings    ConsistencyAuditLog[]
   invitations      Invitation[]
   contracts        Contract[]
   credentials      Credential[]
@@ -602,6 +603,26 @@ model EligibilityState {
 
   @@index([status])
   @@map("eligibility_states")
+}
+
+/// Eligibility drift found by the consistency auditor (spec §10.8): the stored
+/// state disagreed with a fresh evaluation (or was missing) and was corrected.
+model ConsistencyAuditLog {
+  id                 Int                @id @default(autoincrement())
+  employeeId         Int                @map("employee_id")
+  expectedStatus     EligibilityStatus  @map("expected_status")
+  actualStatus       EligibilityStatus? @map("actual_status") // null = no stored state
+  expectedReasons    Json               @map("expected_reasons") // reason keys "CODE:templateId"
+  actualReasons      Json?              @map("actual_reasons")
+  actualCalculatedAt DateTime?          @map("actual_calculated_at") @db.Timestamptz
+  runDate            String             @map("run_date") // Riyadh date of the audit run
+  detectedAt         DateTime           @default(now()) @map("detected_at") @db.Timestamptz
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([detectedAt])
+  @@index([employeeId, detectedAt])
+  @@map("consistency_audit_log")
 }
 
 /// Emergency waiver (spec §6.1.2, rule L9).

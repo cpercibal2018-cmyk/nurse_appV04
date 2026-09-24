@@ -11,6 +11,7 @@ import type { Db } from '../../lib/prisma.js';
 import { authOf, authorize } from '../../middleware/authorize.js';
 import { appendAudit } from '../../lib/audit.js';
 import { JOBS, runNow } from '../../jobs/scheduler.js';
+import { businessHealth } from './business-health.js';
 
 const IsoDate = z.string().refine(isIsoDate, 'YYYY-MM-DD');
 const AuditQuery = z.object({
@@ -64,6 +65,11 @@ export function createAuditRouter(db: Db) {
       items.push({ name: job.name, schedule: job.schedule, runs });
     }
     res.json({ items });
+  });
+
+  // Spec §10.8: business health — eligibility drift, job freshness, e-mail delivery.
+  r.get('/system/health/business', authorize('jobs.read'), async (_req, res) => {
+    res.json(await businessHealth(db));
   });
 
   r.post('/admin/jobs/:name/run', authorize('jobs.run'), async (req, res) => {

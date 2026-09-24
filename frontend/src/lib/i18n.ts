@@ -441,6 +441,19 @@ const en = {
   backToLogin: 'Back to sign in',
   sendResetLink: 'Send reset link',
   resetLinkSent: 'Reset link e-mailed to {{email}}; it works for 24 hours.',
+  // Business health (spec §10.8)
+  businessHealth: 'System health',
+  health_HEALTHY: 'Healthy',
+  health_ATTENTION: 'Needs attention',
+  healthIssues: 'Needs attention',
+  lastConsistencyAudit: 'Last eligibility consistency check',
+  checkedDrifted: '{{checked}} nurses checked, {{drifted}} corrected',
+  driftRate7d: 'Drift rate, last 7 days',
+  recentDrifts: 'Recent corrections',
+  emailDelivery: 'E-mail delivery',
+  reasonsUpdated: 'reasons updated',
+  noStoredState: 'no stored state',
+  emailHealth: '{{pending}} waiting over 15 min · {{failed}} failed in 24 h · last sent {{last}}',
 };
 
 const ar: Record<keyof typeof en, string> = {
@@ -879,6 +892,19 @@ const ar: Record<keyof typeof en, string> = {
   backToLogin: 'العودة إلى تسجيل الدخول',
   sendResetLink: 'إرسال رابط إعادة التعيين',
   resetLinkSent: 'أُرسل رابط إعادة التعيين إلى {{email}}؛ يعمل لمدة 24 ساعة.',
+  // سلامة النظام (المواصفات §10.8)
+  businessHealth: 'سلامة النظام',
+  health_HEALTHY: 'سليم',
+  health_ATTENTION: 'يحتاج إلى متابعة',
+  healthIssues: 'يحتاج إلى متابعة',
+  lastConsistencyAudit: 'آخر فحص لاتساق الأهلية',
+  checkedDrifted: 'فُحص {{checked}} ممرضاً، وصُحح {{drifted}}',
+  driftRate7d: 'نسبة الاختلاف، آخر 7 أيام',
+  recentDrifts: 'آخر التصحيحات',
+  emailDelivery: 'تسليم البريد الإلكتروني',
+  reasonsUpdated: 'تحديث الأسباب',
+  noStoredState: 'لا توجد حالة مخزنة',
+  emailHealth: '{{pending}} بانتظار أكثر من 15 دقيقة · {{failed}} فشل خلال 24 ساعة · آخر إرسال {{last}}',
 };
 
 export type TranslationKey = keyof typeof en;

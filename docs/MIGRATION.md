@@ -47,7 +47,7 @@ The V03 remediation tracker (`AIGH_v2_8_7_remediation_tracker.md` in the V03 rep
 | B-10 | Worker leases for every job | **Done** for the three V04 jobs. The other V03 jobs (SMTP queue, SCFHS sync, backup monitor, quarantine scan) do not exist in V04 |
 | B-11 | Hardened onboarding SQL function | **Superseded** by D-17 (one Prisma transaction) |
 | B-12 | Four-eyes (row lock, PENDING precondition, transactional execution, partial unique index) | **Done** |
-| B-13 | Consistency auditor | **Deferred** (spec §10.8) |
+| B-13 | Consistency auditor | **Done** — daily `consistency-audit` job and business health view (spec §10.8) |
 | B-14 | FHIR adapter | **Deferred** |
 | B-15 | Time-zone-safe coverage-gap query; PACS feed contract | Gap query and alerts **done**; feed contract **open** (D-33) |
 | B-16 | SSO / MFA | **Deferred** (identity provider not chosen) |

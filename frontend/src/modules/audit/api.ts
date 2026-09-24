@@ -25,3 +25,18 @@ export function useRunJob() {
 
 export interface SessionRow { current: boolean; active: boolean; signedInAt: string; lastActiveAt: string; endsBy: string; signInIp: string | null; signInUserAgent: string | null; lastIp: string | null; lastUserAgent: string | null }
 export const useSessions = () => useQuery({ queryKey: ['sessions'], queryFn: () => http.get<{ items: SessionRow[] }>('/auth/sessions') });
+
+// ── Business health (spec §10.8), System Admin ──
+export interface BusinessHealth {
+  status: 'HEALTHY' | 'ATTENTION';
+  issues: Array<{ code: string; message: string }>;
+  eligibility: {
+    lastAuditAt: string | null; lastChecked: number | null; lastDrifted: number | null;
+    checked7d: number; drifts7d: number; driftRate7d: number | null;
+    recentDrifts: Array<{ employeeId: number; jobNumber: string; expected: string; stored: string | null; detectedAt: string }>;
+  };
+  jobs: Array<{ name: string; lastCompletedAt: string | null; ageMinutes: number | null; stale: boolean; lastAttemptFailed: boolean }>;
+  email: { pendingOver15Minutes: number; failedLast24Hours: number; lastSentAt: string | null };
+  generatedAt: string;
+}
+export const useBusinessHealth = () => useQuery({ queryKey: ['business-health'], queryFn: () => http.get<BusinessHealth>('/system/health/business'), refetchInterval: 60_000 });

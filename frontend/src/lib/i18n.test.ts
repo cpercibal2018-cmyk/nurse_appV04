@@ -33,6 +33,7 @@ const code = files(SRC).map((f) => readFileSync(f, 'utf8')).join('\n');
 
 // Enum-driven key families: prefix → every value the API can return.
 const FAMILIES: Record<string, string[]> = {
+  health_: ['HEALTHY', 'ATTENTION'], // GET /system/health/business (spec §10.8)
   invitationStatus_: ['OPEN', 'CLAIMED', 'REVOKED', 'EXPIRED'], // GET /employees/:id/invitations (spec §3.2)
   shift_: ['Morning', 'Evening', 'Night'],
   band_: ['Standard', 'Distress', 'Failing', 'Failed'],
