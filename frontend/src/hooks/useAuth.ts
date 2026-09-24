@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import { http, refreshSession, setSessionExpiredHandler, setTokens } from '../services/http';
 import { queryClient } from '../services/queryClient';
-import type { EffectiveRole, MeResponse, RoleGrant, SessionUser, TokenResponse } from '../types/api';
+import type { EffectiveRole, MeResponse, MfaPrompt, RoleGrant, SessionUser, TokenResponse } from '../types/api';
 
 type Status = 'checking' | 'anonymous' | 'authenticated';
 
@@ -20,7 +20,10 @@ interface AuthState {
   reload: () => Promise<void>;
   /** Restores a session from the HttpOnly refresh cookie at startup. */
   restore: () => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
+  /** Resolves to the second step when one is due (spec §3.5), else null once signed in. */
+  login: (email: string, password: string) => Promise<MfaPrompt['mfa'] | null>;
+  /** Starts the session from tokens the server issued (after the second step). */
+  completeLogin: (tokens: TokenResponse) => Promise<void>;
   logout: () => Promise<void>;
   /** Local teardown after server-side invalidation (e.g. a password change). */
   endLocalSession: () => void;
@@ -65,7 +68,13 @@ export const useAuth = create<AuthState>()((set) => ({
   },
 
   login: async (email, password) => {
-    const tokens = await http.post<TokenResponse>('/auth/login', { email, password });
+    const out = await http.post<TokenResponse | MfaPrompt>('/auth/login', { email, password });
+    if ('mfa' in out) return out.mfa;
+    await useAuth.getState().completeLogin(out);
+    return null;
+  },
+
+  completeLogin: async (tokens) => {
     setTokens(tokens);
     try {
       const me = await http.get<MeResponse>('/auth/me');

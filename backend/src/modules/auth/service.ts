@@ -10,6 +10,7 @@ import type { Db, DbClient } from '../../lib/prisma.js';
 import type { Throttle } from '../../lib/throttle.js';
 import { constantTimeEqual, randomToken, sha256hex, type TokenService } from '../../lib/tokens.js';
 import { activeBreakGlass, activeGrants, activePam, effectiveGrants, effectiveRoles, type AuthContext } from '../users/access.js';
+import { mfaCodeInvalid, type ChallengePurpose, type MfaService } from './mfa.js';
 
 /** Spec §3.6: a break-glass session is limited to 4 hours. */
 export const BREAK_GLASS_SESSION_SECONDS = 4 * 3600;
@@ -21,7 +22,11 @@ export interface AuthDeps {
   passwords: PasswordService;
   accountThrottle: Throttle;
   clientThrottle: Throttle;
+  mfa: MfaService;
 }
+
+/** Password accepted; the second step (spec §3.5) is still needed. No cookie is set yet. */
+export interface MfaStep { mfa: { step: ChallengePurpose; challenge: string; expiresIn: number } }
 
 export interface IssuedSession {
   /** Cookie value "<sessionId>.<secret>"; only sha256(secret) is stored. */
@@ -84,14 +89,102 @@ export function createAuthService(deps: AuthDeps) {
     await deps.accountThrottle.reset(accountKey);
 
     const now = new Date();
+    const step = await deps.mfa.stepFor(db, user, now);
+    if (step) {
+      return db.$transaction(async (tx): Promise<MfaStep> => {
+        const c = await deps.mfa.createChallenge(tx, user.id, step, now);
+        await appendAudit(tx, { actorUserId: null, action: 'LOGIN_MFA_REQUIRED', resource: 'user', resourceId: String(user.id), changes: { step }, requestId });
+        return { mfa: { step, ...c } };
+      });
+    }
+    return db.$transaction((tx) => completeLogin(tx, user, now, { ip: clientIp, userAgent }, requestId));
+  }
+
+  /** Issues the session for a fully authenticated sign-in (after the password, and the second step if any). */
+  async function completeLogin(tx: DbClient, user: { id: number; isBreakGlass: boolean }, now: Date, meta: ClientMeta, requestId?: string, mfaUsed?: string) {
     const absoluteSeconds = user.isBreakGlass ? Math.min(BREAK_GLASS_SESSION_SECONDS, env.SESSION_ABSOLUTE_SECONDS) : env.SESSION_ABSOLUTE_SECONDS;
-    return db.$transaction(async (tx) => {
-      if (user.isBreakGlass) await sirenOnLogin(tx, user.id, clientIp, now, absoluteSeconds, requestId);
-      const session = await issue(tx, user.id, randomToken(16), new Date(now.getTime() + env.SESSION_IDLE_SECONDS * 1000), new Date(now.getTime() + absoluteSeconds * 1000), now, { ip: clientIp, userAgent });
-      await tx.user.update({ where: { id: user.id }, data: { lastLoginAt: now } });
-      await appendAudit(tx, { actorUserId: user.id, action: 'LOGIN_SUCCEEDED', resource: 'user', resourceId: String(user.id), requestId, priority: user.isBreakGlass ? 'HIGH' : 'NORMAL' });
-      return session;
+    if (user.isBreakGlass) await sirenOnLogin(tx, user.id, meta.ip, now, absoluteSeconds, requestId);
+    const session = await issue(tx, user.id, randomToken(16), new Date(now.getTime() + env.SESSION_IDLE_SECONDS * 1000), new Date(now.getTime() + absoluteSeconds * 1000), now, meta);
+    await tx.user.update({ where: { id: user.id }, data: { lastLoginAt: now } });
+    await appendAudit(tx, {
+      actorUserId: user.id, action: 'LOGIN_SUCCEEDED', resource: 'user', resourceId: String(user.id), requestId,
+      ...(mfaUsed ? { changes: { mfa: mfaUsed } } : {}), priority: user.isBreakGlass ? 'HIGH' : 'NORMAL',
     });
+    return session;
+  }
+
+  async function clientBlocked(clientIp: string) {
+    const wait = await deps.clientThrottle.blockedFor(`ip:${clientIp}`);
+    if (wait > 0) throw new HttpError(429, 'TOO_MANY_ATTEMPTS', 'Too many failed attempts — try again later', { retryAfterSeconds: wait });
+  }
+
+  /** A wrong second-step code: counted on the challenge, the account and the client, and audited. */
+  async function mfaFailed(challengeId: number, userId: number, clientIp: string, requestId?: string): Promise<never> {
+    await deps.mfa.countFailure(challengeId);
+    await deps.accountThrottle.fail(`mfa:${userId}`);
+    await deps.clientThrottle.fail(`ip:${clientIp}`);
+    await appendAudit(db, { actorUserId: null, action: 'MFA_FAILED', resource: 'user', resourceId: String(userId), requestId, priority: 'HIGH' });
+    throw mfaCodeInvalid();
+  }
+
+  const mfaLocked = (wait: number) => new HttpError(429, 'TOO_MANY_ATTEMPTS', 'Too many wrong codes — try again later', { retryAfterSeconds: wait });
+
+  /** Second step for an account with an authenticator: a current code or an unused recovery code. */
+  async function mfaVerify(challenge: string, code: string, clientIp: string, requestId?: string, userAgent?: string): Promise<IssuedSession> {
+    await clientBlocked(clientIp);
+    const now = new Date();
+    const out = await db.$transaction(async (tx) => {
+      const c = await deps.mfa.takeChallenge(tx, challenge, 'VERIFY', now);
+      const wait = await deps.accountThrottle.blockedFor(`mfa:${c.userId}`);
+      if (wait > 0) return { wait };
+      const used = await deps.mfa.verify(tx, c.userId, code, now);
+      if (!used) return { failedChallenge: c.id, userId: c.userId };
+      await tx.mfaChallenge.update({ where: { id: c.id }, data: { usedAt: now } });
+      if (used === 'RECOVERY_CODE') {
+        const left = await tx.mfaRecoveryCode.count({ where: { userId: c.userId, usedAt: null } });
+        await appendAudit(tx, { actorUserId: c.userId, action: 'MFA_RECOVERY_CODE_USED', resource: 'user', resourceId: String(c.userId), changes: { remaining: left }, requestId, priority: 'HIGH' });
+        await deps.mfa.notify(tx, c.userId, `recovery:${c.id}`, 'A recovery code was used to sign in',
+          `You signed in with a recovery code; ${left} remain. Each code works once. If this was not you, tell HR at once.`,
+          'تم استخدام رمز استرداد لتسجيل الدخول', `سجلت الدخول برمز استرداد؛ تبقى ${left}. إذا لم تكن أنت فأبلغ الموارد البشرية فوراً.`);
+      }
+      return { session: await completeLogin(tx, c.user, now, { ip: clientIp, userAgent }, requestId, used), userId: c.userId };
+    });
+    if ('wait' in out) throw mfaLocked(out.wait!);
+    if ('failedChallenge' in out) return mfaFailed(out.failedChallenge!, out.userId!, clientIp, requestId);
+    await deps.accountThrottle.reset(`mfa:${out.userId}`);
+    return out.session!;
+  }
+
+  /** Second step when the role requires an authenticator the account does not have yet: a new seed to scan. */
+  async function mfaEnrollStart(challenge: string, clientIp: string) {
+    await clientBlocked(clientIp);
+    return db.$transaction(async (tx) => {
+      const c = await deps.mfa.takeChallenge(tx, challenge, 'ENROLL');
+      return { ...(await deps.mfa.startSetup(tx, c.user)), account: c.user.email };
+    });
+  }
+
+  /** Confirms the new authenticator with its first code; signs in and returns the recovery codes (shown once). */
+  async function mfaEnrollConfirm(challenge: string, code: string, clientIp: string, requestId?: string, userAgent?: string) {
+    await clientBlocked(clientIp);
+    const now = new Date();
+    const out = await db.$transaction(async (tx) => {
+      const c = await deps.mfa.takeChallenge(tx, challenge, 'ENROLL', now);
+      const wait = await deps.accountThrottle.blockedFor(`mfa:${c.userId}`);
+      if (wait > 0) return { wait };
+      const codes = await deps.mfa.confirmSetup(tx, c.userId, code, now);
+      if (!codes) return { failedChallenge: c.id, userId: c.userId };
+      await tx.mfaChallenge.update({ where: { id: c.id }, data: { usedAt: now } });
+      await appendAudit(tx, { actorUserId: c.userId, action: 'MFA_ENABLED', resource: 'user', resourceId: String(c.userId), changes: { at: 'sign-in' }, requestId, priority: 'HIGH' });
+      await deps.mfa.notify(tx, c.userId, `enabled:${c.id}`, 'Two-factor sign-in turned on',
+        'An authenticator app was set up for your account at sign-in. If this was not you, tell HR at once.',
+        'تم تفعيل التحقق الثنائي', 'تم ربط تطبيق مصادقة بحسابك عند تسجيل الدخول. إذا لم تقم بذلك فأبلغ الموارد البشرية فوراً.');
+      return { session: await completeLogin(tx, c.user, now, { ip: clientIp, userAgent }, requestId, 'ENROLLED'), codes, userId: c.userId };
+    });
+    if ('wait' in out) throw mfaLocked(out.wait!);
+    if ('failedChallenge' in out) return mfaFailed(out.failedChallenge!, out.userId!, clientIp, requestId);
+    await deps.accountThrottle.reset(`mfa:${out.userId}`);
+    return { session: out.session!, recoveryCodes: out.codes! };
   }
 
   /**
@@ -243,7 +336,7 @@ export function createAuthService(deps: AuthDeps) {
     return { items, total: items.length };
   }
 
-  return { login, refresh, logout, changePassword, me, sessions };
+  return { login, mfaVerify, mfaEnrollStart, mfaEnrollConfirm, refresh, logout, changePassword, me, sessions };
 }
 
 export type AuthService = ReturnType<typeof createAuthService>;

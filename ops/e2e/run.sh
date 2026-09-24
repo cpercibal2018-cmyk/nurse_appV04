@@ -23,6 +23,7 @@ fi
 WORK="$(mktemp -d)"
 export E2E_CERT_DIR="$WORK"
 export E2E_DB_PASSWORD="$(openssl rand -hex 16)" E2E_JWT_SECRET="$(openssl rand -hex 32)" E2E_PASSWORD="e2e-$(openssl rand -hex 12)"
+export E2E_MFA_KEY="$(openssl rand -base64 32)"
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=nurse.e2e.test" \
   -addext "subjectAltName=DNS:nurse.e2e.test" -keyout "$WORK/tls.key" -out "$WORK/tls.crt" 2>/dev/null
 chmod 644 "$WORK/tls.key"   # read by nginx inside the container; deleted on exit

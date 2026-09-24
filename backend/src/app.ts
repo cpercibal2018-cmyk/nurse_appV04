@@ -11,6 +11,8 @@ import { errorHandler, unknownRoute } from './middleware/errors.js';
 import { requestId } from './middleware/request-id.js';
 import { createAuthRouter } from './modules/auth/routes.js';
 import { createAuthService } from './modules/auth/service.js';
+import { createMfa } from './modules/auth/mfa.js';
+import { createSecretBox, mfaKey } from './lib/secret-box.js';
 import { createAccountService } from './modules/users/accounts.js';
 import { createRoleAssignmentService } from './modules/users/role-assignments.js';
 import { createUsersRouter } from './modules/users/routes.js';
@@ -70,8 +72,9 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   const tokens = createTokenService(env.JWT_SECRET, env.ACCESS_TOKEN_TTL_SECONDS);
   const authenticate = createAuthenticate(db, tokens, env.CORS_ORIGIN);
   const accountThrottle = createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_ACCOUNT, throttleNamespace);
+  const mfa = createMfa(db, env, createSecretBox(mfaKey(env)));
   const auth = createAuthService({
-    db, env, tokens, passwords,
+    db, env, tokens, passwords, mfa,
     accountThrottle,
     clientThrottle: createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_CLIENT, throttleNamespace),
   });
@@ -84,7 +87,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
     db, passwords, accountThrottle, baseUrl: env.APP_BASE_URL ?? env.CORS_ORIGIN, mailEnabled: Boolean(env.SMTP_HOST),
     clientThrottle: createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_CLIENT, throttleNamespace),
   });
-  app.use('/api/v1/auth', createAuthRouter(env, auth, authenticate, invitations, passwordResets));
+  app.use('/api/v1/auth', createAuthRouter(env, auth, authenticate, invitations, passwordResets, mfa));
 
   // Everything else under /api/v1 requires a signed-in caller. One protected
   // router, so authentication runs once per request; each domain module adds
@@ -92,7 +95,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   const api = Router();
   api.use(authenticate);
   const catalog = createCatalogService(db);
-  api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db), catalog, createBaselineImportService(db), invitations, passwordResets));
+  api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db), catalog, createBaselineImportService(db), invitations, passwordResets, mfa));
   api.use(createWorkforceRouter(db, createOrgService(db)));
   api.use(createNursesRouter(db, createNurseService(db)));
   api.use(createSchedulingRouter(db, createSchedulingService(db), createAttendanceService(db)));

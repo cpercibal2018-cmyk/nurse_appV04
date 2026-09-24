@@ -7,7 +7,7 @@
 import { useState, type ReactNode } from 'react';
 import { App as AntApp, Avatar, Badge, Button, Dropdown, Flex, Layout, Menu, Tag, Tooltip } from 'antd';
 import {
-  BellOutlined, BulbOutlined, GlobalOutlined, HistoryOutlined, KeyOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MoonOutlined,
+  BellOutlined, BulbOutlined, GlobalOutlined, HistoryOutlined, KeyOutlined, SafetyOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MoonOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate } from 'react-router';
@@ -64,6 +64,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       { type: 'divider' as const },
       ...(user?.isBreakGlass ? [] : [{ key: 'password', icon: <KeyOutlined />, label: t('changePassword'), onClick: () => setChangingPassword(true) }]),
       { key: 'sessions', icon: <HistoryOutlined />, label: t('signInHistory'), onClick: () => navigate('/sessions') },
+      { key: 'security', icon: <SafetyOutlined />, label: t('twoFactor'), onClick: () => navigate('/security') },
       { key: 'logout', icon: <LogoutOutlined />, label: t('logout'), onClick: () => void signOut() },
     ],
   };

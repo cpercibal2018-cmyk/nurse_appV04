@@ -35,7 +35,7 @@ Every capability found in the repository, where it lives, how real it is, and wh
 | Password reset / forgot password | **NOT ESTABLISHED** | — | Spec mentions none. |
 | Account invitation / claim | SPEC | Spec §8.1 ("Claim invited account"), spec `@Post('invitations')` | Not implemented. |
 | Account activation / deactivation | Partial | `User.isActive` checked at login/refresh (`index.ts:143,183`) | No endpoint or UI to change it. |
-| SSO, MFA for privileged accounts | SPEC (planned) | Spec §3.5 | Gated on IdP decision (U1). |
+| SSO, MFA for privileged accounts | MFA **BUILT** (D-51); SSO SPEC (planned) | Spec §3.5 | MFA: authenticator app + recovery codes (`/security`, Accounts → Reset two-factor). SSO gated on IdP decision (U1). |
 | Break-glass root account | SPEC + REF model | Spec §3.6, `backend/prisma/schema.prisma:569` `BreakGlassEvent`, `.env.example` `BREAK_GLASS_*` | UI: DISPLAY only (`AdminModule.tsx:151`). No login path, siren or 4 h revocation implemented. |
 | KSA residency startup check | REF / CLIENT | `wave1a-kit/.../residency.check.ts` (correct); `app/src/main.tsx:222-243` (browser, **wrong allowlist**) | **Conflict R-1.** A browser cannot verify database residency. |
 

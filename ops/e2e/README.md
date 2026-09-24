@@ -21,18 +21,18 @@ Needs Docker with Compose, Node 22 and `openssl`. The first run installs Playwri
 | `web` | `nurseapp/web` | Yes — the release nginx configuration |
 | `tls` | `nginx:1.28-alpine` | Stands in for the load balancer: TLS with a throwaway self-signed certificate for `nurse.e2e.test`, client address in `X-Client-Ip`. It also opens a **test-only** plain-HTTP port so the test can show the cookies are never sent without TLS |
 
-Passwords, the JWT key and the certificate are generated for each run and deleted afterwards.
+Passwords, the JWT key, the MFA encryption key and the certificate are generated for each run and deleted afterwards.
 
 ## What it checks ([`https-session.test.mjs`](https-session.test.mjs))
 
 | # | Check | Spec |
 | :--- | :--- | :--- |
 | 1 | The site answers over HTTPS with HSTS, CSP and `X-Frame-Options: DENY` | §3.4 |
-| 2 | After sign-in the refresh cookie is `Secure`, `HttpOnly`, `SameSite=Lax`, path `/api/v1/auth`; the CSRF cookie is `Secure` and readable by the app; page scripts cannot see the refresh cookie; no access token in `localStorage` / `sessionStorage` | §3.3, §3.4 |
+| 2 | The HR account gets **no session from its password alone**: it must set up an authenticator (the test reads the key, computes the codes like an app, and sees ten recovery codes) — spec §3.5, D-51. After sign-in the refresh cookie is `Secure`, `HttpOnly`, `SameSite=Lax`, path `/api/v1/auth`; the CSRF cookie is `Secure` and readable by the app; page scripts cannot see the refresh cookie; no access token in `localStorage` / `sessionStorage` | §3.3, §3.4 |
 | 3 | A page reload keeps the user signed in and rotates the refresh cookie | §3.3 |
 | 4 | Over plain HTTP the browser sends neither cookie; over HTTPS it does (a probe the server refuses, so nothing is consumed) | §3.4 |
 | 5 | When the access token expires while the app is in use, the next request renews it silently and the refresh cookie rotates again | §3.3, §3.4 |
 | 6 | Replaying an already-used refresh cookie gets 401 and ends the whole session: the browser's current cookie stops working and the next reload lands on the sign-in page | §3.3 "replay is rejected" |
-| 7 | Sign-out clears both cookies; a reload stays on the sign-in page; the pre-sign-out refresh cookie gets 401 | §3.4 |
+| 7 | Signing in again takes the password and a fresh authenticator code. Sign-out clears both cookies; a reload stays on the sign-in page; the pre-sign-out refresh cookie gets 401 | §3.4 |
 
 CI runs it in the `images` job on every pull request ([ci.yml](../../.github/workflows/ci.yml)).

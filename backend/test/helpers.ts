@@ -22,7 +22,9 @@ let seq = 0;
 export const uniq = (prefix: string) => `${prefix}${Date.now().toString(36)}${(seq++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 export function testEnv(overrides: Record<string, string> = {}): Env {
-  return loadEnv({ NODE_ENV: 'test', DATABASE_URL: TEST_URL!, JWT_SECRET: 'test-only-secret-0123456789-abcdefghijklmnop', ...overrides });
+  // MFA is off by default so the suite's privileged users sign in with a
+  // password; test/mfa.test.ts turns it on with MFA_REQUIRED_ROLES.
+  return loadEnv({ NODE_ENV: 'test', DATABASE_URL: TEST_URL!, JWT_SECRET: 'test-only-secret-0123456789-abcdefghijklmnop', MFA_REQUIRED_ROLES: 'none', ...overrides });
 }
 
 // bcrypt cost 4 keeps the suite fast; production uses BCRYPT_ROUNDS (12).
@@ -78,11 +80,17 @@ export async function makeUser(db: Db, opts: MakeUser = {}) {
   return { ...user, email };
 }
 
-/** A signed-in client: cookie jar + bearer + CSRF headers on every call. */
-export async function signIn(app: Express, email: string, password = PASSWORD) {
+/**
+ * A signed-in client: cookie jar + bearer + CSRF headers on every call. For an
+ * account with an authenticator, `mfaCode` supplies the second step (spec §3.5).
+ */
+export async function signIn(app: Express, email: string, password = PASSWORD, mfaCode?: () => Promise<string>) {
   const agent = request.agent(app);
-  const res = await agent.post('/api/v1/auth/login').set('Origin', ORIGIN).send({ email, password });
-  if (res.status !== 200) throw new Error(`login failed: ${res.status} ${JSON.stringify(res.body)}`);
+  let res = await agent.post('/api/v1/auth/login').set('Origin', ORIGIN).send({ email, password });
+  if (res.status === 200 && res.body.mfa?.step === 'VERIFY' && mfaCode) {
+    res = await agent.post('/api/v1/auth/mfa/verify').set('Origin', ORIGIN).send({ challenge: res.body.mfa.challenge, code: await mfaCode() });
+  }
+  if (res.status !== 200 || !res.body.token) throw new Error(`login failed: ${res.status} ${JSON.stringify(res.body)}`);
   const session = { token: res.body.token as string, csrf: res.body.csrfToken as string };
   const withAuth = (r: request.Test) => r.set('Authorization', `Bearer ${session.token}`).set('X-CSRF-Token', session.csrf).set('Origin', ORIGIN);
   return {

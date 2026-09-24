@@ -55,11 +55,12 @@ export function createAccountService(db: Db, passwords: PasswordService) {
       select: {
         id: true, email: true, displayName: true, isActive: true, isBreakGlass: true, employeeId: true, lastLoginAt: true, createdAt: true,
         employee: { select: { jobNumber: true, fullName: true, unitId: true } },
+        mfaFactor: { select: { confirmedAt: true } },
         roleAssignments: { where: { revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, select: { role: true, scopeType: true } },
       },
       orderBy: { email: 'asc' },
     });
-    return { items: users, total: users.length };
+    return { items: users.map(({ mfaFactor, ...u }) => ({ ...u, mfaEnabled: Boolean(mfaFactor?.confirmedAt) })), total: users.length };
   }
 
   async function create(auth: AuthContext, body: z.infer<typeof CreateAccountBody>, requestId?: string) {

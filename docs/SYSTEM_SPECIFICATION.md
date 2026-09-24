@@ -83,7 +83,7 @@ These stay in the reference and get their own migration and module when schedule
 | Spec | Capability |
 | :--- | :--- |
 | §7.6 | Mobile push. (SMTP e-mail, §7.2, is built — D-47; the §7.4 health endpoint is replaced by the monitoring query in DEPLOYMENT.md §7) |
-| §3.5 | SSO, MFA |
+| §3.5 | SSO (identity provider not chosen). MFA is **built** (D-51): authenticator app + recovery codes, required for System Admin, HR Admin and Supervisor, never for break-glass |
 | §5.3 | The document vault (signed download URLs, separate quarantine storage). ClamAV scanning is built (D-10 row above) |
 | §5.4 | SCFHS credential verification integration |
 | §9.2 | Request-level forensic log table (JSON request logs exist, without personal data) |

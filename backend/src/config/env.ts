@@ -29,6 +29,22 @@ const EnvSchema = z.object({
   SESSION_ABSOLUTE_SECONDS: int(86400),
   /** bcrypt cost — spec §3.4 BCRYPT_ROUNDS=12. */
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
+  // ── MFA (spec §3.5) ──────────────────────────────────────────────────────
+  /**
+   * Roles whose holders must use an authenticator app, comma-separated, or
+   * "none". Spec §3.5 names HR Admin and System Admin; production refuses a
+   * list without both. Break-glass is never asked (spec §3.6).
+   */
+  MFA_REQUIRED_ROLES: z
+    .string()
+    .default('SYSTEM_ADMIN,HR_ADMIN,SUPERVISOR')
+    .transform((s) => (s.trim().toLowerCase() === 'none' ? [] : s.split(',').map((r) => r.trim()).filter(Boolean)))
+    .pipe(z.array(z.enum(['SYSTEM_ADMIN', 'HR_ADMIN', 'SUPERVISOR']))),
+  /** 32 random bytes, base64: encrypts the authenticator secrets at rest. Required in production. */
+  MFA_ENCRYPTION_KEY: z
+    .string()
+    .default('')
+    .refine((k) => k === '' || Buffer.from(k, 'base64').length === 32, 'must be 32 random bytes, base64-encoded (openssl rand -base64 32)'),
   // Login attempt limits: spec §3.3 requires "account/client attempt limits" but
   // gives no numbers (REQUIREMENT NOT ESTABLISHED). Defaults mirror the spec's
   // registration throttle (5 per 15 minutes) for accounts; the per-client value
@@ -87,6 +103,12 @@ export type Env = z.infer<typeof EnvSchema>;
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const parsed = EnvSchema.superRefine((e, ctx) => {
     if (e.SMTP_HOST && !e.SMTP_FROM) ctx.addIssue({ code: 'custom', path: ['SMTP_FROM'], message: 'required when SMTP_HOST is set' });
+    if (e.NODE_ENV === 'production' && !e.MFA_ENCRYPTION_KEY) {
+      ctx.addIssue({ code: 'custom', path: ['MFA_ENCRYPTION_KEY'], message: 'required in production (openssl rand -base64 32)' });
+    }
+    if (e.NODE_ENV === 'production' && !(e.MFA_REQUIRED_ROLES.includes('SYSTEM_ADMIN') && e.MFA_REQUIRED_ROLES.includes('HR_ADMIN'))) {
+      ctx.addIssue({ code: 'custom', path: ['MFA_REQUIRED_ROLES'], message: 'must include SYSTEM_ADMIN and HR_ADMIN in production (spec §3.5)' });
+    }
     if (e.NODE_ENV === 'production' && !e.SMTP_TLS_REJECT_UNAUTHORIZED) {
       ctx.addIssue({ code: 'custom', path: ['SMTP_TLS_REJECT_UNAUTHORIZED'], message: 'must stay true in production (verify the relay certificate)' });
     }

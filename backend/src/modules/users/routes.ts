@@ -9,6 +9,7 @@ import { createPamService, ElevateBody } from '../administration/pam.js';
 import { CreateAccountBody, ListAccountsQuery, UpdateAccountBody, type createAccountService } from './accounts.js';
 import type { InvitationService } from './invitations.js';
 import type { PasswordResetService } from './password-reset.js';
+import type { MfaService } from '../auth/mfa.js';
 import { ACCESS_MATRIX, PERMISSIONS } from './permissions.js';
 import type { CatalogService } from '../credentials/catalog.js';
 import { GrantBody, ListQuery, RevokeBody, UpdateBody, type RoleAssignmentService } from './role-assignments.js';
@@ -24,6 +25,7 @@ export function createUsersRouter(
   baseline: BaselineImportService,
   invitations: InvitationService,
   resets: PasswordResetService,
+  mfa: MfaService,
 ) {
   const router = Router();
   const approvals = createApprovalService(db, roles, catalog, baseline);
@@ -33,6 +35,11 @@ export function createUsersRouter(
   // Assisted password reset (D-50): the link goes to the account's own e-mail.
   router.post('/users/:id/password-reset', authorize('accounts.write'), async (req, res) => {
     res.status(202).json(await resets.sendAssisted(authOf(res), IdParam.parse(req.params).id, res.locals.requestId));
+  });
+  // Lost authenticator (spec §3.5): removes it and signs the account out; a new one is set up at the next sign-in.
+  router.post('/users/:id/mfa/reset', authorize('accounts.write'), async (req, res) => {
+    await mfa.adminReset(authOf(res), IdParam.parse(req.params).id, res.locals.requestId);
+    res.status(204).end();
   });
   // Registration invitations (spec §3.2): the link is e-mailed, never returned.
   router.post('/employees/:id/invitations', authorize('accounts.write'), async (req, res) => {

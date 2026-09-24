@@ -28,6 +28,8 @@ Every backend setting is in [`.env.example`](../.env.example) and is validated a
 | `JWT_SECRET` | — | Required, ≥ 32 characters of random data (spec §3.4). Rotating it signs everyone out |
 | `ACCESS_TOKEN_TTL_SECONDS` / `SESSION_IDLE_SECONDS` / `SESSION_ABSOLUTE_SECONDS` | 900 / 3600 / 86400 | D-6 |
 | `BCRYPT_ROUNDS` | 12 | 10–15 |
+| `MFA_REQUIRED_ROLES` | SYSTEM_ADMIN,HR_ADMIN,SUPERVISOR | Holders must use an authenticator app (spec §3.5, D-51). Production refuses a list without `SYSTEM_ADMIN` and `HR_ADMIN` |
+| `MFA_ENCRYPTION_KEY` | — (development derives one) | **Required in production:** 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts the authenticator secrets; keep it in the deployment secrets **and** with the backup keys — a restore without it means every authenticator is set up again (HR resets each) |
 | `LOGIN_THROTTLE_WINDOW_SECONDS` / `_MAX_PER_ACCOUNT` / `_MAX_PER_CLIENT` | 900 / 5 / 20 | D-23. Counted in the database (`login_throttle`, D-46), so they hold across any number of API instances and restarts |
 | `STORAGE_DIR` | ./storage | Persistent, backed-up volume; never served directly |
 | `UPLOAD_MAX_SIZE_BYTES` | 10485760 | Spec §5.1.5 |
@@ -125,6 +127,8 @@ curl -fsS https://<host>/api/v1/health   # 200 {"status":"ok","database":"up"}; 
 CI has already run the HTTPS browser test of the session cookies against the release images ([ops/e2e](../ops/e2e/README.md)).
 
 After a release, a System Admin should open **Audit → Verify chain** (expected: intact) and **Administration → Jobs** (expected: recent runs completed).
+
+**First release with MFA (D-51):** set `MFA_ENCRYPTION_KEY` before starting the new version (it refuses to start without it). Every HR, supervisor and System Admin account is asked to set up an authenticator app at its next sign-in; sessions already open continue until they end (at most 24 hours). Tell those users beforehand to install an authenticator app (Microsoft Authenticator, Google Authenticator or similar). A lost phone: the person signs in with a recovery code, or HR / a System Admin resets it in **Administration → Accounts → Reset two-factor** after confirming who is asking.
 
 **First release after commit 10b:** the reminder job sends each record's current milestone once under the new milestone keys (D-39); contracts that already ended without a renewal get one "Contract ended" notice.
 
