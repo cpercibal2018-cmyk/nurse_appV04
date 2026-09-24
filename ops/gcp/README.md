@@ -30,9 +30,30 @@ How V04 runs in production and how a release reaches it. The container images, t
 Everything is created in `me-central2`. Enforce it for the project so nothing lands elsewhere by mistake:
 
 - Organization policy **`gcp.resourceLocations`** → allow only `in:me-central2-locations` on the project.
-- **Cloud Logging** stores logs in a global bucket by default: set the project's `_Default` bucket (or the organization's log storage setting) to `me-central2` before the first VM starts. The application logs carry identifiers only, never personal data, but they stay in the Kingdom too.
+- **Cloud Logging** stores logs in a `global` bucket by default, and a bucket's location **cannot be changed after it exists**. Either set the organization's default *before creating the project* — `gcloud logging settings update --organization=<ORG_ID> --storage-location=me-central2` — or, for an existing project, create a regional bucket and send the `_Default` sink to it:
+  ```bash
+  gcloud logging buckets create nurseapp-logs --location=me-central2 --retention-days=90
+  gcloud logging sinks update _Default logging.googleapis.com/projects/$PROJECT/locations/me-central2/buckets/nurseapp-logs
+  ```
+  The application logs carry identifiers only, never personal data, but they stay in the Kingdom too.
 - Artifact Registry, the backup bucket and disk snapshots below all name `me-central2` explicitly.
 - `DATA_RESIDENCY_REGION=me-central-2` and `PDPL_ALLOWED_REGIONS=me-central-2` in the app settings (§5); the API refuses to start otherwise.
+
+## 1a. Pre-flight: confirm `me-central2` has what this design needs
+
+Run these before creating anything else; each must succeed. If one fails, stop and review the design (a global load balancer changes the residency picture, §6).
+
+```bash
+gcloud compute regions describe me-central2 --format='value(status)'                        # UP
+gcloud compute machine-types describe e2-standard-4 --zone=me-central2-a --format='value(name)'
+gcloud compute images describe-from-family debian-12 --project=debian-cloud --format='value(name)'
+# Regional external Application Load Balancer: the proxy-only subnet in §2 is the real test —
+# `--purpose=REGIONAL_MANAGED_PROXY` succeeds only where the regional load balancer is offered.
+gcloud certificate-manager certificates list --location=me-central2                          # an empty list, not an error
+gcloud compute security-policies list --regions=me-central2                                  # regional Cloud Armor: empty list, not an error
+```
+
+Google's own list is the "Regional external Application Load Balancer — supported regions" page in the Cloud Load Balancing documentation; check `me-central2` is on it.
 
 ## 2. Project, network, firewall
 
@@ -165,12 +186,20 @@ gcloud compute backend-services create nurseapp-be --region=$REGION --load-balan
   --custom-request-header='X-Client-Ip:{client_ip_address}'
 gcloud compute backend-services add-backend nurseapp-be --region=$REGION --instance-group=nurseapp-app-ig --instance-group-zone=$ZONE
 gcloud compute url-maps create nurseapp-lb --region=$REGION --default-service=nurseapp-be
-# Certificate: a Certificate Manager regional certificate for the hospital's host name (DNS authorization), then:
+# Certificate for the hospital's host name (e.g. nurse.<hospital-domain>), proved by a DNS record:
+HOST=<nurse.hospital-domain>
+gcloud certificate-manager dns-authorizations create nurseapp-dns --domain=$HOST --location=$REGION
+gcloud certificate-manager dns-authorizations describe nurseapp-dns --location=$REGION --format='value(dnsResourceRecord)'
+#   → add that CNAME record in the hospital's DNS, then:
+gcloud certificate-manager certificates create nurseapp-cert --domains=$HOST --dns-authorizations=nurseapp-dns --location=$REGION
+gcloud certificate-manager certificates describe nurseapp-cert --location=$REGION --format='value(managed.state)'   # wait for ACTIVE
 gcloud compute target-https-proxies create nurseapp-https --region=$REGION --url-map=nurseapp-lb --url-map-region=$REGION \
-  --certificate-manager-certificates=<certificate>
+  --certificate-manager-certificates=projects/$PROJECT/locations/$REGION/certificates/nurseapp-cert
 gcloud compute addresses create nurseapp-ip --region=$REGION --network-tier=PREMIUM
 gcloud compute forwarding-rules create nurseapp-443 --region=$REGION --load-balancing-scheme=EXTERNAL_MANAGED \
   --network=nurseapp-vpc --address=nurseapp-ip --target-https-proxy=nurseapp-https --target-https-proxy-region=$REGION --ports=443
+gcloud compute addresses describe nurseapp-ip --region=$REGION --format='value(address)'
+#   → an A record for $HOST pointing at this address in the hospital's DNS
 ```
 
 The `X-Client-Ip` header is how the API learns the user's real address (sign-in limits, session history): nginx accepts it only from `LB_PROXY_SUBNET`. **Recommended:** a Cloud Armor regional security policy on `nurseapp-be` that allows only the hospital's public egress addresses (and any approved remote-access ranges); the application is for hospital staff.
