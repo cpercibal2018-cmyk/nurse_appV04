@@ -9,7 +9,8 @@
 //
 // Scanning is synchronous in the upload request (files are ≤ UPLOAD_MAX_SIZE_BYTES),
 // so there is no PENDING/quarantine state to reconcile: a document row exists
-// only for bytes that clamd reported clean. See docs/DEPLOYMENT.md §6.
+// only for bytes that clamd reported clean. The spec's asynchronous quarantine
+// queue is deliberately not built (owner decision D-43; docs/DEPLOYMENT.md §2.1).
 
 import net from 'node:net';
 import type { Env } from '../config/env.js';

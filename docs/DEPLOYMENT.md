@@ -50,7 +50,7 @@ Every upload (credential evidence and contract copies) goes: size and type check
 | `… FOUND` | 422 `UPLOAD_INFECTED` | **Nothing stored.** A HIGH audit entry `DOCUMENT_REJECTED_INFECTED` (file name, size, SHA-256, signature) and an error log line `malware detected in upload` |
 | Error, timeout, unreachable | Retried — 3 attempts in total — then 503 `SCANNER_UNAVAILABLE` | Nothing stored; error log `upload scan failed; upload refused`. The user uploads again later |
 
-This differs from the spec's asynchronous quarantine worker (§5.3.2: `PENDING` → `SCANNING` → `CLEAN` / `INFECTED` / `SCAN_FAILED`): with files capped at `UPLOAD_MAX_SIZE_BYTES` a synchronous scan meets the same rules — no unscanned byte is ever stored or served, infected files are not kept, the event is audited — without a quarantine area or a scan job to reconcile.
+**Deliberate deviation from the spec — owner decision [D-43](V04_ARCHITECTURE_PLAN.md#9a-decision-record-2026-09-23).** Spec §5.3.2 describes an asynchronous quarantine queue (`PENDING` → `SCANNING` → `CLEAN` / `INFECTED` / `SCAN_FAILED`, a quarantine area and a scan worker). It is not built and should not be: the uploader gets an immediate answer instead of a later silent deletion, unscanned bytes never reach persistent storage, and there is no worker that could crash and leave files stuck pending. With files capped at `UPLOAD_MAX_SIZE_BYTES` the synchronous scan meets the spec's rules — nothing unscanned is stored or served, infected files are not kept, every rejection is audited.
 
 **Operating `clamd`:**
 
