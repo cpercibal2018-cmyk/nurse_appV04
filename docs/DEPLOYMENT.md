@@ -71,8 +71,7 @@ Owner decision 2026-09-24: the two safety nets of the database-first migration (
 
 1. Fresh backup of the development database `nurseapp_v04` (`pg_dump -Fc`) — the new rollback point.
 2. A migration drops `credential_templates.field_defs_legacy` (remove it from `schema.prisma` and from `presentTemplate` in `credentials/fields.ts`); full test suite; applied to the development and test databases. In a fresh database the column is always empty, so it protects nothing in production.
-3. The owner deletes `C:\WebApp_project\Local_Repoackups
-urseapp_v04_pre-db-first.dump` and `nurseapp_test_pre-db-first.dump` (development data only; deleting files is the owner's step).
+3. The owner deletes `C:\WebApp_project\Local_Repo\backups\nurseapp_v04_pre-db-first.dump` and `nurseapp_test_pre-db-first.dump` (development data only; deleting files is the owner's step).
 4. Keep the Git tag `pre-db-first` (code only, no data).
 5. Record the date and decision in [DATABASE_MIGRATION.md §8](DATABASE_MIGRATION.md#8-follow-up-after-the-final-report).
 
