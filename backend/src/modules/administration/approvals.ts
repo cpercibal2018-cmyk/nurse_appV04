@@ -23,6 +23,10 @@ export const DecideBody = z.strictObject({
 export const ListApprovalsQuery = z.object({ status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'EXECUTED']).default('PENDING') });
 
 const ADMIN_ROLES = ['HR_ADMIN', 'SYSTEM_ADMIN'] as const;
+/** GET /approvals returns at most this many rows the caller may decide. */
+const LIST_LIMIT = 200;
+/** Rows read per database round trip while filling the list. */
+const LIST_BATCH = 200;
 
 interface LockedRow { id: number; initiator_id: number; status: string; action_type: string; payload: ApprovalPayload }
 
@@ -48,17 +52,32 @@ export function createApprovalService(db: Db, roles: RoleAssignmentService, cata
     }
   }
 
+  /**
+   * Newest first, at most LIST_LIMIT rows the caller may decide. Scope is a
+   * property of each request's payload, so it is applied in code — and the cap
+   * is applied AFTER it: rows are read in batches until the limit is reached or
+   * the status is exhausted, so a scoped admin's request is never pushed out by
+   * other admins' requests. The scope used for visibility is also enforced
+   * before either decision.
+   */
   async function list(auth: AuthContext, q: z.infer<typeof ListApprovalsQuery>) {
-    const rows = await db.approvalRequest.findMany({
+    const scope = await unitScope(db, auth, ADMIN_ROLES);
+    const page = (cursorId?: number) => db.approvalRequest.findMany({
       where: { status: q.status },
       include: { initiator: { select: { displayName: true, email: true } }, approver: { select: { displayName: true } } },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: LIST_BATCH,
+      ...(cursorId === undefined ? {} : { cursor: { id: cursorId }, skip: 1 }),
     });
-    // The scope used for visibility is also enforced before either decision.
-    const scope = await unitScope(db, auth, ADMIN_ROLES);
-    const visible = rows.filter((r) => canDecide(auth, scope, r.payload as unknown as ApprovalPayload));
-    return { items: visible, total: visible.length };
+    const visible: Awaited<ReturnType<typeof page>> = [];
+    for (let cursorId: number | undefined; visible.length < LIST_LIMIT;) {
+      const rows = await page(cursorId);
+      for (const r of rows) if (canDecide(auth, scope, r.payload as unknown as ApprovalPayload)) visible.push(r);
+      if (rows.length < LIST_BATCH) break;
+      cursorId = rows[rows.length - 1]!.id;
+    }
+    const items = visible.slice(0, LIST_LIMIT);
+    return { items, total: items.length };
   }
 
   async function lockPending(tx: Parameters<Parameters<Db['$transaction']>[0]>[0], id: number, approverId: number) {

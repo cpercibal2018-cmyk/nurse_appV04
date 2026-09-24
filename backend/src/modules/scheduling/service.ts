@@ -79,14 +79,13 @@ export function createSchedulingService(db: Db) {
 
   /** Assignments of a unit/window with live eligibility, and coverage per date × shift. */
   async function board(tx: DbClient, unitId: number, from: IsoDate, to: IsoDate) {
-    const [rows, targets] = await Promise.all([
-      tx.shiftAssignment.findMany({
-        where: { unitId, status: { not: 'Cancelled' }, shiftDate: { gte: toDbDate(from), lte: toDbDate(to) } },
-        include: { employee: { select: { jobNumber: true, fullName: true } } },
-        orderBy: [{ shiftDate: 'asc' }, { shiftType: 'asc' }, { employeeId: 'asc' }],
-      }),
-      tx.coverageTarget.findMany({ where: { unitId } }),
-    ]);
+    // Sequential: `tx` may be a transaction client (one pinned pg connection; no concurrent queries).
+    const rows = await tx.shiftAssignment.findMany({
+      where: { unitId, status: { not: 'Cancelled' }, shiftDate: { gte: toDbDate(from), lte: toDbDate(to) } },
+      include: { employee: { select: { jobNumber: true, fullName: true } } },
+      orderBy: [{ shiftDate: 'asc' }, { shiftType: 'asc' }, { employeeId: 'asc' }],
+    });
+    const targets = await tx.coverageTarget.findMany({ where: { unitId } });
     const check = engineFor(tx);
     const assignments: Array<{ id: number; employeeId: number; jobNumber: string; fullName: string; unitId: number; shiftDate: IsoDate; shiftType: string; status: string; notes: string | null; eligibilityAtPublish: string | null; eligibility: ReturnType<typeof slim> }> = [];
     for (const a of rows) {
@@ -210,10 +209,9 @@ export function createSchedulingService(db: Db) {
         const targets = new Map((await tx.coverageTarget.findMany({ where: { unitId: body.unitId } })).map((t) => [t.shiftType, t.minimumStaff]));
         const targetsMissing = SHIFT_TYPES.filter((s) => !targets.has(s));
         if (from > body.to) return { dryRun: body.dryRun, proposed: [], unfilled: [], targetsMissing };
-        const [nurses, existing] = await Promise.all([
-          tx.employee.findMany({ where: { unitId: body.unitId, deletedAt: null }, select: { id: true, jobNumber: true, fullName: true }, orderBy: { jobNumber: 'asc' } }),
-          tx.shiftAssignment.findMany({ where: { status: { not: 'Cancelled' }, shiftDate: { gte: toDbDate(from), lte: toDbDate(body.to) } }, select: { employeeId: true, unitId: true, shiftDate: true, shiftType: true } }),
-        ]);
+        // Sequential: inside a transaction (one pinned pg connection; no concurrent queries).
+        const nurses = await tx.employee.findMany({ where: { unitId: body.unitId, deletedAt: null }, select: { id: true, jobNumber: true, fullName: true }, orderBy: { jobNumber: 'asc' } });
+        const existing = await tx.shiftAssignment.findMany({ where: { status: { not: 'Cancelled' }, shiftDate: { gte: toDbDate(from), lte: toDbDate(body.to) } }, select: { employeeId: true, unitId: true, shiftDate: true, shiftType: true } });
         const check = engineFor(tx);
         const booked = existing.map((e) => ({ employeeId: e.employeeId, unitId: e.unitId, date: dbDate(e.shiftDate), shiftType: e.shiftType as ShiftType }));
         const load = new Map(nurses.map((n) => [n.id, booked.filter((b) => b.employeeId === n.id).length]));

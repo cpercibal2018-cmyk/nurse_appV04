@@ -77,7 +77,7 @@ nurse_appV04/
 | `notifications` | Own notification list and acknowledgement | `routes.ts` |
 | `audit` | Audit search and chain verification; job administration | `routes.ts` |
 
-**Module rules.** A module exposes `routes.ts` (HTTP only: permission, parse, call) and a service (the rules). Services take the Prisma transaction client; every write happens in one transaction together with its audit entry and the eligibility refresh it causes. Two shared entry points are called from many modules: `appendAudit(tx, …)` and `refreshEligibility(tx, employeeId, event)`.
+**Module rules.** A module exposes `routes.ts` (HTTP only: permission, parse, call) and a service (the rules). Services take the Prisma transaction client; every write happens in one transaction together with its audit entry and the eligibility refresh it causes. Queries on a transaction client are issued one at a time — never `Promise.all` — because a transaction is one pinned PostgreSQL connection (`pg` 9 rejects concurrent queries on it); `Promise.all` is fine on the root client, which uses the pool. Two shared entry points are called from many modules: `appendAudit(tx, …)` and `refreshEligibility(tx, employeeId, event)`.
 
 ## 5. A request, end to end
 
@@ -104,7 +104,7 @@ The scheduler ticks every minute. Each period has a unique run key in `job_runs`
 
 ## 8. Audit
 
-`appendAudit(tx, …)` calls the SQL function `fn_append_audit_entry`, which takes an advisory lock, links the row to the previous hash and hashes the stored columns (including the timestamp). A trigger rejects every `UPDATE` and `DELETE` on `audit_entries`, whichever database role connects. The view `audit_chain_breaks` lists any row whose link or content fails verification; `GET /audit/verify` reports it. Details: [DATABASE.md §4](DATABASE_ARCHITECTURE.md#4-audit-chain).
+`appendAudit(tx, …)` calls the SQL function `fn_append_audit_entry`, which takes an advisory lock, links the row to the previous hash and hashes the stored columns (including the timestamp). A trigger rejects every `UPDATE` and `DELETE` on `audit_entries`, whichever database role connects. The view `audit_chain_breaks` lists any row whose link or content fails verification; `GET /audit/verify` reports it. Details: [DATABASE_ARCHITECTURE.md §4](DATABASE_ARCHITECTURE.md#4-audit-chain).
 
 ## 9. Frontend
 
@@ -127,4 +127,4 @@ The scheduler ticks every minute. Each period has a unique run key in `job_runs`
 | Documentation | `backend/test/docs.test.ts`, `scripts/check-docs.mjs` | RBAC.md matches the permission table; every documentation link resolves |
 | Frontend | `frontend/src/**/*.test.ts(x)` | Translations complete, every page loads, Hijri and phone helpers |
 
-Run everything with `npm test` from the repository root; CI (`.github/workflows/ci.yml`) generates the Prisma client before the seed, deploys migrations twice (idempotent deployment, **not** a drift check), seeds twice (reference-data idempotency) and builds.
+Run everything with `npm test` from the repository root; CI (`.github/workflows/ci.yml`) generates the Prisma client, deploys migrations twice (idempotent deployment, **not** a drift check), runs the typecheck and the tests, and builds. There is no seed: the tests create their own rows, and the database-first suites start from brand-new migrated databases ([DATABASE_ARCHITECTURE.md §7](DATABASE_ARCHITECTURE.md#7-how-data-enters-the-database)).
