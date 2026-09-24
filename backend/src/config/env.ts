@@ -41,8 +41,15 @@ const EnvSchema = z.object({
   STORAGE_DIR: z.string().min(1).default('./storage'),
   /** Spec §5.1.5: 10 MB per upload, configurable. */
   UPLOAD_MAX_SIZE_BYTES: int(10 * 1024 * 1024),
-  /** D-10: dev marks files CLEAN after magic-byte checks; production refuses to start without a real scanner. */
+  /** D-10: dev marks files CLEAN after magic-byte checks; production requires clamav. */
   UPLOAD_SCANNER: z.enum(['dev-magic-bytes', 'clamav']).default('dev-magic-bytes'),
+  /** clamd TCP endpoint (spec §5.3.2); required when UPLOAD_SCANNER=clamav. */
+  CLAMAV_HOST: z.string().default(''),
+  CLAMAV_PORT: int(3310),
+  /** Per clamd call; spec §5.3.2: 30 s. */
+  CLAMAV_TIMEOUT_MS: int(30_000),
+  /** Spec §5.3.2 rule 7: older signatures raise an operations alert (error log). */
+  CLAMAV_MAX_SIGNATURE_AGE_HOURS: int(48),
   // ── Background jobs (spec §10.2; plan "Jobs") ─────────────────────────────
   /** in-process: the API runs the scheduler (development). worker: a separate `npm run worker` runs it (production). off: nothing runs. */
   JOBS_MODE: z.enum(['in-process', 'worker', 'off']).default('in-process'),

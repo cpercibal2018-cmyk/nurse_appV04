@@ -20,6 +20,7 @@ import { createRecordService } from './modules/credentials/records.js';
 import { createCredentialsRouter } from './modules/credentials/routes.js';
 import { createEligibilityService } from './modules/eligibility/service.js';
 import { createStorage } from './lib/uploads.js';
+import { createScanner, type UploadScanner } from './lib/scanner.js';
 import { createWorkforceRouter } from './modules/workforce/routes.js';
 import { createOrgService } from './modules/workforce/org.js';
 import { createNurseService } from './modules/nurses/service.js';
@@ -37,12 +38,14 @@ export interface AppDeps {
   db: Db;
   /** Injectable so tests can use a cheaper bcrypt cost; defaults to env.BCRYPT_ROUNDS. */
   passwords?: PasswordService;
+  /** Injectable so tests can simulate infected files and scanner outages; defaults to env.UPLOAD_SCANNER. */
+  scanner?: UploadScanner;
 }
 
 const HEALTH_DB_TIMEOUT_MS = 2000;
 
 /** Builds the Express application without starting a listener (tests use it directly). */
-export function createApp({ env, db, passwords = createPasswordService(env.BCRYPT_ROUNDS) }: AppDeps) {
+export function createApp({ env, db, passwords = createPasswordService(env.BCRYPT_ROUNDS), scanner = createScanner(env) }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   if (env.TRUST_PROXY) app.set('trust proxy', 1); // one hop: the hospital reverse proxy
@@ -82,10 +85,10 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   api.use(createSchedulingRouter(db, createSchedulingService(db), createAttendanceService(db)));
   api.use(createNotificationsRouter(db));
   api.use(createAuditRouter(db));
-  api.use(createContractsRouter(db, createContractService(db, createStorage(env.STORAGE_DIR), env.UPLOAD_MAX_SIZE_BYTES), env.UPLOAD_MAX_SIZE_BYTES));
+  api.use(createContractsRouter(db, createContractService(db, createStorage(env.STORAGE_DIR), scanner, env.UPLOAD_MAX_SIZE_BYTES), env.UPLOAD_MAX_SIZE_BYTES));
   api.use(createCredentialsRouter(
     catalog,
-    createRecordService(db, createStorage(env.STORAGE_DIR), env.UPLOAD_MAX_SIZE_BYTES),
+    createRecordService(db, createStorage(env.STORAGE_DIR), scanner, env.UPLOAD_MAX_SIZE_BYTES),
     createEligibilityService(db),
     env.UPLOAD_MAX_SIZE_BYTES,
   ));

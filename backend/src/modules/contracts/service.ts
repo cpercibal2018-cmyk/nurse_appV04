@@ -21,6 +21,7 @@ import { addDays, daysBetween, dbDate, isIsoDate, riyadhDate, toDbDate } from '.
 import { toHijriIso } from '../../lib/hijri.js';
 import { conflict, HttpError, notFound, unprocessable } from '../../lib/http-errors.js';
 import type { Db, DbClient } from '../../lib/prisma.js';
+import { scanOrReject, type UploadScanner } from '../../lib/scanner.js';
 import { checkUpload, type Storage } from '../../lib/uploads.js';
 import { refreshEligibility } from '../eligibility/state.service.js';
 import { HR_ROLES, inScope, viewerOf, type Viewer } from '../credentials/access.js';
@@ -94,7 +95,7 @@ function fullView(c: WithRefs) {
 }
 const shape = (c: WithRefs, viewer: Viewer) => (viewer === 'HR' ? fullView(c) : reducedView(c));
 
-export function createContractService(db: Db, storage: Storage, maxUploadBytes: number) {
+export function createContractService(db: Db, storage: Storage, scanner: UploadScanner, maxUploadBytes: number) {
   const hrScope = (tx: DbClient, auth: AuthContext) => unitScope(tx, auth, HR_ROLES);
 
   async function loadForHr(tx: DbClient, auth: AuthContext, id: number) {
@@ -280,16 +281,17 @@ export function createContractService(db: Db, storage: Storage, maxUploadBytes: 
       const c = await loadForHr(db, auth, id);
       if (auth.user.employeeId === c.employeeId) throw new HttpError(403, 'SELF_ACTION_FORBIDDEN', 'You cannot manage your own contract');
       const checked = checkUpload('CONTRACT_COPY', bytes, contentType, fileName, maxUploadBytes);
+      const scannedBy = await scanOrReject(scanner, db, bytes, { actorUserId: auth.user.id, resource: 'contract', resourceId: id, ...checked, requestId });
       const storageKey = await storage.put(bytes);
       return db.$transaction(async (tx) => {
         const last = await tx.documentVersion.aggregate({ where: { contractId: id }, _max: { version: true } });
         const doc = await tx.documentVersion.create({
           data: {
             contractId: id, version: (last._max.version ?? 0) + 1, fileName: checked.fileName, mimeType: checked.mimeType, sizeBytes: checked.sizeBytes,
-            sha256: checked.sha256, storageKey, scanStatus: 'CLEAN', uploadedById: auth.user.id, // D-10 development scanner
+            sha256: checked.sha256, storageKey, scanStatus: 'CLEAN', uploadedById: auth.user.id, // D-10: scanned clean (lib/scanner.ts)
           },
         });
-        await appendAudit(tx, { actorUserId: auth.user.id, action: 'DOCUMENT_UPLOADED', resource: 'contract', resourceId: id, changes: { documentId: doc.id, version: doc.version, sizeBytes: doc.sizeBytes, sha256: doc.sha256 }, requestId });
+        await appendAudit(tx, { actorUserId: auth.user.id, action: 'DOCUMENT_UPLOADED', resource: 'contract', resourceId: id, changes: { documentId: doc.id, version: doc.version, sizeBytes: doc.sizeBytes, sha256: doc.sha256, scanner: scannedBy }, requestId });
         return { id: doc.id, version: doc.version };
       });
     },

@@ -103,7 +103,7 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | POST | `/api/v1/contracts` **[I]** | `{employeeId, startDate, endDate}` → Draft; refused if the employee already has an Approved/Active contract (use renewal) | HR, SA scoped; not own | C5, C6, C10 |
 | POST | `/api/v1/contracts/:id/renew` **[I]** | From the employee's latest contract; dates default to the C8 prefill → Draft | HR, SA scoped; not own | C8 |
 | POST | `/api/v1/contracts/:id/transition` | `{action, reason?}` per the D-29 map: `submit` (needs a CLEAN copy, C11), `return`\*, `approve` (Active if it covers today, else Approved; overlap checked, C4), `suspend`\*, `reinstate`\*, `terminate`\*. \* reason required. Expired only by the daily job; Superseded never by hand. Returns `{status, eligibility}` | HR, SA scoped; not own; **approver ≠ creator and ≠ submitter (D-30)** | spec §4.2, D-29, D-30 |
-| POST | `/api/v1/contracts/:id/documents` | Contract copy: raw PDF body, `X-File-Name`; ≤ 10 MB; magic bytes (D1–D3) | HR, SA scoped; not own | D1–D3 |
+| POST | `/api/v1/contracts/:id/documents` | Contract copy: raw PDF body, `X-File-Name`; ≤ 10 MB; magic bytes; malware scan — 422 `UPLOAD_INFECTED`, 503 `SCANNER_UNAVAILABLE` (D1–D3) | HR, SA scoped; not own | D1–D3 |
 | GET | `/api/v1/contracts/:id/documents` · `/:docId` | Versions · download (CLEAN only, audited, `nosniff`) | HR scoped; EMP own; **never SUP** (D5) | D4, D5 |
 
 ### 2.7 Credentials (`modules/credentials`) — implemented in commit 6
@@ -124,7 +124,7 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | POST | `/api/v1/credentials/:id/suspend` · `/revoke` `{reason}` | L3; closes grace | HR (scoped), not own | spec §5.2 |
 | POST | `/api/v1/credentials/:id/renewal` | Stage replacement data | EMP own, HR (scoped) | spec §5.2 |
 | POST | `/api/v1/credentials/:id/renewal/approve` `{documentId?}` · `/renewal/reject` `{reason}` | Promote or discard; approval completes grace, rejection closes it | HR (scoped), not own | spec §5.2, §6.1.1 |
-| POST | `/api/v1/credentials/:id/documents` | Raw body = file, `Content-Type` = its type, `X-File-Name`; PDF/JPEG/PNG/WebP, ≤ 10 MB, magic bytes must match | EMP own, HR (scoped) | spec §5.1.5 |
+| POST | `/api/v1/credentials/:id/documents` | Raw body = file, `Content-Type` = its type, `X-File-Name`; PDF/JPEG/PNG/WebP, ≤ 10 MB, magic bytes must match; malware scan — 422 `UPLOAD_INFECTED`, 503 `SCANNER_UNAVAILABLE` | EMP own, HR (scoped) | spec §5.1.5 |
 | GET | `/api/v1/credentials/:id/documents` · `/:docId` | Versions · download (CLEAN only, audited, `nosniff`) | EMP own, HR (scoped); **never SUP** (D5) | spec §5.2, §5.3.2 |
 
 ### 2.8 Eligibility (`modules/eligibility`) — implemented in commit 6

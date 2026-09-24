@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import { createApp } from './app.js';
 import { loadEnv } from './config/env.js';
 import { assertResidency } from './config/residency.js';
-import { assertUploadScanner } from './lib/uploads.js';
+import { assertUploadScanner } from './lib/scanner.js';
 import { createPrisma } from './lib/prisma.js';
 import { describeError, logger } from './lib/logger.js';
 import { startScheduler } from './jobs/scheduler.js';
@@ -16,8 +16,8 @@ assertResidency({
   allowed: env.PDPL_ALLOWED_REGIONS,
   isProduction: env.NODE_ENV === 'production',
 });
-// D-10: production refuses to start without a real malware scanner for uploads.
-assertUploadScanner(env.UPLOAD_SCANNER, env.NODE_ENV === 'production');
+// D-10: production refuses to start without the ClamAV scanner for uploads.
+assertUploadScanner(env, env.NODE_ENV === 'production');
 
 const db = createPrisma(env.DATABASE_URL);
 const app = createApp({ env, db });

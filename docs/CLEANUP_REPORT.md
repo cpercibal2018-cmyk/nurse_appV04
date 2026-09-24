@@ -132,7 +132,7 @@ Nothing in this list blocks development use; all of it blocks production. Detail
 
 | Item | Owner |
 | :--- | :--- |
-| Malware scanner (ClamAV adapter) — the API will not start in production without it | Development |
+| ~~Malware scanner (ClamAV adapter) — the API will not start in production without it~~ **2026-09-24:** built (`lib/scanner.ts`, [DEPLOYMENT.md §2.1](DEPLOYMENT.md#21-malware-scanner-clamav)); production needs a `clamd` host | Development |
 | Database roles and grants (spec §10.7) | Development + DBA |
 | Login limits are in memory (single API instance) | Development / operations |
 | SMTP / SMS decision (e-mail reminders, break-glass alert to CEO and IT Director, password reset) | Owner / IT |
