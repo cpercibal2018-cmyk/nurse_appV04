@@ -9,6 +9,8 @@ export default defineConfig({
     path: 'prisma/migrations',
   },
   datasource: {
-    url: env('DATABASE_URL'),
+    // Migrations connect as the migration role when it is configured
+    // (ops/db/README.md); the API and worker always use DATABASE_URL.
+    url: process.env.MIGRATION_DATABASE_URL || env('DATABASE_URL'),
   },
 });

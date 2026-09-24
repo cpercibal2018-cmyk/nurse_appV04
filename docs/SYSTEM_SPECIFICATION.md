@@ -89,7 +89,7 @@ These stay in the reference and get their own migration and module when schedule
 | §9.2 | Request-level forensic log table (JSON request logs exist, without personal data) |
 | §9.3 | Redis (not used; the database is read on every request) |
 | §10.4–10.5 | Blue/green deployment and production operations tooling |
-| §10.7 | Database privilege separation (runtime / migration / backup / audit-reader roles). The audit table is append-only by trigger regardless of role; the role and grant script is **not written yet** — see [DEPLOYMENT.md](DEPLOYMENT.md#6-known-gaps-before-production) |
+| §10.7 | Database privilege separation (runtime / migration / backup / audit-reader roles). The audit table is append-only by trigger regardless of role; the roles and grants are in [`ops/db`](../ops/db/README.md) (tested; adaptations from the spec listed there) and still have to be applied per server — see [DEPLOYMENT.md](DEPLOYMENT.md#6-known-gaps-before-production) |
 | §10.8 | Eligibility consistency auditor and observability metrics |
 | §10.9 | Shadow mode |
 | §10.10 | Legacy migration bridge (no V03 production data exists — [MIGRATION.md](MIGRATION.md)) |

@@ -16,30 +16,39 @@ function adminUrl(base: string) {
   return u.toString();
 }
 
-export async function createFreshDatabase(baseUrl: string): Promise<{ url: string; db: Db; drop: () => Promise<void> }> {
-  const name = `nurseapp_fresh_${randomBytes(4).toString('hex')}`;
+/** `prisma migrate deploy` against `url` — and only `url`, whatever MIGRATION_DATABASE_URL a .env sets. */
+export function migrateDeploy(url: string) {
+  execFileSync(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['prisma', 'migrate', 'deploy'], {
+    cwd: BACKEND, env: { ...process.env, DATABASE_URL: url, MIGRATION_DATABASE_URL: url }, stdio: 'pipe', shell: process.platform === 'win32',
+  });
+}
+
+/** An empty database next to `baseUrl` (no migrations), with its URL and a drop function. */
+export async function createEmptyDatabase(baseUrl: string, prefix = 'nurseapp_fresh') {
+  const name = `${prefix}_${randomBytes(4).toString('hex')}`;
   const admin = new pg.Client({ connectionString: adminUrl(baseUrl) });
   await admin.connect();
   await admin.query(`CREATE DATABASE ${name}`);
   await admin.end();
-
   const u = new URL(baseUrl);
   u.pathname = `/${name}`;
-  const url = u.toString();
-  // Exactly what a new installation runs.
-  execFileSync(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['prisma', 'migrate', 'deploy'], {
-    cwd: BACKEND, env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe', shell: process.platform === 'win32',
-  });
-  const db = createPrisma(url);
-
   return {
-    url, db,
+    name, url: u.toString(),
     drop: async () => {
-      await db.$disconnect();
       const c = new pg.Client({ connectionString: adminUrl(baseUrl) });
       await c.connect();
       await c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
       await c.end();
     },
+  };
+}
+
+export async function createFreshDatabase(baseUrl: string): Promise<{ url: string; db: Db; drop: () => Promise<void> }> {
+  const empty = await createEmptyDatabase(baseUrl);
+  migrateDeploy(empty.url); // exactly what a new installation runs
+  const db = createPrisma(empty.url);
+  return {
+    url: empty.url, db,
+    drop: async () => { await db.$disconnect(); await empty.drop(); },
   };
 }

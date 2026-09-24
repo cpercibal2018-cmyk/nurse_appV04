@@ -119,6 +119,8 @@ There is **no seed**. `npx prisma migrate deploy` creates the structure; nothing
 
 The baseline file is hospital data kept as a **data file**, not code: 5 departments, 47 units (582 beds), 16 positions, 5 categories, 16 credential types with 68 fields, as recorded in [SEED_DATA_INVENTORY.md](SEED_DATA_INVENTORY.md).
 
-## 8. Database roles (not yet written)
+## 8. Database roles
 
-Spec §10.7 separates the runtime, migration, backup and audit-reader roles (the runtime may not alter the schema). V04 currently connects with one owner role in every environment. The audit table is protected by trigger regardless, but the role and grant script (`ops/db/grants.sql` in the plan) **has not been written**. This is a production prerequisite — [DEPLOYMENT.md §6](DEPLOYMENT.md#6-known-gaps-before-production).
+Spec §10.7 separates the runtime, migration, backup and audit-reader roles. They are in [`ops/db`](../ops/db/README.md): `01_roles.sql` (once per server, superuser) and `02_grants.sql` (per database, by the owner, after every migration). The migration role **owns** every schema object — in PostgreSQL only the owner may alter one — and connects only for `prisma migrate deploy` (`MIGRATION_DATABASE_URL`); the API and worker connect as `nurseapp_runtime`, which reads and writes data but cannot alter the schema, truncate, update or delete audit rows, delete break-glass events or read the migration journal. `backend/test/db-roles.test.ts` checks all of it on brand-new databases in CI.
+
+**Not yet applied** to any server: the development database still connects as its owner. Applying them is a production prerequisite — [DEPLOYMENT.md §6](DEPLOYMENT.md#6-known-gaps-before-production). Where V04 departs from the spec's sample script (onboarding function, contract guard trigger, audit-reader table list) is listed in the README under *Adaptations*.

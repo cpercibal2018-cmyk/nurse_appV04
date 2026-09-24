@@ -22,7 +22,8 @@ Every backend setting is in [`.env.example`](../.env.example) and is validated a
 | `NODE_ENV` | development | `production` |
 | `PORT` | 3001 | Behind the proxy |
 | `CORS_ORIGIN` | http://localhost:5173 | The public app origin |
-| `DATABASE_URL` | — | Required |
+| `DATABASE_URL` | — | Required. In production the `nurseapp_runtime` login ([ops/db](../ops/db/README.md)) |
+| `MIGRATION_DATABASE_URL` | — (falls back to `DATABASE_URL`) | The `nurseapp_migration` login; read only by `prisma migrate deploy`, set only where releases run |
 | `JWT_SECRET` | — | Required, ≥ 32 characters of random data (spec §3.4). Rotating it signs everyone out |
 | `ACCESS_TOKEN_TTL_SECONDS` / `SESSION_IDLE_SECONDS` / `SESSION_ABSOLUTE_SECONDS` | 900 / 3600 / 86400 | D-6 |
 | `BCRYPT_ROUNDS` | 12 | 10–15 |
@@ -56,7 +57,8 @@ Every backend setting is in [`.env.example`](../.env.example) and is validated a
 ```bash
 npm ci
 npm run build                       # backend (prisma generate + tsc) and frontend (with bundle gate)
-npm run db:deploy -w backend        # prisma migrate deploy — never db push; there is no seed
+npm run db:deploy -w backend        # prisma migrate deploy as nurseapp_migration — never db push; there is no seed
+psql -U <owner> -d <database> -f ops/db/02_grants.sql   # re-apply role privileges (ops/db/README.md)
 # restart the API and the worker
 curl -fsS https://<host>/api/v1/health   # 200 {"status":"ok","database":"up"}; 503 when the database is down
 ```
@@ -81,10 +83,11 @@ Then the production database is created as below.
 
 ### First installation (empty database)
 
-1. `npm run db:deploy -w backend` — the structure only; the database holds no data and no accounts.
-2. `npm run bootstrap -w backend` in an interactive terminal on the server — creates the first System Admin and a hospital-wide HR Admin (two people, so approvals work) and optionally the break-glass account. It refuses to run once any account exists.
-3. The HR Admin signs in, opens **Administration → Hospital baseline import**, previews the hospital's baseline file (the reference is `backend/prisma/baseline/aigh-baseline.json`) and requests the import; the System Admin elevates (PAM) and approves it. It is applied in one transaction or not at all.
-4. Credential requirements (the hospital's credential policy), accounts, employees and contracts are then entered through the application.
+1. Database roles ([ops/db/README.md](../ops/db/README.md)): `01_roles.sql` as a superuser, set the four passwords with `\password`, `02_grants.sql` as the database owner; `DATABASE_URL` = `nurseapp_runtime`, `MIGRATION_DATABASE_URL` = `nurseapp_migration`.
+2. `npm run db:deploy -w backend`, then `02_grants.sql` again — the structure only; the database holds no data and no accounts.
+3. `npm run bootstrap -w backend` in an interactive terminal on the server — creates the first System Admin and a hospital-wide HR Admin (two people, so approvals work) and optionally the break-glass account. It refuses to run once any account exists.
+4. The HR Admin signs in, opens **Administration → Hospital baseline import**, previews the hospital's baseline file (the reference is `backend/prisma/baseline/aigh-baseline.json`) and requests the import; the System Admin elevates (PAM) and approves it. It is applied in one transaction or not at all.
+5. Credential requirements (the hospital's credential policy), accounts, employees and contracts are then entered through the application.
 
 Never run the demo fixtures on a production database; the command refuses `NODE_ENV=production` and any database with accounts.
 
@@ -99,7 +102,7 @@ The scripts, their environment contract and the verified drill are in [`ops/back
 | Gap | Effect | What is needed |
 | :--- | :--- | :--- |
 | **No malware scanner** (D-10) | The API will not start in production | A ClamAV adapter behind `UPLOAD_SCANNER=clamav` (spec §5.3) |
-| **Database roles and grants** (spec §10.7) | One owner role is used everywhere; the runtime could alter the schema. The audit table is still append-only by trigger | Write `ops/db/grants.sql` (runtime, migration, backup, audit-reader roles) and connect the API with the runtime role |
+| **Database roles: written, not yet applied** (spec §10.7) | [`ops/db`](../ops/db/README.md) creates the runtime, migration, backup and audit-reader roles and is tested in CI. Until they are applied and the URLs switched, the API still connects as the owner and could alter the schema (audit stays append-only by trigger) | Apply them on each server (README steps) and set `DATABASE_URL` / `MIGRATION_DATABASE_URL`; two spec items are open decisions (README, *Adaptations*) |
 | **Login limits are in memory** (`lib/throttle.ts`) | Correct for one API process. With several API instances, each counts separately, so the limits multiply | Run a single API instance, or move the counters to the database |
 | **Prisma CLI advisories** | `npm audit`: 4 high-severity advisories in the Prisma CLI's bundled dependencies (`mysql2`, `deepmerge-ts`). The CLI is a development/migration tool; the running API uses `@prisma/client` with the PostgreSQL adapter and does not load the MySQL driver. npm's suggested "fix" downgrades to Prisma 6 (breaking) and was **not** applied | Run migrations from the CI/release host rather than installing dev tools on the runtime host; upgrade Prisma when a patched release exists; re-run `npm audit` at every release |
 | **`pg` 9 not yet usable** | Inside an interactive transaction Prisma 7.10's query interpreter reads the relations of a multi-relation `include` concurrently on the transaction's single `pg` client ([prisma/prisma#29407](https://github.com/prisma/prisma/issues/29407)). `pg` 8 queues the queries (results are correct) but prints its "client is already executing a query" deprecation, which `pg` 9 turns into a failure. The application's own code issues transaction queries one at a time | Stay on `pg` 8 until a Prisma release with the fix; then upgrade both together and run the full test suite |
