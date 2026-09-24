@@ -28,7 +28,7 @@ Every backend setting is in [`.env.example`](../.env.example) and is validated a
 | `JWT_SECRET` | — | Required, ≥ 32 characters of random data (spec §3.4). Rotating it signs everyone out |
 | `ACCESS_TOKEN_TTL_SECONDS` / `SESSION_IDLE_SECONDS` / `SESSION_ABSOLUTE_SECONDS` | 900 / 3600 / 86400 | D-6 |
 | `BCRYPT_ROUNDS` | 12 | 10–15 |
-| `LOGIN_THROTTLE_WINDOW_SECONDS` / `_MAX_PER_ACCOUNT` / `_MAX_PER_CLIENT` | 900 / 5 / 20 | D-23; see the single-instance limit in §6 |
+| `LOGIN_THROTTLE_WINDOW_SECONDS` / `_MAX_PER_ACCOUNT` / `_MAX_PER_CLIENT` | 900 / 5 / 20 | D-23. Counted in the database (`login_throttle`, D-46), so they hold across any number of API instances and restarts |
 | `STORAGE_DIR` | ./storage | Persistent, backed-up volume; never served directly |
 | `UPLOAD_MAX_SIZE_BYTES` | 10485760 | Spec §5.1.5 |
 | `UPLOAD_SCANNER` | dev-magic-bytes | `clamav` — production refuses anything else (D-10, §2.1) |
@@ -136,7 +136,6 @@ The scripts, their environment contract and the verified drill are in [`ops/back
 | Gap | Effect | What is needed |
 | :--- | :--- | :--- |
 | **Database roles: to be applied on each server** (spec §10.7) | [`ops/db`](../ops/db/README.md) holds the roles, grants and a read-only check (`verify.sql`), all tested in CI; the open spec items are decided (D-44, D-45). The API and worker **refuse to start in production** until `DATABASE_URL` is a data-only login | On each server: the README steps 1–5 (a DBA, about 15 minutes), `verify.sql` all PASS, then switch the URLs |
-| **Login limits are in memory** (`lib/throttle.ts`) | Correct for one API process. With several API instances, each counts separately, so the limits multiply | Run a single API instance, or move the counters to the database |
 | **Prisma CLI advisories** | `npm audit`: 4 high-severity advisories in the Prisma CLI's bundled dependencies (`mysql2`, `deepmerge-ts`). The CLI is a development/migration tool; the running API uses `@prisma/client` with the PostgreSQL adapter and does not load the MySQL driver. npm's suggested "fix" downgrades to Prisma 6 (breaking) and was **not** applied | Run migrations from the CI/release host rather than installing dev tools on the runtime host; upgrade Prisma when a patched release exists; re-run `npm audit` at every release |
 | **`pg` 9 not yet usable** | Inside an interactive transaction Prisma 7.10's query interpreter reads the relations of a multi-relation `include` concurrently on the transaction's single `pg` client ([prisma/prisma#29407](https://github.com/prisma/prisma/issues/29407)). `pg` 8 queues the queries (results are correct) but prints its "client is already executing a query" deprecation, which `pg` 9 turns into a failure. The application's own code issues transaction queries one at a time | Stay on `pg` 8 until a Prisma release with the fix; then upgrade both together and run the full test suite |
 | **No SMTP / SMS** | Reminders are in-app only; the break-glass alert does not reach the CEO and IT Director (spec §3.6); no password reset or invitation e-mails | An SMTP (and SMS) decision (spec §7.2) |

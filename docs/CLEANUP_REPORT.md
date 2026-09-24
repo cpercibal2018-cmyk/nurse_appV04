@@ -134,7 +134,7 @@ Nothing in this list blocks development use; all of it blocks production. Detail
 | :--- | :--- |
 | ~~Malware scanner (ClamAV adapter) — the API will not start in production without it~~ **2026-09-24:** built (`lib/scanner.ts`, [DEPLOYMENT.md §2.1](DEPLOYMENT.md#21-malware-scanner-clamav)); production needs a `clamd` host | Development |
 | Database roles and grants (spec §10.7) | Development + DBA |
-| Login limits are in memory (single API instance) | Development / operations |
+| ~~Login limits are in memory (single API instance)~~ **2026-09-24:** counted in PostgreSQL (`login_throttle`, D-46) | Development / operations |
 | SMTP / SMS decision (e-mail reminders, break-glass alert to CEO and IT Director, password reset) | Owner / IT |
 | Badge-system (PACS) feed contract | Hospital IT |
 | ~~Renewal picker: search / paging beyond 500 employees~~ **2026-09-24:** both contract pickers search the whole scope on the server (`?q=`, job number or name) | Development |

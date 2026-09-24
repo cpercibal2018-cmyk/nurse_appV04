@@ -62,15 +62,15 @@ export function createAuthService(deps: AuthDeps) {
     const email = emailRaw.trim().toLowerCase();
     const accountKey = `acct:${email}`;
     const clientKey = `ip:${clientIp}`;
-    const wait = Math.max(deps.accountThrottle.blockedFor(accountKey), deps.clientThrottle.blockedFor(clientKey));
+    const wait = Math.max(await deps.accountThrottle.blockedFor(accountKey), await deps.clientThrottle.blockedFor(clientKey));
     if (wait > 0) throw new HttpError(429, 'TOO_MANY_ATTEMPTS', 'Too many failed sign-in attempts — try again later', { retryAfterSeconds: wait });
 
     const user = await db.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } });
     const ok = await passwords.verify(password, user?.passwordHash);
 
     if (!user || !ok || !user.isActive) {
-      deps.accountThrottle.fail(accountKey);
-      deps.clientThrottle.fail(clientKey);
+      await deps.accountThrottle.fail(accountKey);
+      await deps.clientThrottle.fail(clientKey);
       // Audited only for a real account: an unknown email is not personal data we hold.
       if (user) {
         await appendAudit(db, {
@@ -80,7 +80,7 @@ export function createAuthService(deps: AuthDeps) {
       }
       throw invalidCredentials();
     }
-    deps.accountThrottle.reset(accountKey);
+    await deps.accountThrottle.reset(accountKey);
 
     const now = new Date();
     const absoluteSeconds = user.isBreakGlass ? Math.min(BREAK_GLASS_SESSION_SECONDS, env.SESSION_ABSOLUTE_SECONDS) : env.SESSION_ABSOLUTE_SECONDS;
@@ -169,10 +169,10 @@ export function createAuthService(deps: AuthDeps) {
   /** Spec §3.3: verifies the current password and revokes all active sessions. */
   async function changePassword(auth: AuthContext, current: string, next: string, requestId?: string) {
     const accountKey = `acct:${auth.user.email.toLowerCase()}`;
-    if (deps.accountThrottle.blockedFor(accountKey) > 0) throw new HttpError(429, 'TOO_MANY_ATTEMPTS', 'Too many failed attempts — try again later');
+    if (await deps.accountThrottle.blockedFor(accountKey) > 0) throw new HttpError(429, 'TOO_MANY_ATTEMPTS', 'Too many failed attempts — try again later');
     const user = await db.user.findUniqueOrThrow({ where: { id: auth.user.id } });
     if (!(await passwords.verify(current, user.passwordHash))) {
-      deps.accountThrottle.fail(accountKey);
+      await deps.accountThrottle.fail(accountKey);
       throw new HttpError(400, 'CURRENT_PASSWORD_WRONG', 'The current password is not correct');
     }
     if (current === next) throw new HttpError(400, 'PASSWORD_UNCHANGED', 'Choose a password different from the current one');
