@@ -7,6 +7,8 @@ import { assertRuntimeRole } from './lib/db-role.js';
 import { createPrisma } from './lib/prisma.js';
 import { describeError, logger } from './lib/logger.js';
 import { startScheduler } from './jobs/scheduler.js';
+import { dispatchConfigFrom, startEmailDispatcher } from './jobs/email-dispatch.js';
+import { createMailer } from './lib/mailer.js';
 
 // Quiet: dotenv's banner is not JSON and would break the one-line-JSON log format.
 dotenv.config({ quiet: true });
@@ -27,6 +29,9 @@ const app = createApp({ env, db });
 
 // Jobs run here only in development; production runs `npm run worker` (plan: Jobs).
 const stopJobs = env.JOBS_MODE === 'in-process' ? startScheduler(db) : () => undefined;
+// E-mail (D-47) goes out from wherever the jobs run.
+const stopMail = env.JOBS_MODE === 'in-process' ? startEmailDispatcher(db, createMailer(env), dispatchConfigFrom(env)) : () => undefined;
+if (env.NODE_ENV === 'production' && !env.SMTP_HOST) logger.warn('e-mail is off: SMTP_HOST is not set; notifications stay in-app (D-47)');
 
 const server = app.listen(env.PORT, () => {
   logger.info('listening', { port: env.PORT, environment: env.NODE_ENV, region: env.DATA_RESIDENCY_REGION });
@@ -35,6 +40,7 @@ const server = app.listen(env.PORT, () => {
 function shutdown(signal: string) {
   logger.info('shutting down', { signal });
   stopJobs();
+  stopMail();
   server.close(() => {
     db.$disconnect().finally(() => process.exit(0));
   });

@@ -3,6 +3,7 @@
 
 import type { Env } from '../../config/env.js';
 import { appendAudit } from '../../lib/audit.js';
+import { renderEmail } from '../../lib/email-templates.js';
 import { HttpError } from '../../lib/http-errors.js';
 import type { PasswordService } from '../../lib/passwords.js';
 import type { Db, DbClient } from '../../lib/prisma.js';
@@ -94,9 +95,10 @@ export function createAuthService(deps: AuthDeps) {
   }
 
   /**
-   * Break-glass siren (spec §3.6, decision D-9 minimal): irrevocable event row,
-   * HIGH audit entry and a CRITICAL in-app notification to every System Admin.
-   * SMS/email to the CEO and IT Director is NOT built (no SMTP/SMS decided).
+   * Break-glass siren (spec §3.6, decision D-9): irrevocable event row, HIGH
+   * audit entry, a CRITICAL in-app notification (and e-mail) to every System
+   * Admin, and an e-mail to each BREAK_GLASS_ALERT_EMAILS address — the CEO and
+   * IT Director (D-47). SMS is not built yet (D-48).
    */
   async function sirenOnLogin(tx: DbClient, userId: number, ip: string, now: Date, seconds: number, requestId?: string) {
     const event = await tx.breakGlassEvent.create({
@@ -116,6 +118,20 @@ export function createAuthService(deps: AuthDeps) {
           titleAr: 'تم تفعيل حساب الطوارئ',
           messageAr: `تم تسجيل الدخول بحساب الطوارئ من ${ip}.`,
           eventKey: `break-glass:${event.id}`,
+        })),
+        skipDuplicates: true,
+      });
+    }
+    if (env.BREAK_GLASS_ALERT_EMAILS.length > 0) {
+      const mail = renderEmail({
+        title: 'Break-glass account activated',
+        message: `The AIGH Nursing Workforce break-glass (emergency) account signed in from ${ip} at ${now.toISOString()} (UTC). The session ends at ${event.expiresAt.toISOString()} (UTC). Every action it takes is audited.`,
+        titleAr: 'تم تفعيل حساب الطوارئ',
+        messageAr: `تم تسجيل الدخول بحساب الطوارئ من ${ip}. جميع الإجراءات مسجلة في سجل التدقيق.`,
+      });
+      await tx.emailOutbox.createMany({
+        data: env.BREAK_GLASS_ALERT_EMAILS.map((to) => ({
+          toAddress: to, subject: mail.subject, bodyText: mail.text, bodyHtml: mail.html, priority: 'CRITICAL' as const, eventKey: `break-glass:${event.id}`,
         })),
         skipDuplicates: true,
       });

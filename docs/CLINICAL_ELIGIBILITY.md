@@ -85,7 +85,7 @@ Daily at 06:00 Asia/Riyadh (`jobs/expiry-scan.ts`; owner decision D-39, which ov
 | 7 | Employee, Supervisor, scoped HR | Employee, scoped HR, Supervisor |
 | After expiry / end | Employee, Supervisor, scoped HR | Employee, scoped HR, Supervisor |
 
-Each run sends only the milestone a record is in now, once per recipient (event key = record + date + milestone), so a missed run or a late entry never produces a burst. A contract with a later Approved or Active contract gets no reminder. Notifications are in-app; e-mail is not configured (rows carry e-mail status `SKIPPED`).
+Each run sends only the milestone a record is in now, once per recipient (event key = record + date + milestone), so a missed run or a late entry never produces a burst. A contract with a later Approved or Active contract gets no reminder. Notifications are in-app and, once the hospital SMTP relay is configured, also e-mailed to the recipient's account (D-47; [DEPLOYMENT.md §2.2](DEPLOYMENT.md#22-e-mail-hospital-smtp-relay)).
 
 ## 6. Owner-configurable values
 

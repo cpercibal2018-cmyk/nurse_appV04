@@ -50,6 +50,31 @@ const EnvSchema = z.object({
   CLAMAV_TIMEOUT_MS: int(30_000),
   /** Spec §5.3.2 rule 7: older signatures raise an operations alert (error log). */
   CLAMAV_MAX_SIGNATURE_AGE_HOURS: int(48),
+  // ── E-mail (spec §7.2; decision D-47: the hospital SMTP relay) ────────────
+  /** Relay host; empty = e-mail off (notifications stay in-app, marked SKIPPED). */
+  SMTP_HOST: z.string().default(''),
+  SMTP_PORT: int(587),
+  /** false = STARTTLS on the submission port (required — never plain text); true = implicit TLS (465). */
+  SMTP_SECURE: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
+  SMTP_USER: z.string().default(''),
+  SMTP_PASS: z.string().default(''),
+  /** e.g. "AIGH Workforce <nurseapp@aigh.sa>" — required when SMTP_HOST is set. */
+  SMTP_FROM: z.string().default(''),
+  /** A monitored HR mailbox, not the service account (spec §7.2). */
+  SMTP_REPLY_TO: z.string().default(''),
+  /** Verify the relay's certificate; refused as false in production. */
+  SMTP_TLS_REJECT_UNAUTHORIZED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  /** Spec §7.2: up to 8 attempts, one minute apart. */
+  SMTP_RETRY_MAX: z.coerce.number().int().min(1).max(20).default(8),
+  SMTP_RETRY_DELAY_SECONDS: int(60),
+  /** Where links in e-mails point (the app's public URL); defaults to CORS_ORIGIN. */
+  APP_BASE_URL: z.string().url().optional(),
+  /** Spec §3.6: people alerted by e-mail when the break-glass account signs in (the CEO and IT Director), comma-separated. */
+  BREAK_GLASS_ALERT_EMAILS: z
+    .string()
+    .default('')
+    .transform((s) => s.split(',').map((a) => a.trim()).filter(Boolean))
+    .pipe(z.array(z.string().email())),
   // ── Background jobs (spec §10.2; plan "Jobs") ─────────────────────────────
   /** in-process: the API runs the scheduler (development). worker: a separate `npm run worker` runs it (production). off: nothing runs. */
   JOBS_MODE: z.enum(['in-process', 'worker', 'off']).default('in-process'),
@@ -60,7 +85,12 @@ const EnvSchema = z.object({
 export type Env = z.infer<typeof EnvSchema>;
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  const parsed = EnvSchema.safeParse(source);
+  const parsed = EnvSchema.superRefine((e, ctx) => {
+    if (e.SMTP_HOST && !e.SMTP_FROM) ctx.addIssue({ code: 'custom', path: ['SMTP_FROM'], message: 'required when SMTP_HOST is set' });
+    if (e.NODE_ENV === 'production' && !e.SMTP_TLS_REJECT_UNAUTHORIZED) {
+      ctx.addIssue({ code: 'custom', path: ['SMTP_TLS_REJECT_UNAUTHORIZED'], message: 'must stay true in production (verify the relay certificate)' });
+    }
+  }).safeParse(source);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
     throw new Error(`Invalid environment configuration — ${issues}`);
