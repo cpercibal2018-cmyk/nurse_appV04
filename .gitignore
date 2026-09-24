@@ -29,3 +29,13 @@ backend/src/generated/
 
 # --- logs -------------------------------------------------------------------
 *.log
+
+# --- local scratch scripts (one leaked a database URL: backend/.mk.cjs) -----
+# Dot-prefixed one-off scripts are never project code; keep them out of Git.
+.*.js
+.*.cjs
+.*.mjs
+.*.ts
+.*.cts
+.*.mts
+.scratch/
