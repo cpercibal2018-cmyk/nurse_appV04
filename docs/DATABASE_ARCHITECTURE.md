@@ -91,6 +91,8 @@ Values kept out of the audit trail on purpose: salary and the emergency contact 
 | `20260924090000_employee_phones` | `employees.primary_phone`, `emergency_contact_phone` with E.164 checks (D-35) |
 | `20260924100000_database_first_master_data` | `credential_template_fields` (the field definitions, copied from the JSON with a count check; the JSON kept as `field_defs_legacy` for rollback), `positions.replaced_by` foreign key, `units.critical_area` (filled from the former code map) |
 | `20260925090000_field_not_issue_and_expiry` | Check: one field cannot be both the issue and the expiry date (found in the first browser check) |
+| `20260925200000_approval_withdrawal` | `ApprovalStatus.WITHDRAWN` and `approval_requests.withdrawn_at`: the initiator may withdraw their own pending request (owner decision 2026-09-24) |
+| `20260926090000_drop_field_defs_legacy` | Drops `credential_templates.field_defs_legacy`, the unread JSON rollback copy (go-live preparation, owner decision 2026-09-24) |
 
 **Rules**
 

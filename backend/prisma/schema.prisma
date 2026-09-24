@@ -431,9 +431,6 @@ model CredentialTemplate {
   description     String?
   hasExpiry       Boolean  @default(true) @map("has_expiry")
   requiresUpload  Boolean  @default(true) @map("requires_upload")
-  /// Pre-migration JSON copy of the field definitions, kept only as a rollback
-  /// reference; nothing reads it. The fields live in credential_template_fields.
-  fieldDefsLegacy Json?    @map("field_defs_legacy")
   gracePeriodDays Int      @default(0) @map("grace_period_days")
   displayOrder    Int      @default(0) @map("display_order")
   isActive        Boolean  @default(true) @map("is_active")

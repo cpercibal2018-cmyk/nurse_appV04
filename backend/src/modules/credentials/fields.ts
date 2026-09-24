@@ -31,10 +31,10 @@ export const fieldRows = (templateId: number, defs: readonly FieldDef[]) =>
     displayOrder: d.displayOrder, isIssueDate: d.isIssueDate === true, isExpiryDate: d.isExpiryDate === true,
   }));
 
-export type TemplateView = Omit<CredentialTemplate, 'fieldDefsLegacy'> & { fieldDefs: FieldDef[] };
+export type TemplateView = CredentialTemplate & { fieldDefs: FieldDef[] };
 
-/** A template as the API presents it: fields as `fieldDefs`, the legacy JSON never exposed. */
+/** A template as the API presents it: its field rows as the `fieldDefs` array. */
 export function presentTemplate(t: CredentialTemplate & { fields: FieldRow[] }): TemplateView {
-  const { fields, fieldDefsLegacy: _legacy, ...rest } = t;
+  const { fields, ...rest } = t;
   return { ...rest, fieldDefs: toFieldDefs(fields) };
 }

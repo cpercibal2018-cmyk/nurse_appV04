@@ -75,6 +75,8 @@ Owner decision 2026-09-24: the two safety nets of the database-first migration (
 4. Keep the Git tag `pre-db-first` (code only, no data).
 5. Record the date and decision in [DATABASE_MIGRATION.md §8](DATABASE_MIGRATION.md#8-follow-up-after-the-final-report).
 
+**Status 2026-09-24:** steps 1, 2, 4 and 5 done at the owner's request (backup `nurseapp_v04_pre-go-live_2026-09-24.dump`; migration `20260926090000_drop_field_defs_legacy`). Step 3 — the owner deleting the two `pre-db-first` dumps — is open.
+
 Then the production database is created as below.
 
 ### First installation (empty database)
