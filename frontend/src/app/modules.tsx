@@ -6,7 +6,7 @@ import { lazy, type ComponentType, type LazyExoticComponent, type ReactNode } fr
 import {
   AuditOutlined, BellOutlined, CheckCircleOutlined, ClockCircleOutlined, DashboardOutlined,
   FileProtectOutlined, FundOutlined, IdcardOutlined, SafetyCertificateOutlined, ScheduleOutlined,
-  SettingOutlined, TeamOutlined, ApartmentOutlined, HistoryOutlined, UserOutlined,
+  SettingOutlined, TeamOutlined, ApartmentOutlined, HistoryOutlined, UserOutlined, SafetyOutlined,
 } from '@ant-design/icons';
 import type { TranslationKey } from '../lib/i18n';
 import type { AppRole } from '../types/api';
@@ -44,5 +44,6 @@ export const MODULES: AppModule[] = [
   page('/notifications', 'notifications', <BellOutlined />, () => import('../modules/notifications/NotificationsPage')),
   page('/audit', 'audit', <AuditOutlined />, () => import('../modules/audit/AuditPage'), { requires: ['SYSTEM_ADMIN'] }), // D-20
   page('/sessions', 'signInHistory', <HistoryOutlined />, () => import('../modules/auth/SessionsPage')),
+  page('/security', 'twoFactor', <SafetyOutlined />, () => import('../modules/auth/SecurityPage')),
   page('/admin', 'admin', <SettingOutlined />, () => import('../modules/administration/AdministrationPage'), { requires: ['HR_ADMIN', 'SYSTEM_ADMIN'] }),
 ];

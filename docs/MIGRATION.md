@@ -50,7 +50,7 @@ The V03 remediation tracker (`AIGH_v2_8_7_remediation_tracker.md` in the V03 rep
 | B-13 | Consistency auditor | **Done** — daily `consistency-audit` job and business health view (spec §10.8) |
 | B-14 | FHIR adapter | **Deferred** |
 | B-15 | Time-zone-safe coverage-gap query; PACS feed contract | Gap query and alerts **done**; feed contract **open** (D-33) |
-| B-16 | SSO / MFA | **Deferred** (identity provider not chosen) |
+| B-16 | SSO / MFA | MFA **done** (D-51: authenticator app + recovery codes, required for System Admin, HR Admin and Supervisor). SSO **deferred** (identity provider not chosen) |
 | B-17 | 72-hour waiver limit at the database; expiry reverts eligibility | **Done** (`chk_waiver_max_window`; engine judges waivers at the evaluation instant) |
 | B-18 | Key management, pepper rotation, DPO sign-off | **Open** |
 | B-19 | Bundle gate in CI; entry < 200 KB gz | **Done** — about 173 KB gz |

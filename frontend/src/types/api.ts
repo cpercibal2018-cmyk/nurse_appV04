@@ -46,6 +46,28 @@ export interface TokenResponse {
   expiresIn: number;
 }
 
+/** Login when a second step is due (spec §3.5): no session yet, only the challenge. */
+export interface MfaPrompt {
+  mfa: { step: 'VERIFY' | 'ENROLL'; challenge: string; expiresIn: number };
+}
+
+/** A new authenticator seed, for the QR code and for typing in by hand. */
+export interface MfaSetup {
+  secret: string;
+  otpauthUri: string;
+  account?: string;
+}
+
+export interface MfaStatus {
+  enabled: boolean;
+  enabledAt: string | null;
+  /** The account's roles require it (it cannot be turned off). */
+  required: boolean;
+  /** False for the break-glass account (spec §3.6). */
+  available: boolean;
+  recoveryCodesLeft: number;
+}
+
 /** Every API error body: {error: {code, message, details?}} */
 export interface ErrorBody {
   error: { code: string; message: string; details?: unknown };

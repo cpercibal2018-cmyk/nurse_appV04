@@ -12,6 +12,8 @@ export interface Account {
   lastLoginAt: string | null;
   employee: { jobNumber: string; fullName: string; unitId: number | null } | null;
   roleAssignments: Array<{ role: AppRole; scopeType: ScopeType }>;
+  /** An authenticator is set up (spec §3.5). */
+  mfaEnabled: boolean;
 }
 
 export interface Assignment {

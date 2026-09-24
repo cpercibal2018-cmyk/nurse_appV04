@@ -70,6 +70,9 @@ model User {
   passwordResets     PasswordReset[]    @relation("resetFor")
   resetsIssued       PasswordReset[]    @relation("resetIssuer")
   notifications      Notification[]
+  mfaFactor          MfaFactor?
+  mfaRecoveryCodes   MfaRecoveryCode[]
+  mfaChallenges      MfaChallenge[]
 
   @@map("users")
 }
@@ -872,6 +875,53 @@ model PasswordReset {
 
   @@index([userId, createdAt])
   @@map("password_resets")
+}
+
+/// MFA (spec §3.5): one authenticator per account. Pending until the first
+/// code confirms it; the seed is encrypted (lib/secret-box.ts).
+model MfaFactor {
+  userId       Int       @id @map("user_id")
+  secretEnc    String    @map("secret_enc")
+  confirmedAt  DateTime? @map("confirmed_at") @db.Timestamptz
+  /// The 30-second step of the last accepted code: a code works once.
+  lastUsedStep BigInt?   @map("last_used_step")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("mfa_factors")
+}
+
+/// Single-use recovery codes; only a SHA-256 is stored.
+model MfaRecoveryCode {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  codeHash  String    @map("code_hash")
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, codeHash])
+  @@map("mfa_recovery_codes")
+}
+
+/// The second sign-in step: issued after a correct password, redeemed with a
+/// code (VERIFY) or by setting up the authenticator (ENROLL). SHA-256 only.
+model MfaChallenge {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  purpose   String // VERIFY | ENROLL (CHECK in SQL)
+  tokenHash String    @unique @map("token_hash")
+  attempts  Int       @default(0)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("mfa_challenges")
 }
 
 model IdempotencyKey {

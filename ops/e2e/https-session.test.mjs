@@ -3,6 +3,7 @@
 // what the backend tests cannot: what the browser stores, sends and withholds.
 
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import { after, before, test } from 'node:test';
 import { chromium, request as apiRequest } from 'playwright';
 
@@ -38,11 +39,55 @@ const cookie = async (name) => (await context.cookies()).find((c) => c.name === 
 const signedIn = () => page.locator('.app-user').filter({ hasText: 'E2E HR Admin' }).waitFor({ timeout: 15_000 });
 const onLoginPage = () => page.waitForURL((u) => u.pathname === '/login', { timeout: 15_000 });
 
+// ── The authenticator app, in the test (RFC 6238: SHA-1, 6 digits, 30 s) ──
+let secret = null;
+let lastStep = 0;
+function totp(base32, step) {
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const ch of base32.replace(/\s/g, '')) bits += A.indexOf(ch).toString(2).padStart(5, '0');
+  const key = Buffer.from(bits.match(/.{8}/g).map((b) => parseInt(b, 2)));
+  const msg = Buffer.alloc(8);
+  msg.writeBigUInt64BE(BigInt(step));
+  const mac = crypto.createHmac('sha1', key).update(msg).digest();
+  const o = mac[mac.length - 1] & 0x0f;
+  return String((mac.readUInt32BE(o) & 0x7fffffff) % 1e6).padStart(6, '0');
+}
+/** A code from a 30-second step later than the last one used: the server accepts each step once. */
+async function nextCode() {
+  let step = Math.floor(Date.now() / 30_000);
+  while (step <= lastStep) {
+    await new Promise((r) => setTimeout(r, 1000));
+    step = Math.floor(Date.now() / 30_000);
+  }
+  lastStep = step;
+  return totp(secret, step);
+}
+
+/** Password, then the second step (spec §3.5): set-up the first time, a code afterwards. */
 async function signIn() {
   await page.goto(`${ORIGIN}/login`);
   await page.locator('#email').fill('hr@e2e.test');
   await page.locator('#password').fill(PASSWORD);
   await page.getByRole('button', { name: /sign in|log ?in/i }).click();
+  if (!secret) {
+    // HR Admin must set up an authenticator before any session exists.
+    await page.getByText('Set up two-factor sign-in').waitFor();
+    assert.equal(await cookie(REFRESH), undefined, 'no session after the password alone');
+    await page.getByRole('button', { name: 'Cannot scan? Show the key' }).click();
+    secret = (await page.getByTestId('mfa-secret').innerText()).replace(/\s/g, '');
+    assert.match(secret, /^[A-Z2-7]{32}$/);
+    await page.getByLabel('Code shown in the app').fill(await nextCode());
+    await page.getByRole('button', { name: 'Confirm and continue' }).click();
+    const codes = (await page.getByTestId('recovery-codes').innerText()).split(/\s+/).filter(Boolean);
+    assert.equal(codes.length, 10, 'ten recovery codes shown once');
+    assert.equal(await cookie(REFRESH) !== undefined, true, 'signed in once the authenticator is confirmed');
+    await page.getByRole('checkbox', { name: 'I have saved these codes' }).check();
+    await page.getByRole('button', { name: 'Continue' }).click();
+  } else {
+    await page.getByLabel('Authenticator code').fill(await nextCode());
+    await page.getByRole('button', { name: 'Verify' }).click();
+  }
   await signedIn();
 }
 
@@ -72,7 +117,7 @@ test('the site is served over HTTPS with the production security headers', async
 
 let firstRefresh;
 
-test('sign-in sets a Secure, HttpOnly refresh cookie limited to the auth endpoints, and no token in web storage', async () => {
+test('sign-in (password, then setting up the authenticator) sets a Secure, HttpOnly refresh cookie limited to the auth endpoints, and no token in web storage', async () => {
   await signIn();
   const refresh = await cookie(REFRESH);
   assert.ok(refresh, 'refresh cookie stored');
@@ -153,7 +198,7 @@ test('replaying a consumed refresh cookie is rejected and ends the whole session
 });
 
 test('sign-out clears both cookies and the old refresh cookie stops working', async () => {
-  await signIn();
+  await signIn(); // password + a code from the authenticator this time
   const beforeLogout = (await cookie(REFRESH)).value;
   await page.locator('.app-user').hover();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();

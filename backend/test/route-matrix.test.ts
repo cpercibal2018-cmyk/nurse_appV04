@@ -48,11 +48,15 @@ const PUBLIC = new Set([
   'POST /api/v1/auth/invitations/preview', 'POST /api/v1/auth/invitations/claim',
   // Password reset (D-50): the e-mailed token, Origin check and throttles guard them.
   'POST /api/v1/auth/password-reset/request', 'POST /api/v1/auth/password-reset/complete',
+  // The second sign-in step (spec §3.5): the single-use challenge from a correct password, Origin check and throttles guard them.
+  'POST /api/v1/auth/mfa/verify', 'POST /api/v1/auth/mfa/enroll/start', 'POST /api/v1/auth/mfa/enroll/confirm',
 ]);
 
 /** Signed-in routes without a route gate: the service checks own-or-scoped access. Reviewed list. */
 const SELF_OR_SCOPED = [
   'GET /api/v1/auth/sessions', 'GET /api/v1/auth/me', 'POST /api/v1/auth/password',
+  'GET /api/v1/auth/mfa', 'POST /api/v1/auth/mfa/setup', 'POST /api/v1/auth/mfa/setup/confirm', // own authenticator only
+  'POST /api/v1/auth/mfa/recovery-codes', 'POST /api/v1/auth/mfa/disable',
   'GET /api/v1/eligibility/me', 'GET /api/v1/eligibility/:id', // viewerOf: own, scoped HR or scoped supervisor
   'GET /api/v1/pam/status', 'POST /api/v1/pam/elevate', 'POST /api/v1/pam/end', // own elevation only; elevate needs a System Admin assignment
   'GET /api/v1/credentials/:id', 'POST /api/v1/credentials/:id/renewal', 'POST /api/v1/credentials/:id/documents',

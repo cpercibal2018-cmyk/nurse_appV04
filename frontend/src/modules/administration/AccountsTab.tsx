@@ -51,6 +51,17 @@ export function AccountsTab() {
     }
   }
 
+  // Spec §3.5: a lost phone. The authenticator is removed and the account signed out; a new one is set up at the next sign-in.
+  async function resetMfa(a: Account) {
+    try {
+      await http.post(`/users/${a.id}/mfa/reset`);
+      message.success(t('mfaResetDone', { email: a.email }));
+      await accounts.refetch();
+    } catch (e) {
+      message.error(describeApiError(e));
+    }
+  }
+
   return (
     <>
       <div style={{ marginBottom: 12 }}>
@@ -71,6 +82,7 @@ export function AccountsTab() {
           { title: t('linkedEmployee'), render: (_, a) => a.employee ? `${a.employee.jobNumber} — ${a.employee.fullName}` : '—' },
           { title: t('roleAssignments'), render: (_, a) => a.isBreakGlass ? <Tag color="red">BREAK-GLASS</Tag> : a.roleAssignments.map((r) => <Tag key={`${r.role}${r.scopeType}`}>{r.role} · {r.scopeType}</Tag>) },
           { title: t('status'), render: (_, a) => <Tag color={a.isActive ? 'green' : 'default'}>{a.isActive ? t('active') : t('inactive')}</Tag> },
+          { title: t('mfaColumn'), render: (_, a) => a.isBreakGlass ? '—' : <Tag color={a.mfaEnabled ? 'green' : 'default'}>{a.mfaEnabled ? t('mfaOn') : t('mfaOff')}</Tag> },
           { title: t('lastLogin'), render: (_, a) => a.lastLoginAt ? new Date(a.lastLoginAt).toLocaleString() : t('never') },
           {
             title: '', render: (_, a) => a.isBreakGlass || a.id === me?.id ? null : (
@@ -78,6 +90,11 @@ export function AccountsTab() {
                 {a.isActive && (
                   <Popconfirm title={t('sendResetLink')} description={a.email} onConfirm={() => sendReset(a)}>
                     <Button size="small">{t('sendResetLink')}</Button>
+                  </Popconfirm>
+                )}
+                {a.mfaEnabled && (
+                  <Popconfirm title={t('resetMfa')} description={<div style={{ maxWidth: 320 }}>{t('resetMfaConfirm')}</div>} onConfirm={() => resetMfa(a)}>
+                    <Button size="small">{t('resetMfa')}</Button>
                   </Popconfirm>
                 )}
                 <Popconfirm title={a.isActive ? t('deactivate') : t('activate')} onConfirm={() => toggle(a)}>
