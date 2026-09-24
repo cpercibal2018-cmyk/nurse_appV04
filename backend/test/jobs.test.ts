@@ -145,7 +145,7 @@ describeDb('jobs, notifications, audit and sessions', () => {
   });
 
   describe('scheduler and leases', () => {
-    const fake = (fn: () => Promise<Record<string, unknown>>): JobDefinition => ({ name: uniq('test-job'), schedule: 'test', periodKey: () => null, run: fn });
+    const fake = (fn: () => Promise<Record<string, unknown>>): JobDefinition => ({ name: uniq('test-job'), schedule: 'test', periodKey: () => null, run: fn, maxAgeMinutes: 60 });
 
     it('runs a period once, retries a failure, and never runs one job twice at once', async () => {
       let calls = 0;
@@ -197,7 +197,7 @@ describeDb('jobs, notifications, audit and sessions', () => {
       expect(res.body.items.every((e: { action: string; id: string }) => e.action === 'LOGIN_SUCCEEDED' && typeof e.id === 'string')).toBe(true);
       expect((await sa.get('/audit/verify')).body.intact).toBe(true);
       const jobs = await sa.get('/admin/jobs');
-      expect(jobs.body.items.map((j: { name: string }) => j.name)).toEqual(['daily-transition', 'expiry-scan', 'attendance-alerts']);
+      expect(jobs.body.items.map((j: { name: string }) => j.name)).toEqual(['daily-transition', 'expiry-scan', 'attendance-alerts', 'consistency-audit']);
       expect((await hr.post('/admin/jobs/expiry-scan/run')).status).toBe(403);
     });
   });
