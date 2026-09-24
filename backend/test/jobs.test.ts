@@ -137,7 +137,10 @@ describeDb('jobs, notifications, audit and sessions', () => {
       const alerts = await db.notification.findMany({ where: { recipientId: sup.id } });
       expect(alerts).toHaveLength(1);
       expect(alerts[0]).toMatchObject({ employeeId: absent.id, priority: 'CRITICAL', type: 'COVERAGE' });
-      expect((await attendanceAlerts(db, new Date(`${date}T16:00:00+03:00`))).checked).toBe(0); // the shift is over
+      // The shift is over: no further alert for this unit. (The job's own `checked`
+      // counts every unit's shifts in the shared test database, so it is not asserted.)
+      await attendanceAlerts(db, new Date(`${date}T16:00:00+03:00`));
+      expect(await db.notification.count({ where: { recipientId: sup.id } })).toBe(1);
     }, 120_000);
   });
 
