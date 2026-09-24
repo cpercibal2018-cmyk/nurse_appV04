@@ -90,11 +90,13 @@ END $$;
 -- scfhs_verification_log, grace_period_log, push_delivery_log,
 -- idempotency_keys) V04 has audit_entries and idempotency_keys; the
 -- audit_chain_breaks view is the chain verification over audit_entries.
+-- D-45: also the security-event tables break_glass_events and
+-- privileged_sessions (emergency access and privilege elevation), read-only.
 DO $$
 DECLARE
   t TEXT;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['audit_entries', 'audit_chain_breaks', 'idempotency_keys'] LOOP
+  FOREACH t IN ARRAY ARRAY['audit_entries', 'audit_chain_breaks', 'idempotency_keys', 'break_glass_events', 'privileged_sessions'] LOOP
     IF to_regclass('public.' || t) IS NOT NULL THEN
       EXECUTE format('GRANT SELECT ON public.%I TO nurseapp_audit_reader', t);
     END IF;

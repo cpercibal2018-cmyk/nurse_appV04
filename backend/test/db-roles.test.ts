@@ -133,6 +133,11 @@ describeRoles(`database roles (spec §10.7)${allowed ? '' : ' — skipped: the t
       const ar = urlAs(base, 'audit_reader');
       expect(await attempt(ar, `SELECT count(*) FROM audit_entries`)).toBe('ok');
       expect(await attempt(ar, `SELECT count(*) FROM audit_chain_breaks`)).toBe('ok');
+      // D-45: the security-event tables, read-only.
+      expect(await attempt(ar, `SELECT count(*) FROM break_glass_events`)).toBe('ok');
+      expect(await attempt(ar, `SELECT count(*) FROM privileged_sessions`)).toBe('ok');
+      expect(await attempt(ar, `DELETE FROM privileged_sessions`)).toBe(DENIED);
+      expect(await attempt(ar, `UPDATE break_glass_events SET ended_at = now()`)).toBe(DENIED);
       expect(await attempt(ar, `SELECT count(*) FROM employees`)).toBe(DENIED);
       expect(await attempt(ar, `SELECT count(*) FROM users`)).toBe(DENIED);
       expect(await attempt(ar, `INSERT INTO departments (code, name, updated_at) VALUES ('X', 'X', now())`)).toBe(DENIED);
