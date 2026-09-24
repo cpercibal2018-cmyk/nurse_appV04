@@ -42,7 +42,11 @@ function routesOf(app: Express): RouteInfo[] {
   return out;
 }
 
-const PUBLIC = new Set(['GET /api/v1/health', 'POST /api/v1/auth/login', 'POST /api/v1/auth/refresh', 'POST /api/v1/auth/logout']);
+const PUBLIC = new Set([
+  'GET /api/v1/health', 'POST /api/v1/auth/login', 'POST /api/v1/auth/refresh', 'POST /api/v1/auth/logout',
+  // Registration by invitation (spec §3.2): no account exists yet; the token, Job Number, Origin check and throttle guard them.
+  'POST /api/v1/auth/invitations/preview', 'POST /api/v1/auth/invitations/claim',
+]);
 
 /** Signed-in routes without a route gate: the service checks own-or-scoped access. Reviewed list. */
 const SELF_OR_SCOPED = [

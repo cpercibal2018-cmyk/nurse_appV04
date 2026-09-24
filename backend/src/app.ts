@@ -14,6 +14,7 @@ import { createAuthService } from './modules/auth/service.js';
 import { createAccountService } from './modules/users/accounts.js';
 import { createRoleAssignmentService } from './modules/users/role-assignments.js';
 import { createUsersRouter } from './modules/users/routes.js';
+import { createInvitationService } from './modules/users/invitations.js';
 import { createBaselineImportService } from './modules/administration/baseline-import.js';
 import { createCatalogService } from './modules/credentials/catalog.js';
 import { createRecordService } from './modules/credentials/records.js';
@@ -73,7 +74,11 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
     clientThrottle: createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_CLIENT, throttleNamespace),
   });
 
-  app.use('/api/v1/auth', createAuthRouter(env, auth, authenticate));
+  const invitations = createInvitationService({
+    db, passwords, baseUrl: env.APP_BASE_URL ?? env.CORS_ORIGIN, mailEnabled: Boolean(env.SMTP_HOST),
+    throttle: createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_CLIENT, throttleNamespace),
+  });
+  app.use('/api/v1/auth', createAuthRouter(env, auth, authenticate, invitations));
 
   // Everything else under /api/v1 requires a signed-in caller. One protected
   // router, so authentication runs once per request; each domain module adds
@@ -81,7 +86,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   const api = Router();
   api.use(authenticate);
   const catalog = createCatalogService(db);
-  api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db), catalog, createBaselineImportService(db)));
+  api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db), catalog, createBaselineImportService(db), invitations));
   api.use(createWorkforceRouter(db, createOrgService(db)));
   api.use(createNursesRouter(db, createNurseService(db)));
   api.use(createSchedulingRouter(db, createSchedulingService(db), createAttendanceService(db)));

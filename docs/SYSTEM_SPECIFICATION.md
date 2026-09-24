@@ -32,7 +32,7 @@ The reference is silent or open on these; the owner settled them. They add detai
 | §3.3 | Sessions: 15-minute access token; a session not refreshed for 1 hour ends; 24-hour absolute limit through every rotation | D-6 |
 | §3.3 | Login attempt limits: 5 per account and 20 per client per 15 minutes (configurable; the reference sets no numbers) | D-23 |
 | §3.3 | Own sign-in history: one entry per session with sign-in and last IP and browser | D-22 |
-| §3.2 | Accounts are provisioned by HR with an initial password until the invitation flow exists (it needs SMTP) | D-23 |
+| §3.2 | Registration by invitation is built: HR sends a single-use 72-hour link by e-mail to an unclaimed employee with a current contract; the employee confirms with the Job Number and creates one self-service account. HR can still provision an account with an initial password | D-23, D-47 |
 | §4.2 | Contract status transitions: Draft → PendingApproval → Approved/Active, return to Draft; suspend, reinstate, terminate (final); Expired only by the daily job; Superseded never set by hand | D-29 |
 | §4.2 | A contract may be renewed while the current one still covers; the next period follows it directly and the overlap rule (C4) keeps them apart. V03's rule C7 (renew only after coverage lapsed) is not used | D-41 |
 | §10.6 | Nightly backup at 01:00 Asia/Riyadh (22:00 UTC), scheduled independently of the host clock | D-40 |
@@ -82,7 +82,7 @@ These stay in the reference and get their own migration and module when schedule
 
 | Spec | Capability |
 | :--- | :--- |
-| §3.2, §7.6 | Invitation/claim flow, mobile push. (SMTP e-mail, §7.2, is built — D-47; the §7.4 health endpoint is replaced by the monitoring query in DEPLOYMENT.md §7) |
+| §7.6 | Mobile push. (SMTP e-mail, §7.2, is built — D-47; the §7.4 health endpoint is replaced by the monitoring query in DEPLOYMENT.md §7) |
 | §3.5 | SSO, MFA |
 | §5.3 | The document vault (signed download URLs, separate quarantine storage). ClamAV scanning is built (D-10 row above) |
 | §5.4 | SCFHS credential verification integration |

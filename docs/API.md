@@ -30,6 +30,8 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | POST | `/api/v1/auth/login` | Login | public (rate-limited per account and per client) | `{email, password}` → `{token, csrfToken, expiresIn}` + `nurseapp_refresh` (HttpOnly, path `/api/v1/auth`) and `nurseapp_csrf` cookies; 429 `TOO_MANY_ATTEMPTS` + `Retry-After` | server |
 | POST | `/api/v1/auth/refresh` | Rotate (atomic consume; replay → family revoked, `SESSION_REVOKED`) | cookie + Origin + CSRF double-submit | → `{token, csrfToken, expiresIn}` | server |
 | POST | `/api/v1/auth/logout` | Revoke | cookie | → 204 | server |
+| POST | `/api/v1/auth/invitations/preview` | Registration step 1 (spec §3.2) | public (Origin check; per-client limit) | `{token, jobNumber}` → `{fullName, jobNumber, unit, unitAr, position, positionAr, emailHint, expiresAt}` (e-mail masked); any bad token / Job Number → 400 `INVITATION_INVALID`; 429 + `Retry-After` | spec §3.2 |
+| POST | `/api/v1/auth/invitations/claim` | Registration step 2: create the account | public (Origin check; per-client limit) | `{token, jobNumber, email, password 12–72}` → 201 `{userId}`; exactly one account per invitation and per employee, staff self-service role only; any mismatch → 400 `INVITATION_INVALID` | spec §3.2 |
 | GET | `/api/v1/auth/me` | Identity, stored grants (SA marked `dormant` until PAM), effective roles, PAM and break-glass state | EMP | → `{user{id,email,displayName,employeeId,isBreakGlass}, roles[], effectiveRoles[], pam, breakGlass}` | server + backend `roles/me` |
 | GET | `/api/v1/auth/sessions` | Own sign-in history: one entry per session family — signed in / last active, sign-in and last IP and browser, current, active (**D-22**, commit 9) | EMP (own only) | → `{items[]}` | spec §3.3 |
 | POST | `/api/v1/auth/password` | Change own password; revokes all sessions | EMP | `{currentPassword, newPassword}` → 204 | spec §3.3 (new) |
@@ -40,6 +42,8 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | :--- | :--- | :--- | :--- | :--- |
 | GET | `/api/v1/users` | List accounts | HR (scoped), SA | spec §8.1 Accounts |
 | POST | `/api/v1/users` **[I]** | Provision account (optionally linked to an employee) | HR (scoped), SA | spec §8.1 |
+| POST | `/api/v1/employees/:id/invitations` | Invite the employee to register: e-mails a single-use 72-hour link to the contact e-mail (the token is never returned); revokes earlier open invitations. 409 `EMPLOYEE_HAS_ACCOUNT` · `NO_CURRENT_CONTRACT` · `CONTACT_EMAIL_INVALID` · `EMAIL_IN_USE` · `EMAIL_OFF` → `{id, email, expiresAt}` | HR (scoped), SA (`accounts.write`) | spec §3.2 |
+| GET | `/api/v1/employees/:id/invitations` | Invitation history: `OPEN` / `CLAIMED` / `REVOKED` / `EXPIRED` (never the token) | HR (scoped), SA (`accounts.read`) | spec §3.2 |
 | PATCH | `/api/v1/users/:id` | Activate/deactivate, relink employee | HR (scoped), SA | new |
 | GET | `/api/v1/roles/matrix` | Static matrix §8.1–8.2 | EMP | backend |
 | GET | `/api/v1/role-assignments?userId&role&scopeType&active&unitId` | List | HR (within scope), SA | backend |
@@ -55,7 +59,7 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | POST | `/api/v1/admin/baseline-import` | `{file, reason ≥ 10}` → **202** `{status: PENDING_APPROVAL, requestId, report}`; refused with any conflict or rejection (`BASELINE_NOT_IMPORTABLE`) or nothing new (`NOTHING_TO_IMPORT`). A second hospital-wide admin approves via `/approvals/:id/approve`; the file is re-checked (`BASELINE_CHANGED_SINCE_REQUEST`) and applied in one transaction. Break-glass → 201 applied | `baseline.import` — hospital-wide scope | **D-42** (P7) |
 
 **Implemented in commit 5 (notes):**
-- Every route under `/api/v1` except health and `/auth/login|refresh|logout` passes one `authenticate` step; an anonymous caller gets 401 for any path, known or not.
+- Every route under `/api/v1` except health, `/auth/login|refresh|logout` and `/auth/invitations/preview|claim` passes one `authenticate` step; an anonymous caller gets 401 for any path, known or not.
 - State-changing requests need `X-CSRF-Token` equal to the session's token (bound into the access token as a hash) and `Origin` equal to the app origin (spec §3.4 CsrfGuard).
 - `[I]` responses carry identifiers only (`POST /users` → `{id}`; `POST /role-assignments` → `{status:'GRANTED', id}` or 202 `{status:'PENDING_APPROVAL', requestId}`), so stored idempotent responses hold no personal data.
 - Four-eyes approval executes the stored action **as the approver**: every grant rule (R2–R6) is re-checked for them, inside the approval's transaction.

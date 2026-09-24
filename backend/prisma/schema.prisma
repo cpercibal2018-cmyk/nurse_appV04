@@ -65,6 +65,8 @@ model User {
   approvalsInitiated ApprovalRequest[]  @relation("initiator")
   approvalsDecided   ApprovalRequest[]  @relation("approver")
   privilegedSession  PrivilegedSession?
+  invitationsIssued  Invitation[]       @relation("issuer")
+  invitationClaimed  Invitation?        @relation("claimant")
   notifications      Notification[]
 
   @@map("users")
@@ -327,6 +329,7 @@ model Employee {
   unit             Unit?              @relation(fields: [unitId], references: [id])
   position         Position           @relation(fields: [positionCode], references: [code])
   user             User?
+  invitations      Invitation[]
   contracts        Contract[]
   credentials      Credential[]
   waivers          CredentialWaiver[]
@@ -802,6 +805,29 @@ model LoginThrottle {
 
   @@index([resetAt])
   @@map("login_throttle")
+}
+
+/// Registration invitations (spec §3.2). Single-use, 72 hours; only a SHA-256 hash
+/// of the token is stored and the token itself only ever travels in the e-mail.
+/// Issuing a new invitation revokes the employee's earlier unused ones.
+model Invitation {
+  id          Int       @id @default(autoincrement())
+  employeeId  Int       @map("employee_id")
+  email       String
+  tokenHash   String    @unique @map("token_hash")
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz
+  createdById Int       @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  usedAt      DateTime? @map("used_at") @db.Timestamptz
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz
+  userId      Int?      @unique @map("user_id") // the account the claim created
+
+  employee  Employee @relation(fields: [employeeId], references: [id])
+  createdBy User     @relation("issuer", fields: [createdById], references: [id])
+  user      User?    @relation("claimant", fields: [userId], references: [id])
+
+  @@index([employeeId, createdAt])
+  @@map("invitations")
 }
 
 model IdempotencyKey {
