@@ -41,6 +41,15 @@ export const TransitionBody = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('terminate'), reason: Reason }),
 ]);
 const STATUSES = ['Draft', 'PendingApproval', 'Approved', 'Active', 'Expired', 'Suspended', 'Terminated', 'Superseded'] as const;
+/** Employee pickers: server-side search by job number or name, a page of matches. */
+export const PickerQuery = z.object({
+  q: z.string().trim().min(1).max(80).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+
+const pickerMatch = (q: string | undefined) =>
+  q ? { OR: [{ jobNumber: { contains: q, mode: 'insensitive' as const } }, { fullName: { contains: q, mode: 'insensitive' as const } }] } : {};
+
 export const ListQuery = z.object({
   employeeId: z.coerce.number().int().positive().optional(),
   status: z.enum(STATUSES).optional(),
@@ -170,29 +179,33 @@ export function createContractService(db: Db, storage: Storage, scanner: UploadS
     },
 
     /** C10: in-scope employees without any Approved/Active contract (the "new contract" picker). */
-    async creatable(auth: AuthContext) {
+    async creatable(auth: AuthContext, q: z.infer<typeof PickerQuery>) {
       const scope = await hrScope(db, auth);
-      const rows = await db.employee.findMany({
-        where: { deletedAt: null, ...(scope.all ? {} : { unitId: { in: [...scope.unitIds] } }), contracts: { none: { status: { in: [...COVERING] } } } },
-        select: { id: true, jobNumber: true, fullName: true }, orderBy: { jobNumber: 'asc' }, take: 500,
-      });
-      return { items: rows, total: rows.length };
+      const where = { deletedAt: null, ...(scope.all ? {} : { unitId: { in: [...scope.unitIds] } }), contracts: { none: { status: { in: [...COVERING] } } }, ...pickerMatch(q.q) };
+      const [rows, total] = await Promise.all([
+        db.employee.findMany({ where, select: { id: true, jobNumber: true, fullName: true }, orderBy: { jobNumber: 'asc' }, take: q.limit }),
+        db.employee.count({ where }),
+      ]);
+      return { items: rows, total };
     },
 
     /** Renewal picker: each in-scope employee's latest contract with the C8 prefill. */
-    async renewable(auth: AuthContext) {
+    async renewable(auth: AuthContext, q: z.infer<typeof PickerQuery>) {
       const scope = await hrScope(db, auth);
-      const rows = await db.employee.findMany({
-        where: { deletedAt: null, ...(scope.all ? {} : { unitId: { in: [...scope.unitIds] } }), contracts: { some: {} } },
-        select: { id: true, jobNumber: true, fullName: true, contracts: { orderBy: { endDate: 'desc' }, take: 1 } },
-        orderBy: { jobNumber: 'asc' }, take: 500,
-      });
+      const where = { deletedAt: null, ...(scope.all ? {} : { unitId: { in: [...scope.unitIds] } }), contracts: { some: {} }, ...pickerMatch(q.q) };
+      const [rows, total] = await Promise.all([
+        db.employee.findMany({
+          where, select: { id: true, jobNumber: true, fullName: true, contracts: { orderBy: { endDate: 'desc' }, take: 1 } },
+          orderBy: { jobNumber: 'asc' }, take: q.limit,
+        }),
+        db.employee.count({ where }),
+      ]);
       const items = rows.map((e) => {
         const prior = e.contracts[0]!;
         const p = { startDate: dbDate(prior.startDate), endDate: dbDate(prior.endDate) };
         return { employeeId: e.id, jobNumber: e.jobNumber, fullName: e.fullName, prior: { id: prior.id, status: prior.status, ...dates(prior) }, prefill: renewalPeriodAfter(p) };
       });
-      return { items, total: items.length };
+      return { items, total };
     },
 
     async create(auth: AuthContext, body: z.infer<typeof CreateBody>, requestId?: string) {

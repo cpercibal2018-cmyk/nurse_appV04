@@ -99,7 +99,7 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | :--- | :--- | :--- | :--- | :--- |
 | GET | `/api/v1/contracts?employeeId&status&page&pageSize` | List | HR/SA scoped → FULL; SUP scoped → REDUCED (identifiers, employee/position, unit, status, dates) | spec §4.1 |
 | GET | `/api/v1/contracts/me` · `/:id` | Own (REDUCED) · one, shaped by viewer | EMP own; HR, SUP scoped | spec §4.1 |
-| GET | `/api/v1/contracts/creatable` · `/renewable` | New-contract picker (no Approved/Active contract, C10) · renewal picker with the C8 prefill | HR, SA scoped | C8, C10 |
+| GET | `/api/v1/contracts/creatable` · `/renewable` | New-contract picker (no Approved/Active contract, C10) · renewal picker with the C8 prefill. `?q=` searches job number or name (case-insensitive) across the whole scope; `?limit=` 1–50 (default 20); `total` counts every match | HR, SA scoped | C8, C10 |
 | POST | `/api/v1/contracts` **[I]** | `{employeeId, startDate, endDate}` → Draft; refused if the employee already has an Approved/Active contract (use renewal) | HR, SA scoped; not own | C5, C6, C10 |
 | POST | `/api/v1/contracts/:id/renew` **[I]** | From the employee's latest contract; dates default to the C8 prefill → Draft | HR, SA scoped; not own | C8 |
 | POST | `/api/v1/contracts/:id/transition` | `{action, reason?}` per the D-29 map: `submit` (needs a CLEAN copy, C11), `return`\*, `approve` (Active if it covers today, else Approved; overlap checked, C4), `suspend`\*, `reinstate`\*, `terminate`\*. \* reason required. Expired only by the daily job; Superseded never by hand. Returns `{status, eligibility}` | HR, SA scoped; not own; **approver ≠ creator and ≠ submitter (D-30)** | spec §4.2, D-29, D-30 |
