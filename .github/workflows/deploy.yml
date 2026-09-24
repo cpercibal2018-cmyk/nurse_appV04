@@ -1,0 +1,83 @@
+name: Deploy
+
+# Production release to Google Cloud, me-central2 (decision D-49; ops/gcp/README.md).
+# Runs after CI has passed on main, builds the images once, then waits for a
+# reviewer to approve the `production` environment before anything changes.
+# Does nothing until the repository variables of ops/gcp/README.md §7 are set.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write   # keyless Workload Identity Federation; no service-account keys
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: me-central2-docker.pkg.dev/${{ vars.GCP_PROJECT }}/nurseapp
+  SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  images:
+    if: vars.GCP_PROJECT != '' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_BUILD_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker me-central2-docker.pkg.dev --quiet
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push api, migrate and web
+        run: |
+          set -euo pipefail
+          docker buildx build -f backend/Dockerfile --target runtime -t "$REGISTRY/api:$SHA" --push .
+          docker buildx build -f backend/Dockerfile --target migrate -t "$REGISTRY/migrate:$SHA" --push .
+          docker buildx build -f frontend/Dockerfile -t "$REGISTRY/web:$SHA" --push .
+
+  deploy:
+    needs: images
+    runs-on: ubuntu-24.04
+    environment: production   # required reviewers are set on this environment in GitHub
+    env:
+      ZONE: ${{ vars.GCP_ZONE }}
+      APP_VM: ${{ vars.GCP_APP_VM }}
+      DB_VM: ${{ vars.GCP_DB_VM }}
+      DB_NAME: ${{ vars.DB_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Ship the release scripts to both VMs (IAP; no public SSH)
+        run: |
+          set -euo pipefail
+          tar -czf ops.tgz ops/gcp ops/db
+          for vm in "$APP_VM" "$DB_VM"; do
+            gcloud compute scp ops.tgz "$vm:/tmp/nurseapp-ops-$SHA.tgz" --zone "$ZONE" --tunnel-through-iap --quiet
+            gcloud compute ssh "$vm" --zone "$ZONE" --tunnel-through-iap --quiet --command \
+              "sudo mkdir -p /opt/nurseapp && sudo tar -xzf /tmp/nurseapp-ops-$SHA.tgz -C /opt/nurseapp --strip-components=1 && rm /tmp/nurseapp-ops-$SHA.tgz"
+          done
+      - name: App VM — pull images, run migrations
+        run: gcloud compute ssh "$APP_VM" --zone "$ZONE" --tunnel-through-iap --quiet --command "sudo /opt/nurseapp/gcp/deploy.sh pull $SHA && sudo /opt/nurseapp/gcp/deploy.sh migrate $SHA"
+      - name: DB VM — re-apply role grants, verify.sql must pass
+        run: gcloud compute ssh "$DB_VM" --zone "$ZONE" --tunnel-through-iap --quiet --command "sudo /opt/nurseapp/gcp/db-release.sh $DB_NAME"
+      - name: App VM — start the release (waits until healthy)
+        run: gcloud compute ssh "$APP_VM" --zone "$ZONE" --tunnel-through-iap --quiet --command "sudo /opt/nurseapp/gcp/deploy.sh up $SHA"
+      - name: Public health check through the load balancer
+        run: curl -fsS --retry 10 --retry-delay 6 --retry-all-errors "${{ vars.APP_URL }}/api/v1/health"

@@ -1,7 +1,7 @@
 # Development database for AIGH Nursing Workforce V04.
 #   docker compose up -d db
 # PostgreSQL 15 is the production target (spec §0.2, backup drill verified on 15.19).
-# The api and web services are added once their Dockerfiles exist.
+# Production containers (api, worker, web, clamav) are in ops/gcp/docker-compose.yml (D-49).
 #
 # Optional ClamAV daemon for UPLOAD_SCANNER=clamav (spec §5.3.2):
 #   docker compose --profile clamav up -d clamav

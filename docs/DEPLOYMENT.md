@@ -1,6 +1,6 @@
 # Deployment and operations
 
-How to run V04 and what must be settled before production. The production topology in the reference spec (§2.2, §10) describes containers and blue/green releases; **V04 has no container images yet** (only a development database in `docker-compose.yml`), so this guide describes plain Node processes behind a reverse proxy.
+How to run V04 and what must be settled before production. **Production runs on Google Cloud in Dammam (`me-central2`, D-49)**: the API, worker, web server (nginx) and ClamAV as containers on one Compute Engine VM, PostgreSQL 15 on a second VM, releases through GitHub Actions with a manual approval. The Google Cloud setup and the release pipeline are in [ops/gcp/README.md](../ops/gcp/README.md); this guide covers the settings, jobs, database, backups and monitoring that apply however the processes are run.
 
 > **Production prerequisites are still open.** With `NODE_ENV=production` the API starts only with `UPLOAD_SCANNER=clamav` and a reachable `CLAMAV_HOST` configured (D-10, [§2.1](#21-malware-scanner-clamav)); [§6](#6-known-gaps-before-production) lists what else must be settled first.
 
@@ -110,6 +110,8 @@ Delivery is at-least-once: a crash after the relay accepted a message but before
 
 ## 4. Release procedure
 
+In production the **Deploy** workflow does these steps with container images after a reviewer approves ([ops/gcp/README.md §8](../ops/gcp/README.md#8-a-release)). By hand, on any server:
+
 ```bash
 npm ci
 npm run build                       # backend (prisma generate + tsc) and frontend (with bundle gate)
@@ -163,7 +165,7 @@ The scripts, their environment contract and the verified drill are in [`ops/back
 | **`pg` 9 not yet usable** | Inside an interactive transaction Prisma 7.10's query interpreter reads the relations of a multi-relation `include` concurrently on the transaction's single `pg` client ([prisma/prisma#29407](https://github.com/prisma/prisma/issues/29407)). `pg` 8 queues the queries (results are correct) but prints its "client is already executing a query" deprecation, which `pg` 9 turns into a failure. The application's own code issues transaction queries one at a time | Stay on `pg` 8 until a Prisma release with the fix; then upgrade both together and run the full test suite |
 | **No SMS; no password reset or invitation e-mails** | E-mail is built (§2.2) but needs the relay and the private link from Google Cloud. SMS (the break-glass alert by text, D-48) and the password-reset / invitation flows (spec §3.2) are not built yet | The hospital SMS gateway's API details (D-48); the invitation / reset flows |
 | **No badge feed** (D-33) | Attendance gaps and alerts only work once events are loaded into `attendance_events` | The PACS interface contract |
-| **No container images or blue/green** (spec §10.4) | Deployment is manual (§4) | Dockerfiles and a pipeline, when the hosting decision is made |
+| **Google Cloud not yet provisioned; no blue/green** (spec §10.4) | Images, the app-VM runtime and the Deploy workflow are built and tested locally ([ops/gcp](../ops/gcp/README.md)); the project, network, VMs, load balancer and HA VPN to the hospital do not exist yet. A release briefly restarts the containers (no blue/green) | The cloud administrator runs ops/gcp/README.md §1–§7; blue/green if the brief restart is not acceptable |
 
 ## 7. Monitoring
 

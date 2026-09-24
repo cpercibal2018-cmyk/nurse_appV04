@@ -1,0 +1,13 @@
+# Build context for backend/Dockerfile and frontend/Dockerfile (repository root).
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+backend/src/generated
+backend/storage
+**/.env
+**/.env.*
+.git
+docs
+ops/backup
+coverage
+*.gpg

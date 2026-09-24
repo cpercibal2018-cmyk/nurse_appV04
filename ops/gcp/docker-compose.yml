@@ -1,0 +1,66 @@
+# App VM runtime (decision D-49: Compute Engine, me-central2).
+# Started by ops/gcp/deploy.sh; do not run by hand except for diagnosis.
+#
+# Images come from Artifact Registry and are pinned to one release tag:
+#   REGISTRY=me-central2-docker.pkg.dev/<project>/nurseapp  TAG=<git sha>
+# Settings (DATABASE_URL = nurseapp_runtime, secrets, SMTP, …) are read from
+# /etc/nurseapp/app.env (root-only, 0600) — see ops/gcp/README.md §5.
+
+name: nurseapp
+
+x-app: &app
+  image: ${REGISTRY}/api:${TAG}
+  env_file: ${NURSEAPP_CONF:-/etc/nurseapp}/app.env
+  restart: unless-stopped
+  read_only: true
+  tmpfs: ["/tmp:mode=1777"]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  logging:
+    driver: ${LOG_DRIVER:-gcplogs}
+
+services:
+  api:
+    <<: *app
+    environment:
+      NODE_ENV: production
+      JOBS_MODE: worker          # the worker service runs the jobs and the e-mail dispatcher
+      TRUST_PROXY: "true"        # one hop: the web container (nginx)
+      UPLOAD_SCANNER: clamav
+      CLAMAV_HOST: clamav
+    volumes:
+      - ${NURSEAPP_STATE:-/srv/nurseapp}/storage:/data/storage
+    depends_on:
+      clamav: { condition: service_started }
+
+  worker:
+    <<: *app
+    command: ["node", "dist/jobs/worker.js"]
+    environment:
+      NODE_ENV: production
+    healthcheck: { disable: true }   # no HTTP listener; liveness = the process and job_runs
+
+  web:
+    image: ${REGISTRY}/web:${TAG}
+    restart: unless-stopped
+    read_only: true
+    # nginx (uid 101) renders its config from the template at start-up.
+    tmpfs: ["/tmp:uid=101,gid=101", "/var/cache/nginx:uid=101,gid=101", "/etc/nginx/conf.d:uid=101,gid=101"]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    environment:
+      LB_PROXY_SUBNET: ${LB_PROXY_SUBNET:?set LB_PROXY_SUBNET in /etc/nurseapp/deploy.env}
+    ports:
+      - "8080:8080"              # the load balancer's backend; the firewall admits only its proxy subnet and health checks
+    depends_on:
+      api: { condition: service_healthy }
+    logging:
+      driver: ${LOG_DRIVER:-gcplogs}
+
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    volumes:
+      - ${NURSEAPP_STATE:-/srv/nurseapp}/clamav:/var/lib/clamav   # signatures survive restarts; freshclam in the container updates them
+    logging:
+      driver: ${LOG_DRIVER:-gcplogs}

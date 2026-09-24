@@ -1,0 +1,63 @@
+# Web server for the app VM (decision D-49). Serves the built frontend and
+# proxies /api to the API container on the same origin (the refresh cookie,
+# CSRF and Origin checks assume one origin). TLS ends at the regional
+# external HTTPS load balancer in me-central2 (ops/gcp/README.md §6).
+#
+# Client address: the load balancer adds X-Client-Ip ({client_ip_address},
+# a custom request header on its backend service). It is trusted only from
+# the load balancer's proxy-only subnet (LB_PROXY_SUBNET), which is also the
+# only source the VM firewall admits on this port besides health checks, and
+# passed to the API as the single X-Forwarded-For hop TRUST_PROXY=true expects.
+
+set_real_ip_from ${LB_PROXY_SUBNET};
+set_real_ip_from 127.0.0.1;
+real_ip_header X-Client-Ip;
+
+server_tokens off;
+client_max_body_size 11m;   # UPLOAD_MAX_SIZE_BYTES (10 MB) plus headroom
+
+upstream api {
+  server ${API_UPSTREAM};
+  keepalive 16;
+}
+
+server {
+  listen 8080;
+  root /usr/share/nginx/html;
+
+  add_header X-Content-Type-Options nosniff always;
+  add_header X-Frame-Options DENY always;
+  add_header Referrer-Policy no-referrer always;
+  add_header Strict-Transport-Security "max-age=31536000" always;
+  add_header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+
+  location /api/ {
+    proxy_pass http://api;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;   # one hop: the real client
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Client-Ip "";
+    proxy_read_timeout 60s;
+  }
+
+  # Hashed assets: cache for a year. index.html: never cache, so a release is picked up at once.
+  location /assets/ {
+    expires 1y;
+    add_header Cache-Control "public, immutable" always;
+    add_header X-Content-Type-Options nosniff always;
+    try_files $uri =404;
+  }
+  location / {
+    add_header Cache-Control "no-store" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy no-referrer always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+    try_files $uri /index.html;
+  }
+
+  location = /healthz { access_log off; add_header Content-Type text/plain; return 200 "ok\n"; }
+}
