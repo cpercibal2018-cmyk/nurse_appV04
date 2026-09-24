@@ -48,7 +48,7 @@ Every upload (credential evidence and contract copies) goes: size and type check
 | :--- | :--- | :--- |
 | `OK` | 201; document `CLEAN`; the `DOCUMENT_UPLOADED` audit names the engine and signature version | File and row |
 | `… FOUND` | 422 `UPLOAD_INFECTED` | **Nothing stored.** A HIGH audit entry `DOCUMENT_REJECTED_INFECTED` (file name, size, SHA-256, signature) and an error log line `malware detected in upload` |
-| Error, timeout, unreachable | Retried — 3 attempts in total — then 503 `SCANNER_UNAVAILABLE` | Nothing stored; error log `upload scan failed; upload refused`. The user uploads again later |
+| Error, timeout, unreachable, or **no signature database loaded** | Retried — 3 attempts in total — then 503 `SCANNER_UNAVAILABLE` | Nothing stored; error log `upload scan failed; upload refused`. The user uploads again later |
 
 **Deliberate deviation from the spec — owner decision [D-43](V04_ARCHITECTURE_PLAN.md#9a-decision-record-2026-09-23).** Spec §5.3.2 describes an asynchronous quarantine queue (`PENDING` → `SCANNING` → `CLEAN` / `INFECTED` / `SCAN_FAILED`, a quarantine area and a scan worker). It is not built and should not be: the uploader gets an immediate answer instead of a later silent deletion, unscanned bytes never reach persistent storage, and there is no worker that could crash and leave files stuck pending. With files capped at `UPLOAD_MAX_SIZE_BYTES` the synchronous scan meets the spec's rules — nothing unscanned is stored or served, infected files are not kept, every rejection is audited.
 
@@ -56,8 +56,11 @@ Every upload (credential evidence and contract copies) goes: size and type check
 
 - Run `clamd` on a host the API reaches (a separate host or container is fine; nothing else should reach port 3310). For a local trial: `docker compose --profile clamav up -d clamav`.
 - `StreamMaxLength` in `clamd.conf` must be at least `UPLOAD_MAX_SIZE_BYTES` (clamd's default is 25 MB; the upload limit is 10 MB).
-- `freshclam` must update the signatures at least daily; it needs outbound HTTPS to the ClamAV mirrors (or a hospital mirror). Stale signatures (older than `CLAMAV_MAX_SIGNATURE_AGE_HOURS`) do not stop uploads, but every scan logs an error until they are refreshed — alert on it (§7).
-- Check before go-live, from the API host: `printf 'zPING\0' | nc clamav.internal 3310` answers `PONG`, and uploading the [EICAR test file](https://www.eicar.org/download-anti-malware-testfile/) embedded in a PDF is rejected with `UPLOAD_INFECTED`.
+- `freshclam` must update the signatures at least daily; it needs outbound HTTPS to the ClamAV mirrors (or a hospital mirror). Signatures that are only old (older than `CLAMAV_MAX_SIGNATURE_AGE_HOURS`) do not stop uploads, but every scan logs an error until they are refreshed — alert on it (§7). A `clamd` with **no** official signature database (its `VERSION` reply has no database number) is treated as misconfigured: uploads are refused with `SCANNER_UNAVAILABLE`, because such a scanner reports almost everything as clean.
+- Check before go-live:
+  1. From the API host: `printf 'zPING\0' | nc clamav.internal 3310` answers `PONG`, and `printf 'zVERSION\0' | nc clamav.internal 3310` shows a database number and a date from the last day (for example `ClamAV 1.4.3/27771/…`), not just `ClamAV 1.4.3`.
+  2. On the scanner host, scan the standalone [EICAR test file](https://www.eicar.org/download-anti-malware-testfile/) through the daemon: `clamdscan --stream eicar.com` reports `FOUND` with a name **without** an `.UNOFFICIAL` suffix (the suffix means a local signature file, not the official database). This is the check that proves the official signatures are loaded.
+  3. Through the app, upload a PDF containing the EICAR string: expect `UPLOAD_INFECTED` and a HIGH `DOCUMENT_REJECTED_INFECTED` audit entry. The app only accepts real PDFs and images, so the EICAR file cannot be uploaded on its own; if the official signatures match only the exact standalone file and let this PDF through, step 2 still covers the signatures and the rejection path is covered by the automated tests.
 
 ## 3. Processes and background jobs
 

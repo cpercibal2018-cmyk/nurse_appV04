@@ -20,11 +20,13 @@ interface FakeClamd {
   /** Never answer (to exercise the timeout). */
   hang: boolean;
   signatureDate: string;
+  /** Answer VERSION without a database part, like clamd with no official signatures. */
+  noDatabase: boolean;
   close: () => Promise<void>;
 }
 
 async function fakeClamd(): Promise<FakeClamd> {
-  const state = { received: null as Buffer | null, scans: 0, failNext: 0, hang: false, signatureDate: new Date().toString().slice(0, 24) };
+  const state = { received: null as Buffer | null, scans: 0, failNext: 0, hang: false, noDatabase: false, signatureDate: new Date().toString().slice(0, 24) };
   const server = net.createServer((sock) => {
     let buf = Buffer.alloc(0);
     sock.on('data', (d) => {
@@ -34,7 +36,7 @@ async function fakeClamd(): Promise<FakeClamd> {
       const cmd = buf.subarray(0, nul).toString();
       if (state.hang) return;
       if (state.failNext > 0) { state.failNext--; sock.destroy(); return; }
-      if (cmd === 'zVERSION') { sock.end(`ClamAV 1.4.3/27771/${state.signatureDate}\0`); return; }
+      if (cmd === 'zVERSION') { sock.end(state.noDatabase ? 'ClamAV 1.4.3\0' : `ClamAV 1.4.3/27771/${state.signatureDate}\0`); return; }
       if (cmd !== 'zINSTREAM') { sock.end('UNKNOWN COMMAND\0'); return; }
       // Parse chunks after the command; wait for the zero-length terminator.
       let off = nul + 1;
@@ -69,15 +71,16 @@ describe('clamd adapter (spec §5.3.2)', () => {
   let fake: FakeClamd;
   beforeAll(async () => { fake = await fakeClamd(); });
   afterAll(async () => { await fake.close(); });
-  afterEach(() => { fake.failNext = 0; fake.hang = false; });
+  afterEach(() => { fake.failNext = 0; fake.hang = false; fake.noDatabase = false; });
 
   it('parses clamd replies', () => {
     expect(parseScanReply('stream: OK')).toEqual({ verdict: 'CLEAN' });
     expect(parseScanReply('stream: Win.Test.EICAR_HDB-1 FOUND')).toEqual({ verdict: 'INFECTED', signature: 'Win.Test.EICAR_HDB-1' });
     expect(() => parseScanReply('INSTREAM size limit exceeded. ERROR')).toThrow(/could not scan/);
     expect(() => parseScanReply('')).toThrow(/empty reply/);
-    expect(parseVersionReply('ClamAV 1.4.3/27771/Wed Sep 23 08:24:02 2026')).toMatchObject({ engine: 'ClamAV 1.4.3/27771' });
-    expect(parseVersionReply('ClamAV 1.4.3').signatureDate).toBeNull();
+    expect(parseVersionReply('ClamAV 1.4.3/27771/Wed Sep 23 08:24:02 2026')).toMatchObject({ engine: 'ClamAV 1.4.3/27771', signatureVersion: '27771' });
+    expect(parseVersionReply('ClamAV 1.4.3')).toMatchObject({ signatureVersion: null, signatureDate: null });
+    expect(parseVersionReply('ClamAV 1.4.3/0/Wed Sep 23 08:24:02 2026').signatureVersion).toBeNull();
     expect(() => parseVersionReply('nonsense')).toThrow();
   });
 
@@ -118,6 +121,13 @@ describe('clamd adapter (spec §5.3.2)', () => {
       fake.signatureDate = saved;
       errors.mockRestore();
     }
+  });
+
+  it('fails closed when clamd has no signature database, without scanning', async () => {
+    fake.noDatabase = true;
+    const before = fake.scans;
+    await expect(scannerFor(fake).scan(FILES.pdf)).rejects.toThrow(/no signature database/);
+    expect(fake.scans).toBe(before);
   });
 
   it('rejects when nothing listens', async () => {
@@ -161,7 +171,7 @@ describeDb('uploads through ClamAV (spec §5.3.2; D-10)', () => {
     contractPath = `/contracts/${contractId}/documents`;
   });
   afterAll(async () => { await fake.close(); await db.$disconnect(); });
-  afterEach(() => { fake.failNext = 0; });
+  afterEach(() => { fake.failNext = 0; fake.noDatabase = false; });
 
   const infectedPdf = Buffer.concat([FILES.pdf, Buffer.from(EICAR)]);
 
@@ -194,6 +204,15 @@ describeDb('uploads through ClamAV (spec §5.3.2; D-10)', () => {
   it('a scanner outage fails closed (503) after retries and stores nothing', async () => {
     const docsBefore = await db.documentVersion.count();
     fake.failNext = 3;
+    const res = await hr.upload(credentialPath, FILES.pdf, 'application/pdf');
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe('SCANNER_UNAVAILABLE');
+    expect(await db.documentVersion.count()).toBe(docsBefore);
+  });
+
+  it('a clamd without signatures fails closed (503) and stores nothing', async () => {
+    const docsBefore = await db.documentVersion.count();
+    fake.noDatabase = true;
     const res = await hr.upload(credentialPath, FILES.pdf, 'application/pdf');
     expect(res.status).toBe(503);
     expect(res.body.error.code).toBe('SCANNER_UNAVAILABLE');

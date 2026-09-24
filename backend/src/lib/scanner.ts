@@ -5,7 +5,9 @@
 // - clamav (production): the bytes are streamed to clamd over TCP (INSTREAM)
 //   before anything is written to storage. Clean → stored as CLEAN; infected →
 //   never stored, rejected and audited; scanner errors → retried, then the
-//   upload fails closed (503) and nothing is stored.
+//   upload fails closed (503) and nothing is stored. A clamd without an
+//   official signature database counts as a scanner error (fails closed);
+//   signatures that are only old raise an alert (spec §5.3.2 rule 7).
 //
 // Scanning is synchronous in the upload request (files are ≤ UPLOAD_MAX_SIZE_BYTES),
 // so there is no PENDING/quarantine state to reconcile: a document row exists
@@ -106,15 +108,22 @@ export function parseScanReply(reply: string): { verdict: 'CLEAN' } | { verdict:
   throw new Error(`clamd could not scan the file: ${reply || '(empty reply)'}`);
 }
 
-export interface ClamdVersion { engine: string; signatureDate: Date | null }
+export interface ClamdVersion {
+  engine: string;
+  /** Signature database version; null when clamd has no official database loaded. */
+  signatureVersion: string | null;
+  signatureDate: Date | null;
+}
 
 /** Parses a VERSION reply: "ClamAV 1.4.3/27771/Wed Sep 23 08:24:02 2026". */
 export function parseVersionReply(reply: string): ClamdVersion {
   if (!reply.startsWith('ClamAV ')) throw new Error(`unexpected clamd VERSION reply: ${reply || '(empty reply)'}`);
   const [engine, db, date] = reply.split('/');
   const signatureDate = date ? new Date(date) : null;
+  const signatureVersion = db && /^[1-9]\d*$/.test(db) ? db : null;
   return {
     engine: db ? `${engine}/${db}` : engine!,
+    signatureVersion,
     signatureDate: signatureDate && !Number.isNaN(signatureDate.getTime()) ? signatureDate : null,
   };
 }
@@ -125,6 +134,11 @@ export function createClamdScanner(o: ClamdOptions): UploadScanner {
 
   async function once(bytes: Buffer): Promise<ScanResult> {
     const version = parseVersionReply(await clamdCommand(o, 'VERSION'));
+    // Without an official signature database clamd answers "OK" to almost
+    // everything, so a scan would prove nothing: fail closed (misconfigured host).
+    if (!version.signatureVersion) {
+      throw new Error(`clamd reports no signature database (${version.engine}) — run freshclam on the scanner host`);
+    }
     const ageHours = version.signatureDate ? (now().getTime() - version.signatureDate.getTime()) / 3_600_000 : Infinity;
     if (ageHours > o.maxSignatureAgeHours) {
       // Rule 7: alert operations; the scan itself still runs on what clamd has.
