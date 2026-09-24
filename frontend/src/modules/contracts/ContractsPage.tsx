@@ -2,7 +2,7 @@
 // along the map of decision D-29 — the creator or submitter cannot approve
 // (D-30). Supervisors get the reduced read view, employees their own.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, App, Button, Card, DatePicker, Drawer, Flex, Form, Input, Modal, Select, Space, Table, Tag, Upload } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -13,7 +13,7 @@ import { toHijriShort } from '../../lib/hijri';
 import { http } from '../../services/http';
 import {
   CONTRACT_STATUSES, NEEDS_REASON, TRANSITIONS, useContractAction, useContractDocs, useContracts, useCreatable, useRenewable,
-  type ContractAction, type ContractRow, type ContractStatus,
+  type ContractAction, type ContractRow, type ContractStatus, type Renewable,
 } from './api';
 
 const COLOR: Record<ContractStatus, string> = {
@@ -34,13 +34,31 @@ export default function ContractsPage() {
   const [pending, setPending] = useState<{ row: ContractRow; action: ContractAction } | null>(null);
   const [reason, setReason] = useState('');
   const [docsFor, setDocsFor] = useState<ContractRow | null>(null);
-  const creatable = useCreatable(creating?.mode === 'new');
-  const renewable = useRenewable(creating?.mode === 'renew');
+  // Picker search runs on the server (all employees in scope, not just a first page); typing is debounced.
+  const [pickerInput, setPickerInput] = useState('');
+  const [pickerQ, setPickerQ] = useState('');
+  useEffect(() => { const h = setTimeout(() => setPickerQ(pickerInput.trim()), 300); return () => clearTimeout(h); }, [pickerInput]);
+  const creatable = useCreatable(creating?.mode === 'new', pickerQ);
+  const renewable = useRenewable(creating?.mode === 'renew', pickerQ);
+  const picker = creating?.mode === 'renew' ? renewable : creatable;
+  // Kept apart from the search results, which change as the user types.
+  const [chosenRenewal, setChosenRenewal] = useState<Renewable | null>(null);
+  const [chosenOption, setChosenOption] = useState<{ value: number; label: string } | null>(null);
+  const pickerOptions = (creating?.mode === 'renew'
+    ? renewable.data?.items.map((r) => ({ value: r.employeeId, label: `${r.jobNumber} — ${r.fullName}` }))
+    : creatable.data?.items.map((e) => ({ value: e.id, label: `${e.jobNumber} — ${e.fullName}` }))) ?? [];
+  // The chosen employee stays selectable (and labelled) even when a later search no longer returns them.
+  const options = chosenOption && !pickerOptions.some((o) => o.value === chosenOption.value) ? [chosenOption, ...pickerOptions] : pickerOptions;
   const docs = useContractDocs(docsFor?.id ?? null);
   const [form] = Form.useForm<{ employeeId: number; start: Dayjs; end: Dayjs }>();
   const start = Form.useWatch('start', form);
   const end = Form.useWatch('end', form);
-  const chosenRenewal = renewable.data?.items.find((r) => r.employeeId === Form.useWatch('employeeId', form));
+
+  function openPicker(mode: 'new' | 'renew') {
+    form.resetFields();
+    setPickerInput(''); setPickerQ(''); setChosenRenewal(null); setChosenOption(null);
+    setCreating({ mode, key: crypto.randomUUID() });
+  }
 
   async function run(a: Parameters<typeof action.mutateAsync>[0], ok: string) {
     try { const out = await action.mutateAsync(a); message.success(ok); return out; } catch (e) { message.error(describeApiError(e)); return undefined; }
@@ -56,8 +74,8 @@ export default function ContractsPage() {
   return (
     <Card title={t('contracts')} extra={hr && (
       <Space>
-        <Button type="primary" onClick={() => { form.resetFields(); setCreating({ mode: 'new', key: crypto.randomUUID() }); }}>{t('newContract')}</Button>
-        <Button onClick={() => { form.resetFields(); setCreating({ mode: 'renew', key: crypto.randomUUID() }); }}>{t('renewContract')}</Button>
+        <Button type="primary" onClick={() => openPicker('new')}>{t('newContract')}</Button>
+        <Button onClick={() => openPicker('renew')}>{t('renewContract')}</Button>
       </Space>
     )}>
       {staff && (
@@ -99,12 +117,15 @@ export default function ContractsPage() {
             : await run({ kind: 'renew', priorId: chosenRenewal!.prior.id, body, key: creating.key }, t('saved'));
           if (out !== undefined) setCreating(null);
         }}>
-          <Form.Item name="employeeId" label={t('employee')} rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="label"
-              options={(creating?.mode === 'renew' ? renewable.data?.items.map((r) => ({ value: r.employeeId, label: `${r.jobNumber} — ${r.fullName}` }))
-                : creatable.data?.items.map((e) => ({ value: e.id, label: `${e.jobNumber} — ${e.fullName}` }))) ?? []}
-              onChange={(id) => {
-                const r = renewable.data?.items.find((x) => x.employeeId === id);
+          <Form.Item name="employeeId" label={t('employee')} rules={[{ required: true }]}
+            extra={picker.data && picker.data.total > picker.data.items.length
+              ? t('pickerShowing', { shown: picker.data.items.length, total: picker.data.total }) : undefined}>
+            <Select showSearch={{ filterOption: false, onSearch: setPickerInput }} loading={picker.isFetching} placeholder={t('searchJobOrName')}
+              options={options}
+              onChange={(id: number) => {
+                setChosenOption(options.find((o) => o.value === id) ?? null);
+                const r = renewable.data?.items.find((x) => x.employeeId === id) ?? (chosenRenewal?.employeeId === id ? chosenRenewal : undefined);
+                setChosenRenewal(creating?.mode === 'renew' ? r ?? null : null);
                 if (creating?.mode === 'renew' && r) form.setFieldsValue({ start: dayjs(r.prefill.start), end: dayjs(r.prefill.end) }); // C8
               }} />
           </Form.Item>

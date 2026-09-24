@@ -6,7 +6,7 @@ import { z } from 'zod';
 import type { Db } from '../../lib/prisma.js';
 import { authOf, authorize } from '../../middleware/authorize.js';
 import { idempotent } from '../../middleware/idempotency.js';
-import { CreateBody, ListQuery, RenewBody, TransitionBody, type ContractService } from './service.js';
+import { CreateBody, ListQuery, PickerQuery, RenewBody, TransitionBody, type ContractService } from './service.js';
 
 const IdParam = z.object({ id: z.coerce.number().int().positive() });
 const DocParam = z.object({ id: z.coerce.number().int().positive(), docId: z.coerce.number().int().positive() });
@@ -17,8 +17,8 @@ export function createContractsRouter(db: Db, contracts: ContractService, maxUpl
 
   r.get('/contracts', authorize('contracts.read'), async (req, res) => { res.json(await contracts.list(authOf(res), ListQuery.parse(req.query))); });
   r.get('/contracts/me', async (_req, res) => { res.json(await contracts.listOwn(authOf(res))); });
-  r.get('/contracts/creatable', authorize('contracts.manage'), async (_req, res) => { res.json(await contracts.creatable(authOf(res))); });
-  r.get('/contracts/renewable', authorize('contracts.manage'), async (_req, res) => { res.json(await contracts.renewable(authOf(res))); });
+  r.get('/contracts/creatable', authorize('contracts.manage'), async (req, res) => { res.json(await contracts.creatable(authOf(res), PickerQuery.parse(req.query))); });
+  r.get('/contracts/renewable', authorize('contracts.manage'), async (req, res) => { res.json(await contracts.renewable(authOf(res), PickerQuery.parse(req.query))); });
   r.post('/contracts', authorize('contracts.manage'), idempotent(db, 'contracts.create'), async (req, res) => {
     res.status(201).json(await contracts.create(authOf(res), CreateBody.parse(req.body), rid(res)));
   });

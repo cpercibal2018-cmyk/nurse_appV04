@@ -371,5 +371,32 @@ describeDb('workforce, employees and contracts', () => {
       expect((await sup.post(`/contracts/${id}/transition`, { action: 'submit' })).status).toBe(403);
       expect((await findChainBreaks(db))).toHaveLength(0);
     });
+
+    it('the employee pickers search the whole scope on the server (job number or name) and return a page with the full match count', async () => {
+      const tag = uniq('Pick');
+      const withContract = await makeNurse(db, org.unitA.id);
+      await db.employee.update({ where: { id: withContract.emp.id }, data: { lastName: `${tag}Renewer` } });
+      const without = await makeEmployee(db, org.unitA.id);
+      await db.employee.update({ where: { id: without.id }, data: { lastName: `${tag}Newcomer` } });
+
+      // Name search (full_name is composed by trigger E3) is case-insensitive; each picker lists only its own kind (C10).
+      const renew = await hr.get(`/contracts/renewable?q=${tag.toLowerCase()}`);
+      expect(renew.body).toMatchObject({ total: 1, items: [{ employeeId: withContract.emp.id }] });
+      const create = await hr.get(`/contracts/creatable?q=${tag.toUpperCase()}`);
+      expect(create.body).toMatchObject({ total: 1, items: [{ id: without.id }] });
+      // Job-number search.
+      expect((await hr.get(`/contracts/renewable?q=${withContract.emp.jobNumber}`)).body.items.map((r: { employeeId: number }) => r.employeeId)).toEqual([withContract.emp.id]);
+
+      // A page is at most `limit` rows; `total` counts every match, so the UI can say "refine your search".
+      const page = await hr.get('/contracts/renewable?limit=2');
+      expect(page.body.items).toHaveLength(2);
+      expect(page.body.total).toBeGreaterThan(2);
+      expect((await hr.get('/contracts/renewable?limit=51')).status).toBe(400);
+
+      // Search never widens scope: unit HR elsewhere finds nothing.
+      const otherHr = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'UNIT', scopeIds: [org.unitC.id] }] })).email);
+      expect((await otherHr.get(`/contracts/renewable?q=${tag}`)).body).toEqual({ items: [], total: 0 });
+      expect((await otherHr.get(`/contracts/creatable?q=${tag}`)).body).toEqual({ items: [], total: 0 });
+    });
   });
 });

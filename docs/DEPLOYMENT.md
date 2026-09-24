@@ -140,7 +140,6 @@ The scripts, their environment contract and the verified drill are in [`ops/back
 | **`pg` 9 not yet usable** | Inside an interactive transaction Prisma 7.10's query interpreter reads the relations of a multi-relation `include` concurrently on the transaction's single `pg` client ([prisma/prisma#29407](https://github.com/prisma/prisma/issues/29407)). `pg` 8 queues the queries (results are correct) but prints its "client is already executing a query" deprecation, which `pg` 9 turns into a failure. The application's own code issues transaction queries one at a time | Stay on `pg` 8 until a Prisma release with the fix; then upgrade both together and run the full test suite |
 | **No SMTP / SMS** | Reminders are in-app only; the break-glass alert does not reach the CEO and IT Director (spec §3.6); no password reset or invitation e-mails | An SMTP (and SMS) decision (spec §7.2) |
 | **No badge feed** (D-33) | Attendance gaps and alerts only work once events are loaded into `attendance_events` | The PACS interface contract |
-| **Renewal picker capped at 500** | `GET /contracts/renewable` lists at most 500 in-scope employees, ordered by job number, without search | Add search / pagination before a hospital-wide HR Admin has more than 500 employees in scope |
 | **No container images or blue/green** (spec §10.4) | Deployment is manual (§4) | Dockerfiles and a pipeline, when the hosting decision is made |
 
 ## 7. Monitoring

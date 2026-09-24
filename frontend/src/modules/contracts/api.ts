@@ -32,8 +32,16 @@ export const useContracts = (f: { status?: ContractStatus; page: number }, staff
     ? http.get<Paged<ContractRow>>(`/contracts?page=${f.page}&pageSize=50${f.status ? `&status=${f.status}` : ''}`)
     : http.get<Paged<ContractRow>>('/contracts/me')),
 });
-export const useCreatable = (enabled: boolean) => useQuery({ queryKey: ['contracts', 'creatable'], enabled, queryFn: () => http.get<Paged<{ id: number; jobNumber: string; fullName: string }>>('/contracts/creatable') });
-export const useRenewable = (enabled: boolean) => useQuery({ queryKey: ['contracts', 'renewable'], enabled, queryFn: () => http.get<Paged<Renewable>>('/contracts/renewable') });
+/** Employee pickers search on the server (job number or name); `total` counts every match, `items` is the first page. */
+const pickerPath = (path: string, q: string) => (q ? `${path}?q=${encodeURIComponent(q)}` : path);
+export const useCreatable = (enabled: boolean, q: string) => useQuery({
+  queryKey: ['contracts', 'creatable', q], enabled, placeholderData: keepPreviousData,
+  queryFn: () => http.get<Paged<{ id: number; jobNumber: string; fullName: string }>>(pickerPath('/contracts/creatable', q)),
+});
+export const useRenewable = (enabled: boolean, q: string) => useQuery({
+  queryKey: ['contracts', 'renewable', q], enabled, placeholderData: keepPreviousData,
+  queryFn: () => http.get<Paged<Renewable>>(pickerPath('/contracts/renewable', q)),
+});
 export const useContractDocs = (id: number | null) => useQuery({ queryKey: ['contracts', 'docs', id], enabled: id !== null, queryFn: () => http.get<Paged<ContractDoc>>(`/contracts/${id}/documents`) });
 
 type Action =

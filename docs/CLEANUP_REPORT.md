@@ -137,7 +137,7 @@ Nothing in this list blocks development use; all of it blocks production. Detail
 | Login limits are in memory (single API instance) | Development / operations |
 | SMTP / SMS decision (e-mail reminders, break-glass alert to CEO and IT Director, password reset) | Owner / IT |
 | Badge-system (PACS) feed contract | Hospital IT |
-| Renewal picker: search / paging beyond 500 employees | Development |
+| ~~Renewal picker: search / paging beyond 500 employees~~ **2026-09-24:** both contract pickers search the whole scope on the server (`?q=`, job number or name) | Development |
 | Container images, reverse-proxy configuration, TLS (B-20) | Operations |
 | `archive_timeout` / RPO (B-22), key management (B-18), hosting (U1), credential policy (U2), SCFHS (U3) | Owner |
 | HR access to the audit trail (D-20) | Owner — REQUIREMENT NOT ESTABLISHED |
