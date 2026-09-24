@@ -184,6 +184,7 @@ Eligibility in every response is the **live engine for the shift date** (L7), no
 | GET | `/api/v1/notifications?unread&page&pageSize` | Own notifications with the unread count | EMP (own only, N2) | spec §7.1 |
 | POST | `/api/v1/notifications/:id/read` · `/read-all` | Acknowledge own; another user's id is 404 | EMP (recipient only) | spec §7.1 |
 | GET | `/api/v1/audit?resource&resourceId&actor&action&priority&from&to&page` | Search, newest first; BIGINT ids as strings; actor names resolved | **SA only (D-20)** | spec §9.1 |
+| GET | `/api/v1/audit/requests` | Request-level forensic log (spec §9.2, D-52), newest first: `?from&to` (Riyadh dates), `actor`, `requestId`, `method`, `status` (`4xx` or `403`), `path` (contains), `errorCode`, `page`, `pageSize` ≤ 200 → `{items[{id (string), requestId, at, actorUserId, actorName, actorRoles, sessionFamily, method, path, statusCode, durationMs, ipAddress, userAgent, paramsHash, errorCode}], total}` | SA | spec §9.2 |
 | GET | `/api/v1/audit/verify` | Chain check (`audit_chain_breaks` view: link and content) | SA | spec §9.1, A3 |
 | GET | `/api/v1/admin/jobs` | Jobs, schedules and last 10 runs each | SA | plan "Jobs" |
 | GET | `/api/v1/system/health/business` | Business health: `{status: HEALTHY \| ATTENTION, issues[], eligibility {lastAuditAt, lastChecked, lastDrifted, checked7d, drifts7d, driftRate7d, recentDrifts[]}, jobs[] {lastCompletedAt, ageMinutes, stale, lastAttemptFailed}, email {pendingOver15Minutes, failedLast24Hours, lastSentAt}}` | SA (`jobs.read`) | spec §10.8 |

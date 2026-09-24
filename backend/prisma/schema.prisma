@@ -924,6 +924,33 @@ model MfaChallenge {
   @@map("mfa_challenges")
 }
 
+/// Request-level forensic log (spec §9.2): one row per API request — who,
+/// what, when, from where, and the outcome. No bodies, no query strings: the
+/// body appears only as a keyed hash with secrets removed. Written after the
+/// response, in batches, never blocking or failing a request. Append-only for
+/// the runtime role except the retention purge (ops/db/02_grants.sql).
+model RequestLogEntry {
+  id            BigInt   @id @default(autoincrement())
+  requestId     String   @map("request_id") @db.VarChar(128)
+  at            DateTime @map("at") @db.Timestamptz
+  actorUserId   Int?     @map("actor_user_id")
+  actorRoles    String?  @map("actor_roles") @db.VarChar(100)
+  sessionFamily String?  @map("session_family") @db.VarChar(64)
+  method        String   @db.VarChar(10)
+  path          String   @db.VarChar(500)
+  statusCode    Int      @map("status_code") @db.SmallInt
+  durationMs    Int      @map("duration_ms")
+  ipAddress     String?  @map("ip_address") @db.VarChar(45)
+  userAgent     String?  @map("user_agent") @db.VarChar(300)
+  paramsHash    String?  @map("params_hash") @db.Char(64)
+  errorCode     String?  @map("error_code") @db.VarChar(100)
+
+  @@index([at])
+  @@index([actorUserId, at])
+  @@index([requestId])
+  @@map("request_audit_log")
+}
+
 model IdempotencyKey {
   id                       Int               @id @default(autoincrement())
   key                      String

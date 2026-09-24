@@ -86,7 +86,7 @@ These stay in the reference and get their own migration and module when schedule
 | §3.5 | SSO (identity provider not chosen). MFA is **built** (D-51): authenticator app + recovery codes, required for System Admin, HR Admin and Supervisor, never for break-glass |
 | §5.3 | The document vault (signed download URLs, separate quarantine storage). ClamAV scanning is built (D-10 row above) |
 | §5.4 | SCFHS credential verification integration |
-| §9.2 | Request-level forensic log table (JSON request logs exist, without personal data) |
+| §9.2 | (Request-level forensic log is **built**, D-52: `request_audit_log`, one row per API request except the liveness probe, written after the response in batches; no bodies or query strings — the body only as an HMAC with secrets removed; 365 days; Audit → Requests) |
 | §9.3 | Redis (not used; the database is read on every request) |
 | §10.4–10.5 | Blue/green deployment and production operations tooling |
 | §10.7 | Database privilege separation (runtime / migration / backup / audit-reader roles). The audit table is append-only by trigger regardless of role; the roles and grants are in [`ops/db`](../ops/db/README.md) (tested; adaptations from the spec listed there) and still have to be applied per server — see [DEPLOYMENT.md](DEPLOYMENT.md#6-known-gaps-before-production) |

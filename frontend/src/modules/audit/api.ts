@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { http } from '../../services/http';
 
 export interface AuditRow {
@@ -14,6 +14,23 @@ export const useAudit = (f: AuditFilter) => useQuery({
     const p = new URLSearchParams({ page: String(f.page), pageSize: '50' });
     for (const k of ['action', 'resource', 'resourceId', 'priority', 'from', 'to'] as const) if (f[k]) p.set(k, f[k]!);
     return http.get<{ items: AuditRow[]; total: number }>(`/audit?${p}`);
+  },
+});
+/** Spec §9.2: one row per API request (no bodies, no query strings). */
+export interface RequestLogRow {
+  id: string; requestId: string; at: string; actorUserId: number | null; actorName: string | null; actorRoles: string | null;
+  sessionFamily: string | null; method: string; path: string; statusCode: number; durationMs: number;
+  ipAddress: string | null; userAgent: string | null; paramsHash: string | null; errorCode: string | null;
+}
+export interface RequestLogFilter { actor?: number; requestId?: string; method?: string; status?: string; path?: string; errorCode?: string; from?: string; to?: string; page: number }
+export const useRequestLog = (f: RequestLogFilter) => useQuery({
+  queryKey: ['audit', 'requests', f],
+  placeholderData: keepPreviousData,
+  queryFn: () => {
+    const p = new URLSearchParams({ page: String(f.page), pageSize: '50' });
+    for (const k of ['requestId', 'method', 'status', 'path', 'errorCode', 'from', 'to'] as const) if (f[k]) p.set(k, f[k]!);
+    if (f.actor) p.set('actor', String(f.actor));
+    return http.get<{ items: RequestLogRow[]; total: number }>(`/audit/requests?${p}`);
   },
 });
 export const useVerify = () => useMutation({ mutationFn: () => http.get<{ intact: boolean; breaks: Array<{ id: string; reason: string }>; checkedAt: string }>('/audit/verify') });

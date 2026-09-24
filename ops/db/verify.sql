@@ -32,7 +32,7 @@ owner AS (SELECT pg_get_userbyid(datdba) AS name FROM pg_database WHERE datname 
 tabs AS (  -- ordinary tables and views in public (Prisma's journal included)
   SELECT c.oid, c.relname, c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
   WHERE n.nspname = 'public' AND c.relkind IN ('r', 'v', 'p')),
-audit_objects(name) AS (VALUES ('audit_entries'), ('audit_chain_breaks'), ('idempotency_keys'), ('break_glass_events'), ('privileged_sessions')),
+audit_objects(name) AS (VALUES ('audit_entries'), ('audit_chain_breaks'), ('idempotency_keys'), ('break_glass_events'), ('privileged_sessions'), ('request_audit_log')),
 not_migration_owned AS (
   SELECT 'table ' || c.relname AS obj FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
    WHERE n.nspname = 'public' AND c.relkind IN ('r', 'v', 'p', 'S', 'm') AND pg_get_userbyid(c.relowner) <> 'nurseapp_migration'
@@ -50,6 +50,7 @@ runtime_missing AS (  -- data access the runtime must have (the documented refus
    WHERE relname <> '_prisma_migrations' AND relkind <> 'v'
      AND NOT (relname = 'audit_entries' AND priv IN ('UPDATE', 'DELETE'))
      AND NOT (relname = 'break_glass_events' AND priv = 'DELETE')
+     AND NOT (relname = 'request_audit_log' AND priv = 'UPDATE')
      AND NOT has_table_privilege('nurseapp_runtime', oid, priv)
   UNION ALL
   SELECT relname || ':SELECT' FROM tabs WHERE relkind = 'v' AND NOT has_table_privilege('nurseapp_runtime', oid, 'SELECT')
@@ -64,6 +65,8 @@ runtime_forbidden AS (
    WHERE to_regclass('public.audit_entries') IS NOT NULL AND has_table_privilege('nurseapp_runtime', 'public.audit_entries', p)
   UNION ALL SELECT 'break_glass_events:DELETE'
    WHERE to_regclass('public.break_glass_events') IS NOT NULL AND has_table_privilege('nurseapp_runtime', 'public.break_glass_events', 'DELETE')
+  UNION ALL SELECT 'request_audit_log:UPDATE'
+   WHERE to_regclass('public.request_audit_log') IS NOT NULL AND has_table_privilege('nurseapp_runtime', 'public.request_audit_log', 'UPDATE')
   UNION ALL SELECT '_prisma_migrations:SELECT'
    WHERE to_regclass('public._prisma_migrations') IS NOT NULL AND has_table_privilege('nurseapp_runtime', 'public._prisma_migrations', 'SELECT')
   UNION ALL SELECT 'schema public:CREATE' WHERE has_schema_privilege('nurseapp_runtime', 'public', 'CREATE')

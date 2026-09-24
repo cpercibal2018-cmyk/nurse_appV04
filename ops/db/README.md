@@ -5,9 +5,9 @@ Four login roles replace the single database owner that V04 used everywhere. The
 | Role | Used by | Can | Cannot |
 | :--- | :--- | :--- | :--- |
 | `nurseapp_migration` | `prisma migrate deploy` (release step only) | Owns every table, view, type and function; alters the schema | — (as owner it also has data access; see *Adaptations*) |
-| `nurseapp_runtime` | API and worker (`DATABASE_URL`) | `SELECT`/`INSERT`/`UPDATE`/`DELETE` on data; sequences | `CREATE`/`ALTER`/`DROP`, `TRUNCATE`; `UPDATE`/`DELETE` on `audit_entries`; `DELETE` on `break_glass_events`; the migration journal |
+| `nurseapp_runtime` | API and worker (`DATABASE_URL`) | `SELECT`/`INSERT`/`UPDATE`/`DELETE` on data; sequences | `CREATE`/`ALTER`/`DROP`, `TRUNCATE`; `UPDATE`/`DELETE` on `audit_entries`; `DELETE` on `break_glass_events`; `UPDATE` on `request_audit_log` (D-52); the migration journal |
 | `nurseapp_backup` | `pg_basebackup`, `pg_dump` (`DB_BACKUP_USER` in [ops/backup](../backup/README.md)) | Read everything (`pg_read_all_data`); replication | Write anything |
-| `nurseapp_audit_reader` | Compliance and audit queries | Read `audit_entries`, `audit_chain_breaks`, `idempotency_keys`, and the security-event tables `break_glass_events`, `privileged_sessions` (D-45) | Any business table; any write |
+| `nurseapp_audit_reader` | Compliance and audit queries | Read `audit_entries`, `audit_chain_breaks`, `idempotency_keys`, and the security-event tables `break_glass_events`, `privileged_sessions` (D-45), and the request log `request_audit_log` (D-52) | Any business table; any write |
 
 The **database owner** (the login that created the database, `aigh` in development) keeps provisioning rights and runs `02_grants.sql`; it is never used by the running application.
 
@@ -77,4 +77,5 @@ New tables are usable by the runtime at once (default privileges); re-running `0
 | `trg_contract_status_guard` | **Not added** | V04 already enforces both: contract status is the `ContractStatus` enum, and `chk_contracts_dates` (end after start) comes from the first migration |
 | Audit reader also reads `audit_batches`, `audit_snapshots`, `scfhs_verification_log`, `grace_period_log`, `push_delivery_log` | `audit_entries`, `audit_chain_breaks`, `idempotency_keys`, plus `break_glass_events` and `privileged_sessions` (**D-45**) | The others do not exist in V04. The owner decided the audit reader also reads the two security-event tables, read-only (D-45) |
 | — | `DELETE` on `break_glass_events` refused for the runtime | Matches the existing no-delete trigger (R18); `UPDATE` stays because the daily job sets the end time |
+| — | `UPDATE` on `request_audit_log` refused for the runtime (D-52) | Matches its no-update trigger; `DELETE` stays for the 365-day retention purge |
 | — | `CONNECT` stays open to `PUBLIC` | Not in the spec; revoking it is a possible hardening step |

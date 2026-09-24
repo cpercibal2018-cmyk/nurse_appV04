@@ -6,6 +6,8 @@ declare global {
   namespace Express {
     interface Locals {
       requestId: string;
+      /** The API error code sent, for the request log. */
+      errorCode?: string;
     }
   }
 }

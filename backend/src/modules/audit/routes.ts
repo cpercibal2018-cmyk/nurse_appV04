@@ -26,6 +26,24 @@ const AuditQuery = z.object({
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });
 const JobParam = z.object({ name: z.string().min(1).max(60) });
+const RequestLogQuery = z.object({
+  from: IsoDate.optional(),
+  to: IsoDate.optional(),
+  actor: z.coerce.number().int().positive().optional(),
+  requestId: z.string().min(1).max(128).optional(),
+  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).optional(),
+  /** A class ("4xx") or one code ("403"). */
+  status: z.string().regex(/^[1-5](xx|\d\d)$/).optional(),
+  path: z.string().min(1).max(200).optional(),
+  errorCode: z.string().min(1).max(100).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+});
+/** Riyadh calendar days → [from 00:00, day after `to` 00:00). */
+const dayRange = (from?: string, to?: string) => (from || to ? {
+  ...(from ? { gte: new Date(`${from}T00:00:00+03:00`) } : {}),
+  ...(to ? { lt: new Date(new Date(`${to}T00:00:00+03:00`).getTime() + 86_400_000) } : {}),
+} : undefined);
 
 export function createAuditRouter(db: Db) {
   const r = Router();
@@ -43,6 +61,34 @@ export function createAuditRouter(db: Db) {
     const [rows, total] = await Promise.all([
       db.auditEntry.findMany({ where, orderBy: { id: 'desc' }, skip: (q.page - 1) * q.pageSize, take: q.pageSize }),
       db.auditEntry.count({ where }),
+    ]);
+    const actors = await db.user.findMany({ where: { id: { in: [...new Set(rows.flatMap((x) => (x.actorUserId ? [x.actorUserId] : [])))] } }, select: { id: true, displayName: true } });
+    const name = new Map(actors.map((a) => [a.id, a.displayName]));
+    res.json({
+      items: rows.map((x) => ({ ...x, id: x.id.toString(), actorName: x.actorUserId ? name.get(x.actorUserId) ?? null : null })),
+      total, page: q.page, pageSize: q.pageSize,
+    });
+  });
+
+  /** Spec §9.2: the request-level forensic log, newest first. */
+  r.get('/audit/requests', authorize('audit.read'), async (req, res) => {
+    const q = RequestLogQuery.parse(req.query);
+    const status = q.status
+      ? q.status.endsWith('xx') ? { gte: Number(q.status[0]) * 100, lt: Number(q.status[0]) * 100 + 100 } : Number(q.status)
+      : undefined;
+    const at = dayRange(q.from, q.to);
+    const where = {
+      ...(at ? { at } : {}),
+      ...(q.actor ? { actorUserId: q.actor } : {}),
+      ...(q.requestId ? { requestId: q.requestId } : {}),
+      ...(q.method ? { method: q.method } : {}),
+      ...(status !== undefined ? { statusCode: status } : {}),
+      ...(q.path ? { path: { contains: q.path } } : {}),
+      ...(q.errorCode ? { errorCode: q.errorCode } : {}),
+    };
+    const [rows, total] = await Promise.all([
+      db.requestLogEntry.findMany({ where, orderBy: { id: 'desc' }, skip: (q.page - 1) * q.pageSize, take: q.pageSize }),
+      db.requestLogEntry.count({ where }),
     ]);
     const actors = await db.user.findMany({ where: { id: { in: [...new Set(rows.flatMap((x) => (x.actorUserId ? [x.actorUserId] : [])))] } }, select: { id: true, displayName: true } });
     const name = new Map(actors.map((a) => [a.id, a.displayName]));

@@ -83,6 +83,10 @@ BEGIN
   IF to_regclass('public.break_glass_events') IS NOT NULL THEN
     REVOKE DELETE ON public.break_glass_events FROM nurseapp_runtime;
   END IF;
+  -- The request log (spec §9.2, D-52) is append-only; DELETE stays for the retention purge.
+  IF to_regclass('public.request_audit_log') IS NOT NULL THEN
+    REVOKE UPDATE ON public.request_audit_log FROM nurseapp_runtime;
+  END IF;
 END $$;
 
 -- ── audit reader: the audit tables only ─────────────────────────────────────
@@ -92,11 +96,12 @@ END $$;
 -- audit_chain_breaks view is the chain verification over audit_entries.
 -- D-45: also the security-event tables break_glass_events and
 -- privileged_sessions (emergency access and privilege elevation), read-only.
+-- D-52: and the request-level forensic log, request_audit_log.
 DO $$
 DECLARE
   t TEXT;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['audit_entries', 'audit_chain_breaks', 'idempotency_keys', 'break_glass_events', 'privileged_sessions'] LOOP
+  FOREACH t IN ARRAY ARRAY['audit_entries', 'audit_chain_breaks', 'idempotency_keys', 'break_glass_events', 'privileged_sessions', 'request_audit_log'] LOOP
     IF to_regclass('public.' || t) IS NOT NULL THEN
       EXECUTE format('GRANT SELECT ON public.%I TO nurseapp_audit_reader', t);
     END IF;
