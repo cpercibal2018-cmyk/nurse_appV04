@@ -34,6 +34,9 @@ const code = files(SRC).map((f) => readFileSync(f, 'utf8')).join('\n');
 // Enum-driven key families: prefix → every value the API can return.
 const FAMILIES: Record<string, string[]> = {
   health_: ['HEALTHY', 'ATTENTION'], // GET /system/health/business (spec §10.8)
+  logicFilter_: ['undecided', 'approved', 'rejected', 'all'], // shadow mode (spec §10.9, D-60)
+  logicDecision_: ['APPROVED', 'REJECTED'],
+  logicStatus_: ['ACTIVE', 'SHADOW', 'RETIRED'],
   pdpl_: ['IQAMA', 'PASSPORT', 'SCFHS_REG', 'IDENTITY_SCAN'], // D-54 sensitive data categories
   dsr_: ['ACCESS', 'PORTABILITY', 'RECTIFICATION', 'ERASURE'], // D-55 data-subject requests
   dsrHint_: ['ACCESS', 'PORTABILITY', 'RECTIFICATION', 'ERASURE'],

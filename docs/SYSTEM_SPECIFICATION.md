@@ -94,7 +94,7 @@ These stay in the reference and get their own migration and module when schedule
 | §10.4–10.5 | (Blue/green releases are **built** for the single-VPS layout, D-57: [ops/vps](../ops/vps/README.md). Not built: blue/green for the Google Cloud layout, and further operations tooling) |
 | §10.7 | Database privilege separation (runtime / migration / backup / audit-reader roles). The audit table is append-only by trigger regardless of role; the roles and grants are in [`ops/db`](../ops/db/README.md) (tested; adaptations from the spec listed there) and still have to be applied per server — see [DEPLOYMENT.md](DEPLOYMENT.md#6-known-gaps-before-production) |
 | §10.8 | (Consistency auditor and business health are **built**: daily sample of max(1%, 50) nurses, drift logged + corrected + audited; `GET /system/health/business`. Not reported: SCFHS sync freshness and evidence checksums, whose modules are not built) |
-| §10.9 | Shadow mode |
+| §10.9 | (Shadow mode is **built**, D-60: engine versions registered in `modules/eligibility/logic.ts`; a new one runs in shadow beside the active one on every stored evaluation, disagreements kept in `eligibility_shadow_log` for a system-wide HR Admin to approve or reject; promotion after 7 days without a disagreement or once all are approved; Nursing Administration → Eligibility logic. Previews and pool checks run the active logic only) |
 | §10.10 | Legacy migration bridge (no V03 production data exists — [MIGRATION.md](MIGRATION.md)) |
 | §14.1, §14.3 | FHIR adapter, data portability exports |
 

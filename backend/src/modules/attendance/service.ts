@@ -17,7 +17,7 @@ import { shiftWindow, type ShiftType } from '../../config/shifts.js';
 import { addDays, daysBetween, dbDate, isIsoDate, riyadhDate, toDbDate } from '../../lib/dates.js';
 import { HttpError, notFound } from '../../lib/http-errors.js';
 import type { Db, DbClient } from '../../lib/prisma.js';
-import { evaluate } from '../eligibility/engine.js';
+import { currentLogic } from '../eligibility/logic.js';
 import { loadFacts } from '../eligibility/state.service.js';
 import { unitScope, type AuthContext } from '../users/access.js';
 
@@ -57,7 +57,7 @@ export async function classifyShift(db: DbClient, a: { employeeId: number; shift
   if (clockIn) {
     status = 'PRESENT';
     if (date === today || (now >= start && now < end)) {
-      const r = evaluate(await loadFacts(db, a.employeeId, now), { date: today, today, now });
+      const r = (await currentLogic(db)).engine(await loadFacts(db, a.employeeId, now), { date: today, today, now });
       if (r.status === 'INELIGIBLE') { status = 'INELIGIBLE_ON_DUTY'; reasons = r.reasons.filter((x) => x.severity === 'BLOCK').map((x) => x.code); }
     }
   } else if (now < start) status = 'UPCOMING';

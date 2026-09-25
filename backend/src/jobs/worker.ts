@@ -11,6 +11,7 @@ import { describeError, logger } from '../lib/logger.js';
 import { startScheduler } from './scheduler.js';
 import { dispatchConfigFrom, startEmailDispatcher } from './email-dispatch.js';
 import { createMailer } from '../lib/mailer.js';
+import { syncLogicVersions } from '../modules/eligibility/logic.js';
 
 dotenv.config({ quiet: true });
 const env = loadEnv();
@@ -19,6 +20,8 @@ assertResidency({ region: env.DATA_RESIDENCY_REGION, allowed: env.PDPL_ALLOWED_R
 const db = createPrisma(env.DATABASE_URL);
 // Spec §10.7: production runs as the data-only runtime role, never the owner.
 await assertRuntimeRole(db, env.NODE_ENV === 'production');
+// Spec §10.9 (D-60): a new eligibility logic version in this release starts in shadow.
+await syncLogicVersions(db);
 const stopJobs = startScheduler(db);
 const stopMail = startEmailDispatcher(db, createMailer(env), dispatchConfigFrom(env)); // D-47
 if (env.NODE_ENV === 'production' && !env.SMTP_HOST) logger.warn('e-mail is off: SMTP_HOST is not set; notifications stay in-app (D-47)');

@@ -25,6 +25,7 @@ import { createCatalogService } from './modules/credentials/catalog.js';
 import { createRecordService } from './modules/credentials/records.js';
 import { createCredentialsRouter } from './modules/credentials/routes.js';
 import { createEligibilityService } from './modules/eligibility/service.js';
+import { createEligibilityLogicRouter, type LogicRouterOptions } from './modules/eligibility/logic-routes.js';
 import { previousKey } from './lib/keyring.js';
 import { createLocalDiskAdapter, createVault, documentKey } from './lib/vault.js';
 import { createDocumentAccess, fileHeaders } from './modules/documents/access.js';
@@ -57,6 +58,8 @@ export interface AppDeps {
   throttleNamespace?: string;
   /** Injectable so tests can simulate a failing gateway; defaults to env.SMS_DRIVER (D-59). */
   sms?: SmsGateway;
+  /** Shadow-mode hooks for tests (the re-evaluation after a promotion runs in the background). */
+  logic?: LogicRouterOptions;
   /** Injectable so tests can flush it; defaults to one writing to this database. */
   requestLog?: RequestLog;
 }
@@ -64,7 +67,7 @@ export interface AppDeps {
 const HEALTH_DB_TIMEOUT_MS = 2000;
 
 /** Builds the Express application without starting a listener (tests use it directly). */
-export function createApp({ env, db, passwords = createPasswordService(env.BCRYPT_ROUNDS), scanner = createScanner(env), throttleNamespace = '', sms = createSmsGateway(env, db), requestLog = createRequestLog(db, requestLogKey(env.JWT_SECRET)) }: AppDeps) {
+export function createApp({ env, db, passwords = createPasswordService(env.BCRYPT_ROUNDS), scanner = createScanner(env), throttleNamespace = '', sms = createSmsGateway(env, db), logic = {}, requestLog = createRequestLog(db, requestLogKey(env.JWT_SECRET)) }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   if (env.TRUST_PROXY) app.set('trust proxy', 1); // one hop: the hospital reverse proxy
@@ -131,6 +134,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   api.use(createAuditRouter(db, keyStatus));
   api.use(createPdplRouter(db));
   api.use(createDevConsoleRouter(db, sms));
+  api.use(createEligibilityLogicRouter(db, logic));
   api.use(createDataSubjectRouter(createDataSubjectService({ db, protection, vault: documents.vault, backupRetentionDays: env.BACKUP_RETENTION_DAYS })));
   api.use(createContractsRouter(db, createContractService(db, documents, scanner, env.UPLOAD_MAX_SIZE_BYTES), env.UPLOAD_MAX_SIZE_BYTES));
   api.use(createCredentialsRouter(

@@ -9,6 +9,7 @@ import { describeError, logger } from './lib/logger.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { dispatchConfigFrom, startEmailDispatcher } from './jobs/email-dispatch.js';
 import { createMailer } from './lib/mailer.js';
+import { syncLogicVersions } from './modules/eligibility/logic.js';
 
 // Quiet: dotenv's banner is not JSON and would break the one-line-JSON log format.
 dotenv.config({ quiet: true });
@@ -25,6 +26,8 @@ assertUploadScanner(env, env.NODE_ENV === 'production');
 const db = createPrisma(env.DATABASE_URL);
 // Spec §10.7: production runs as the data-only runtime role, never the owner.
 await assertRuntimeRole(db, env.NODE_ENV === 'production');
+// Spec §10.9 (D-60): a new eligibility logic version in this release starts in shadow.
+await syncLogicVersions(db);
 const app = createApp({ env, db });
 
 // Jobs run here only in development; production runs `npm run worker` (plan: Jobs).

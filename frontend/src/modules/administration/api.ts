@@ -245,3 +245,44 @@ export function useSendTestSms() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['smsInbox'] }),
   });
 }
+
+// ── Eligibility logic, shadow mode (spec §10.9, D-60) ──
+export interface LogicVersion {
+  version: number; status: 'ACTIVE' | 'SHADOW' | 'RETIRED'; shadowSince: string | null; promotedAt: string | null; retiredAt: string | null; note: string | null; createdAt: string;
+  promotedBy: { id: number; displayName: string } | null; retiredBy: { id: number; displayName: string } | null;
+}
+export interface ShadowState {
+  version: number; shadowSince: string; daysInShadow: number; findings: number; undecided: number; approved: number; rejected: number; errors: number;
+  promotable: boolean; blocker: string | null;
+}
+export interface ShadowFinding {
+  id: number; logicVersion: number; evalDate: string; activeVersion: number; activeStatus: string; candidateStatus: string;
+  activeReasons: Array<{ code: string; message: string }>; candidateReasons: Array<{ code: string; message: string }>; event: string; createdAt: string;
+  decision: 'APPROVED' | 'REJECTED' | null; decisionNote: string | null; decidedAt: string | null; decidedBy: { id: number; displayName: string } | null;
+  employee: { id: number; jobNumber: string; fullName: string; unitId: number | null };
+}
+export type FindingFilter = 'undecided' | 'approved' | 'rejected' | 'all';
+export const useEligibilityLogic = () => useQuery({
+  queryKey: ['eligibilityLogic'],
+  queryFn: () => http.get<{ active: number | null; shadow: ShadowState | null; versions: LogicVersion[] }>('/eligibility/logic'),
+});
+export const useShadowFindings = (version: number | undefined, decision: FindingFilter, page: number) => useQuery({
+  queryKey: ['eligibilityLogic', 'findings', version, decision, page],
+  queryFn: () => http.get<Paged<ShadowFinding>>(`/eligibility/logic/${version}/findings?decision=${decision}&page=${page}&pageSize=25`),
+  enabled: version !== undefined,
+  placeholderData: keepPreviousData,
+});
+export function useDecideFinding() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: number; decision: 'APPROVED' | 'REJECTED'; note: string }) => http.post<ShadowFinding>(`/eligibility/logic/findings/${id}/decision`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['eligibilityLogic'] }),
+  });
+}
+export function useLogicLifecycle() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ version, action, reason }: { version: number; action: 'promote' | 'retire'; reason: string }) => http.post<unknown>(`/eligibility/logic/${version}/${action}`, { reason }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['eligibilityLogic'] }),
+  });
+}

@@ -19,7 +19,8 @@ import { appendAudit } from '../../lib/audit.js';
 import { addDays, daysBetween, dbDate, isIsoDate, riyadhDate, toDbDate, type IsoDate } from '../../lib/dates.js';
 import { conflict, HttpError, notFound, unprocessable } from '../../lib/http-errors.js';
 import type { Db, DbClient } from '../../lib/prisma.js';
-import { evaluate, type EngineFacts, type EngineResult } from '../eligibility/engine.js';
+import type { EngineFacts, EngineResult } from '../eligibility/engine.js';
+import { currentLogic } from '../eligibility/logic.js';
 import { loadFacts } from '../eligibility/state.service.js';
 import { unitScope, type AuthContext, type UnitScope } from '../users/access.js';
 
@@ -58,10 +59,11 @@ const relied = (r: EngineResult) => r.status !== 'ELIGIBLE' || r.reasons.some((x
 /** Live engine with facts loaded once per nurse for the life of one request. */
 function engineFor(tx: DbClient, now = new Date()) {
   const facts = new Map<number, Promise<EngineFacts>>();
+  const logic = currentLogic(tx).then((l) => l.engine); // the ACTIVE version (spec §10.9)
   const today = riyadhDate(now);
   return async (employeeId: number, date: IsoDate) => {
     if (!facts.has(employeeId)) facts.set(employeeId, loadFacts(tx, employeeId, now));
-    return evaluate(await facts.get(employeeId)!, { date, today, now });
+    return (await logic)(await facts.get(employeeId)!, { date, today, now });
   };
 }
 

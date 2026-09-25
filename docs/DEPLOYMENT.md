@@ -185,6 +185,16 @@ Then the production database is created as below.
 
 Never run the demo fixtures on a production database; the command refuses `NODE_ENV=production` and any database with accounts.
 
+### Releasing new eligibility rules (shadow mode, D-60)
+
+A change to who is eligible never goes live directly (spec §10.9). The developer adds the new engine as a new version in `ENGINES` (`backend/src/modules/eligibility/logic.ts`) and leaves the current one in place. After the release, the API logs `eligibility logic registered` with `status: SHADOW`, and from then on:
+
+1. Every recalculation runs both versions; nurses keep getting the active result. HR sees each disagreement in **Nursing Administration → Eligibility logic** (System health: `ELIGIBILITY_SHADOW_UNDECIDED`).
+2. A system-wide HR Admin marks each one *New logic is right* or *New logic is wrong*, with a note. A wrong one, or a failure of the new logic, means it cannot be promoted: **Retire** it, fix the engine as a newer version, release again.
+3. **Promote** becomes available after 7 days with no disagreement, or once every disagreement is approved. Promotion recalculates every nurse at once (the API logs `eligibility re-evaluated after promotion`).
+
+Rolling the release back after a promotion is safe: the older release does not ship the new version, so the last promoted version it does ship decides (logged as an error until the release is redeployed).
+
 ## 5. Backups and restore
 
 The scripts, their environment contract and the verified drill are in [`ops/backup/README.md`](../ops/backup/README.md): WAL archiving, an encrypted nightly base backup, point-in-time restore and a restore drill.
