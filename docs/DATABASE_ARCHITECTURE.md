@@ -113,7 +113,7 @@ There is **no seed**. `npx prisma migrate deploy` creates the structure; nothing
 | Step | Command / screen | Writes | Guard |
 | :--- | :--- | :--- | :--- |
 | 1. Bootstrap | `npm run bootstrap -w backend` (after build) | The first System Admin, a hospital-wide HR Admin, optionally the break-glass account | Only on a database with no accounts; passwords from a hidden prompt |
-| 2. Hospital baseline | Administration → **Hospital baseline import** (or `POST /api/v1/admin/baseline-import`), with the reference file `backend/prisma/baseline/aigh-baseline.json` or the hospital's own file | Departments, units and beds (+ bed log), positions, credential categories, credential types and fields | Hospital-wide administrator; preview; a **second** administrator approves; one transaction; never overwrites; idempotent |
+| 2. Hospital baseline | Nursing Administration → **Hospital baseline import** (or `POST /api/v1/admin/baseline-import`), with the reference file `backend/prisma/baseline/aigh-baseline.json` or the hospital's own file | Departments, units and beds (+ bed log), positions, credential categories, credential types and fields | Hospital-wide administrator; preview; a **second** administrator approves; one transaction; never overwrites; idempotent |
 | 3. Everyday work | The application screens and API | Everything else | Permissions, scope, four-eyes where required |
 | Development only | `npm run fixtures:demo -w backend` | Demo accounts, the baseline, the fictional workforce | Refuses production, a database with accounts, and names not marked `_dev` / `_test` / `_demo` |
 

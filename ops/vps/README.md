@@ -143,7 +143,7 @@ It runs the bootstrap command ([`backend/src/cli/bootstrap.ts`](../../backend/sr
 | What is live | `sudo /opt/nurseapp/vps/deploy.sh status` |
 | Apply changed settings | `sudo /opt/nurseapp/vps/deploy.sh restart` |
 | Logs | `sudo docker logs --since 1h nurseapp-blue-api-1` (colour as `status` shows); Caddy: `nurseapp-edge-caddy-1`; backups: `/var/log/aigh-backup.log` |
-| Health now | `sudo /opt/nurseapp/vps/monitor.sh` (PASS / WARN / FAIL per check); the app's own view: Administration → Jobs → System health |
+| Health now | `sudo /opt/nurseapp/vps/monitor.sh` (PASS / WARN / FAIL per check); the app's own view: Nursing Administration → Jobs → System health |
 | OS updates | security updates install themselves; reboot monthly (Docker and PostgreSQL start by themselves; `live-restore` keeps containers up across Docker upgrades) |
 | Disk | `df -h /srv` — the WAL archive grows until the nightly backup prunes it |
 | Outside monitoring | an external uptime check on `https://<host>/api/v1/health` (it answers 503 when the database is down) |
@@ -169,7 +169,7 @@ Until e-mail works (the hospital relay, D-47), use the webhook — or at least a
 1. `verify-install.sh` reads READY; every WARN is fixed or accepted by name.
 2. The **restore drill** passed ([ops/backup](../backup/README.md)) with the private key, on a machine other than the VPS — timed against the RTO.
 3. `/etc/nurseapp` and the backup private key are in the offline key store, in two places, and someone other than the installer has checked they open.
-4. The hosting contract confirms the data centre (and every backup and snapshot) is in the Kingdom; the DPO has signed off the processing register (Administration → Data protection).
+4. The hosting contract confirms the data centre (and every backup and snapshot) is in the Kingdom; the DPO has signed off the processing register (Nursing Administration → Data protection).
 5. Alerts reach a person: stop Caddy for 5 minutes (`sudo docker stop nurseapp-edge-caddy-1`, then `start`) and confirm the FAILING and RECOVERED messages arrive.
 6. A release and a rollback have run through the GitHub workflow with the `production` approval.
 

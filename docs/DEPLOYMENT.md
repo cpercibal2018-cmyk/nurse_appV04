@@ -108,7 +108,7 @@ Delivery is at-least-once: a crash after the relay accepted a message but before
 
 ### 2.3 SMS (mock gateway until the Sender ID exists)
 
-Every text goes through one SMS gateway (`backend/src/lib/sms.ts`, D-59); `SMS_DRIVER` picks the driver. A live Saudi gateway needs a Sender ID registered with the CST, which needs the hospital's Commercial Registration — not available yet. So production runs with **`SMS_DRIVER=mock`**: each text is saved to `mock_sms_outbox` and shown in **Administration → SMS inbox** (System Admin, elevated), and nothing leaves the server. The API logs `SMS is simulated` at start-up in production as a reminder.
+Every text goes through one SMS gateway (`backend/src/lib/sms.ts`, D-59); `SMS_DRIVER` picks the driver. A live Saudi gateway needs a Sender ID registered with the CST, which needs the hospital's Commercial Registration — not available yet. So production runs with **`SMS_DRIVER=mock`**: each text is saved to `mock_sms_outbox` and shown in **Nursing Administration → SMS inbox** (System Admin, elevated), and nothing leaves the server. The API logs `SMS is simulated` at start-up in production as a reminder.
 
 | Driver | What `send` does |
 | :--- | :--- |
@@ -133,7 +133,7 @@ Going live: once the Sender ID is registered, build the Unifonic call in `Unifon
 | `worker` | Production: the separate worker runs the jobs (spec §10.2) |
 | `off` | Maintenance; nothing runs. Missed periods run when jobs are next enabled |
 
-**Job schedule (Asia/Riyadh, independent of the server time zone):** `daily-transition` 00:05, `expiry-scan` 06:00, `consistency-audit` 03:00 (re-evaluates a random sample of nurses' eligibility — 1%, at least 50 — and corrects any drift, spec §10.8), `request-log-purge` 02:30 (deletes request-log rows older than 365 days, D-52), `mock-sms-purge` 02:40 (deletes texts the mock SMS gateway kept more than 30 days ago, D-59), `vault-reconcile` 04:30 (document vault: removes orphaned objects older than a day, reports missing objects, re-verifies a random 50, counts unencrypted objects, deletes old download links — D-53), `attendance-alerts` every 15 minutes. Running two workers by mistake is safe (leases and unique run keys), but wasteful. A System Admin sees run history and can start a job from **Administration → Jobs**.
+**Job schedule (Asia/Riyadh, independent of the server time zone):** `daily-transition` 00:05, `expiry-scan` 06:00, `consistency-audit` 03:00 (re-evaluates a random sample of nurses' eligibility — 1%, at least 50 — and corrects any drift, spec §10.8), `request-log-purge` 02:30 (deletes request-log rows older than 365 days, D-52), `mock-sms-purge` 02:40 (deletes texts the mock SMS gateway kept more than 30 days ago, D-59), `vault-reconcile` 04:30 (document vault: removes orphaned objects older than a day, reports missing objects, re-verifies a random 50, counts unencrypted objects, deletes old download links — D-53), `attendance-alerts` every 15 minutes. Running two workers by mistake is safe (leases and unique run keys), but wasteful. A System Admin sees run history and can start a job from **Nursing Administration → Jobs**.
 
 ## 4. Release procedure
 
@@ -151,13 +151,13 @@ curl -fsS https://<host>/api/v1/health   # 200 {"status":"ok","database":"up"}; 
 
 CI has already run the HTTPS browser test of the session cookies against the release images ([ops/e2e](../ops/e2e/README.md)).
 
-After a release, a System Admin should open **Audit → Verify chain** (expected: intact) and **Administration → Jobs** (expected: recent runs completed).
+After a release, a System Admin should open **Audit → Verify chain** (expected: intact) and **Nursing Administration → Jobs** (expected: recent runs completed).
 
-**First release with PDPL field protection (D-54):** set `PDPL_FIELD_ENCRYPTION_KEY` and `PDPL_BLIND_INDEX_PEPPER` before starting it. New Iqama, passport and SCFHS numbers are stored encrypted at once; numbers recorded earlier stay readable and are encrypted — and made searchable — by `npm run pdpl:protect -w backend` (container: `docker compose run --rm api node dist/cli/pdpl-protect.js`), safe to rerun. System health shows `PDPL_PLAINTEXT` until then. A System Admin and the DPO should review **Administration → Data protection** (the lawful basis per category, spec §8.3.2).
+**First release with PDPL field protection (D-54):** set `PDPL_FIELD_ENCRYPTION_KEY` and `PDPL_BLIND_INDEX_PEPPER` before starting it. New Iqama, passport and SCFHS numbers are stored encrypted at once; numbers recorded earlier stay readable and are encrypted — and made searchable — by `npm run pdpl:protect -w backend` (container: `docker compose run --rm api node dist/cli/pdpl-protect.js`), safe to rerun. System health shows `PDPL_PLAINTEXT` until then. A System Admin and the DPO should review **Nursing Administration → Data protection** (the lawful basis per category, spec §8.3.2).
 
-**First release with the document vault (D-53):** set `DOCUMENT_ENCRYPTION_KEY` before starting it (it refuses to start without it). New uploads are stored encrypted at once; files uploaded earlier are still served and are then encrypted by `npm run vault:encrypt -w backend` (in a container: `docker compose run --rm api node dist/cli/vault-encrypt.js`) — safe to interrupt and rerun. Administration → Jobs → System health reports `VAULT_PLAINTEXT` until it has run.
+**First release with the document vault (D-53):** set `DOCUMENT_ENCRYPTION_KEY` before starting it (it refuses to start without it). New uploads are stored encrypted at once; files uploaded earlier are still served and are then encrypted by `npm run vault:encrypt -w backend` (in a container: `docker compose run --rm api node dist/cli/vault-encrypt.js`) — safe to interrupt and rerun. Nursing Administration → Jobs → System health reports `VAULT_PLAINTEXT` until it has run.
 
-**First release with MFA (D-51):** set `MFA_ENCRYPTION_KEY` before starting the new version (it refuses to start without it). Every HR, supervisor and System Admin account is asked to set up an authenticator app at its next sign-in; sessions already open continue until they end (at most 24 hours). Tell those users beforehand to install an authenticator app (Microsoft Authenticator, Google Authenticator or similar). A lost phone: the person signs in with a recovery code, or HR / a System Admin resets it in **Administration → Accounts → Reset two-factor** after confirming who is asking.
+**First release with MFA (D-51):** set `MFA_ENCRYPTION_KEY` before starting the new version (it refuses to start without it). Every HR, supervisor and System Admin account is asked to set up an authenticator app at its next sign-in; sessions already open continue until they end (at most 24 hours). Tell those users beforehand to install an authenticator app (Microsoft Authenticator, Google Authenticator or similar). A lost phone: the person signs in with a recovery code, or HR / a System Admin resets it in **Nursing Administration → Accounts → Reset two-factor** after confirming who is asking.
 
 **First release after commit 10b:** the reminder job sends each record's current milestone once under the new milestone keys (D-39); contracts that already ended without a renewal get one "Contract ended" notice.
 
@@ -180,7 +180,7 @@ Then the production database is created as below.
 1. Database roles ([ops/db/README.md](../ops/db/README.md)): `01_roles.sql` as a superuser, set the four passwords with `\password`, `02_grants.sql` as the database owner; `DATABASE_URL` = `nurseapp_runtime`, `MIGRATION_DATABASE_URL` = `nurseapp_migration`. The API and worker refuse to start in production while `DATABASE_URL` can change the schema.
 2. `npm run db:deploy -w backend`, then `02_grants.sql` again, then `verify.sql` as the superuser (every check PASS) — the structure only; the database holds no data and no accounts.
 3. `npm run bootstrap -w backend` in an interactive terminal on the server — creates the first System Admin and a hospital-wide HR Admin (two people, so approvals work) and optionally the break-glass account. It refuses to run once any account exists.
-4. The HR Admin signs in, opens **Administration → Hospital baseline import**, previews the hospital's baseline file (the reference is `backend/prisma/baseline/aigh-baseline.json`) and requests the import; the System Admin elevates (PAM) and approves it. It is applied in one transaction or not at all.
+4. The HR Admin signs in, opens **Nursing Administration → Hospital baseline import**, previews the hospital's baseline file (the reference is `backend/prisma/baseline/aigh-baseline.json`) and requests the import; the System Admin elevates (PAM) and approves it. It is applied in one transaction or not at all.
 5. Credential requirements (the hospital's credential policy), accounts, employees and contracts are then entered through the application.
 
 Never run the demo fixtures on a production database; the command refuses `NODE_ENV=production` and any database with accounts.
@@ -189,7 +189,7 @@ Never run the demo fixtures on a production database; the command refuses `NODE_
 
 The scripts, their environment contract and the verified drill are in [`ops/backup/README.md`](../ops/backup/README.md): WAL archiving, an encrypted nightly base backup, point-in-time restore and a restore drill.
 
-**Documents (D-53):** the database holds each document's checksum and storage key; the bytes are in `STORAGE_DIR`, encrypted. Back up `STORAGE_DIR` on the same schedule (on Google Cloud: snapshots of the app VM's data disk), keep `DOCUMENT_ENCRYPTION_KEY` with the backup keys, and after a restore let `vault-reconcile` run (or start it from Administration → Jobs): it lists any document whose object did not come back.
+**Documents (D-53):** the database holds each document's checksum and storage key; the bytes are in `STORAGE_DIR`, encrypted. Back up `STORAGE_DIR` on the same schedule (on Google Cloud: snapshots of the app VM's data disk), keep `DOCUMENT_ENCRYPTION_KEY` with the backup keys, and after a restore let `vault-reconcile` run (or start it from Nursing Administration → Jobs): it lists any document whose object did not come back.
 
 ### Rotating a key
 
@@ -201,7 +201,7 @@ The four keys (`MFA_ENCRYPTION_KEY`, `DOCUMENT_ENCRYPTION_KEY`, `PDPL_FIELD_ENCR
 
 Rotate one key at a time or several together; `JWT_SECRET` is replaced by simply changing it (everyone signs in again). Where keys live — deployment secrets today, a KMS or HSM with the hosting decision (spec §13.4.1) — is unchanged by this. After the first release with rotation support, run `npm run keys:rotate -w backend` once: rows written before it carry no key id, and System health reports them until then.
 
-**DPO sign-off (B-18, D-56):** the Data Protection Officer reviews **Administration → Data protection** and records a sign-off there (from an HR Admin or System Admin account). The register as reviewed is kept with it. System health shows `PDPL_REGISTER_SIGN_OFF_DUE` until the first sign-off, a year after the last one, and after any change to the register.
+**DPO sign-off (B-18, D-56):** the Data Protection Officer reviews **Nursing Administration → Data protection** and records a sign-off there (from an HR Admin or System Admin account). The register as reviewed is kept with it. System health shows `PDPL_REGISTER_SIGN_OFF_DUE` until the first sign-off, a year after the last one, and after any change to the register.
 
 **Erasures after a restore (D-55, spec §8.3.3 "the destroyed key is never restored"):** a backup taken before an erasure still holds that employee's key. After restoring one, search the application logs for `personal data erased` lines newer than the backup and run `npm run pdpl:reerase -w backend -- <employeeId> …` for those employees (container: `docker compose run --rm api node dist/cli/pdpl-reerase.js <employeeId> …`). It destroys the key again, removes the search rows and identity scans, and is audited; an employee already erased is skipped. Keep the application logs at least as long as the backups.
 
@@ -224,10 +224,10 @@ Rotate one key at a time or several together; `JWT_SECRET` is replaced by simply
 | :--- | :--- |
 | Liveness and database | `GET /api/v1/health` |
 | Logs | One JSON line per event on stdout with `requestId`; no personal data. Every response carries `X-Request-Id` |
-| Background jobs | `job_runs` (Administration → Jobs); the `worker_lease_status` view shows lease holders and heartbeats |
+| Background jobs | `job_runs` (Nursing Administration → Jobs); the `worker_lease_status` view shows lease holders and heartbeats |
 | Audit integrity | `GET /api/v1/audit/verify` (Audit page); the `audit_chain_breaks` view must be empty |
 | Malware scanner | Error log lines `malware detected in upload`, `upload scan failed; upload refused` and `clamav signatures are stale`; HIGH audit `DOCUMENT_REJECTED_INFECTED` |
 | Break-glass use | CRITICAL in-app notification and e-mail to every System Admin; e-mail to `BREAK_GLASS_ALERT_EMAILS`; a text to `BREAK_GLASS_ALERT_PHONES` (HIGH audit `BREAK_GLASS_SMS_FAILED` if the gateway refused it); `break_glass_events` |
 | Request log | **Audit → Requests** (`GET /api/v1/audit/requests`, System Admin): every API request with its actor, outcome and error code — filter by user, path, `4xx`/`5xx`, error code or request id (the `X-Request-Id` a user reports). Growth: roughly 1 row per request; kept 365 days |
-| Business health | Administration → Jobs → **System health** (`GET /api/v1/system/health/business`): eligibility drift found and corrected by the daily consistency audit, jobs that are late or failed, e-mail backlog and failures. System Admins also get an in-app notice on any day drift is corrected |
+| Business health | Nursing Administration → Jobs → **System health** (`GET /api/v1/system/health/business`): eligibility drift found and corrected by the daily consistency audit, jobs that are late or failed, e-mail backlog and failures. System Admins also get an in-app notice on any day drift is corrected |
 | E-mail delivery | Error log `e-mail delivery failed; giving up`. Backlog: `SELECT email_status, count(*), min(created_at) FROM notifications WHERE created_at > now() - interval '1 day' GROUP BY 1` — a growing `PENDING` count or old `min` means the relay or the worker is down; the same for `email_outbox.status` |

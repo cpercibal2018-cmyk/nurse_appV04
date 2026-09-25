@@ -49,7 +49,7 @@ How V04 stopped defining hospital data in TypeScript and made PostgreSQL the onl
 
 ## 4. Import process
 
-1. A hospital-wide HR Admin or System Admin opens **Administration → Hospital baseline import** and chooses the file (the reference file or the hospital's own, same format).
+1. A hospital-wide HR Admin or System Admin opens **Nursing Administration → Hospital baseline import** and chooses the file (the reference file or the hospital's own, same format).
 2. **Preview** validates the file with the same rules as the create endpoints and classifies every row by code: *create*, *unchanged* (identical), *conflict* (exists with different values) or *rejected* (invalid, duplicated in the file, or referring to a department / category / successor that exists nowhere).
 3. **Request** is possible only with no conflict and no rejection, and needs a reason. It becomes a `BASELINE_IMPORT` approval request; nothing is written yet.
 4. A **second** hospital-wide administrator approves in Approvals. The file is checked again against the database as it is now; if anything changed, the approval is refused (`BASELINE_CHANGED_SINCE_REQUEST`) and nothing is written.
