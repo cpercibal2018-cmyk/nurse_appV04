@@ -11,6 +11,7 @@ import { useUnits } from '../administration/api';
 import { usePositions } from '../workforce/api';
 import { FIELD_TYPES, PDPL_CATEGORIES, useCategories, useCredentialAction, useCredentials, useRequirements, useTemplates, type Category, type CredentialRow, type Requirement, type Template } from './api';
 import { CredentialStatusTag, DocumentsDrawer, LifecycleTag } from './components';
+import { ScfhsDrawer } from './ScfhsDrawer';
 import { changeBody, createBody, fieldProblems, isDateType, toFormValues, type FieldRowValue, type TemplateFormValues } from './catalogForm';
 
 type Decision = { kind: 'suspend' | 'revoke' | 'reject'; row: CredentialRow };
@@ -24,6 +25,10 @@ function RecordsTable({ queue }: { queue?: 'review' }) {
   const rows = useCredentials(queue, identifier || undefined);
   const action = useCredentialAction();
   const [docsFor, setDocsFor] = useState<number | null>(null);
+  const [scfhsFor, setScfhsFor] = useState<{ id: number; title: string } | null>(null);
+  // Spec §5.4 (D-64): the types whose holders' licences are checked with SCFHS.
+  const templates = useTemplates();
+  const scfhsTypes = new Set(templates.data?.items.filter((x) => x.scfhsEnabled).map((x) => x.id));
   const [decision, setDecision] = useState<Decision | null>(null);
   const [reason, setReason] = useState('');
 
@@ -49,6 +54,7 @@ function RecordsTable({ queue }: { queue?: 'review' }) {
             title: '', render: (_: unknown, r: CredentialRow) => (
               <Flex gap={4} wrap>
                 <Button size="small" onClick={() => setDocsFor(r.id)}>{t('evidence')}</Button>
+                {scfhsTypes.has(r.templateId) && <Button size="small" onClick={() => setScfhsFor({ id: r.id, title: `${r.template.code} · ${r.employee.fullName}` })}>{t('scfhsButton')}</Button>}
                 {r.status === 'PendingVerification' && <Button size="small" type="primary" onClick={() => run(action.mutateAsync({ kind: 'verify', id: r.id }))}>{t('verify')}</Button>}
                 {(r.pendingData || (r.documentsPendingReview ?? 0) > 0) && r.status !== 'PendingVerification' && (
                   <>
@@ -64,6 +70,7 @@ function RecordsTable({ queue }: { queue?: 'review' }) {
         ]}
       />
       <DocumentsDrawer credentialId={docsFor} onClose={() => setDocsFor(null)} canUpload={hr} />
+      <ScfhsDrawer credential={scfhsFor} onClose={() => setScfhsFor(null)} />
       <Modal
         title={decision ? `${t(decision.kind === 'reject' ? 'rejectRenewal' : decision.kind)} — ${decision.row.template.code} · ${decision.row.employee.fullName}` : ''}
         open={decision !== null} onCancel={() => setDecision(null)} cancelText={t('cancel')} okText={t('submit')}
@@ -217,6 +224,7 @@ function CatalogTab() {
   const [editing, setEditing] = useState<Template | 'new' | null>(null);
   const [form] = Form.useForm<TemplateFormValues>();
   const rows = Form.useWatch('fields', form);
+  const scfhsOn = Form.useWatch('scfhsEnabled', form) === true;
 
   function open(x: Template | 'new') {
     form.resetFields();
@@ -252,14 +260,14 @@ function CatalogTab() {
           { title: t('category'), dataIndex: 'categoryCode' },
           { title: t('fields'), render: (_, x) => x.fieldDefs.map((f) => f.label).join(', ') || '—', ellipsis: true },
           { title: t('graceDays'), dataIndex: 'gracePeriodDays' },
-          { title: t('status'), render: (_, x) => <Tag color={x.isActive ? 'green' : 'default'}>{x.isActive ? t('active') : t('inactive')}</Tag> },
+          { title: t('status'), render: (_, x) => <Space size={4} wrap><Tag color={x.isActive ? 'green' : 'default'}>{x.isActive ? t('active') : t('inactive')}</Tag>{x.scfhsEnabled && <Tag color="blue">{x.scfhsAutoSuspend ? t('scfhsCheckedAutoTag') : t('scfhsCheckedTag')}</Tag>}</Space> },
           ...(hr ? [{ title: '', render: (_: unknown, x: Template) => <Button size="small" onClick={() => open(x)}>{t('edit')}</Button> }] : []),
         ]}
       />
       <Modal title={editing === 'new' ? t('addCredentialType') : editing ? `${t('edit')}: ${editing.code}` : ''} open={editing !== null} onCancel={() => setEditing(null)}
         onOk={() => form.submit()} okText={t('submit')} cancelText={t('cancel')} confirmLoading={action.isPending} width={900} forceRender>
         <Form form={form} layout="vertical" onFinish={submit}
-          initialValues={{ hasExpiry: true, requiresUpload: true, gracePeriodDays: 0, displayOrder: 0, isActive: true, fields: [] }}>
+          initialValues={{ hasExpiry: true, requiresUpload: true, gracePeriodDays: 0, displayOrder: 0, isActive: true, fields: [], scfhsEnabled: false, scfhsAutoSuspend: false }}>
           <Flex gap={12} wrap>
             {editing === 'new' && <Form.Item name="code" label={t('code')} style={{ minWidth: 180 }} rules={[{ required: true, pattern: /^[A-Z][A-Z0-9_]{1,39}$/ }]}><Input maxLength={40} /></Form.Item>}
             <Form.Item name="name" label={t('name')} style={{ flex: 1, minWidth: 220 }} rules={[{ required: true, whitespace: true }]}><Input maxLength={120} /></Form.Item>
@@ -274,6 +282,10 @@ function CatalogTab() {
             <Form.Item name="gracePeriodDays" label={t('graceDays')} rules={[{ required: true }]}><InputNumber min={0} max={90} precision={0} /></Form.Item>
             <Form.Item name="displayOrder" label={t('displayOrder')}><InputNumber min={0} precision={0} /></Form.Item>
             {editing !== 'new' && <Form.Item name="isActive" label={t('status')} valuePropName="checked"><Switch checkedChildren={t('active')} unCheckedChildren={t('inactive')} /></Form.Item>}
+          </Flex>
+          <Flex gap={16} wrap>
+            <Form.Item name="scfhsEnabled" label={t('scfhsEnabled')} valuePropName="checked" tooltip={t('scfhsEnabledHint')}><Switch /></Form.Item>
+            <Form.Item name="scfhsAutoSuspend" label={t('scfhsAutoSuspend')} valuePropName="checked" tooltip={t('scfhsAutoSuspendHint')}><Switch disabled={!scfhsOn} /></Form.Item>
           </Flex>
           <Form.List
             name="fields"

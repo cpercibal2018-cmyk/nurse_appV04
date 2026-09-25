@@ -65,6 +65,9 @@ export const TemplateCreateBody = z.strictObject({
   fieldDefs: FieldDefs.default([]),
   gracePeriodDays: GraceDays.default(0),
   displayOrder: DisplayOrder.default(0),
+  // Spec §5.4 (D-64): check holders' licences with SCFHS; suspend on an adverse answer.
+  scfhsEnabled: z.boolean().default(false),
+  scfhsAutoSuspend: z.boolean().default(false),
   reason: ChangeReason,
 });
 // Written out without defaults: `.partial()` of a schema with defaults would
@@ -79,6 +82,8 @@ export const TemplateUpdateBody = z.strictObject({
   gracePeriodDays: GraceDays.optional(),
   displayOrder: DisplayOrder.optional(),
   isActive: z.boolean().optional(),
+  scfhsEnabled: z.boolean().optional(),
+  scfhsAutoSuspend: z.boolean().optional(),
   reason: ChangeReason,
 });
 
@@ -190,9 +195,18 @@ export function createCatalogService(db: Db) {
     if (!check.success) throw new HttpError(422, 'FIELD_DEFINITIONS_INVALID', 'The field definitions break a catalog rule — reject this request and submit a corrected one', check.error.issues.map((i) => i.message));
   }
 
+  /** D-64: SCFHS checks need a field holding the registration number; auto-suspend needs the checks. */
+  function assertScfhsRules(t: { scfhsEnabled?: boolean; scfhsAutoSuspend?: boolean; fieldDefs: FieldDef[] }) {
+    if (t.scfhsAutoSuspend && !t.scfhsEnabled) throw new HttpError(422, 'SCFHS_AUTO_SUSPEND_NEEDS_CHECKS', 'Automatic suspension needs SCFHS checks turned on');
+    if (t.scfhsEnabled && !t.fieldDefs.some((d) => d.pdplCategory === 'SCFHS_REG')) {
+      throw new HttpError(422, 'SCFHS_FIELD_REQUIRED', 'SCFHS checks need a field holding the SCFHS registration number (data category SCFHS_REG)');
+    }
+  }
+
   async function createNow(tx: DbClient, auth: AuthContext, t: TemplateData, reason: string, approvalRequestId: number | null, requestId?: string) {
     await assertSystemWide(tx, auth);
     assertFieldRules(t.fieldDefs);
+    assertScfhsRules(t);
     await validateCreate(tx, t);
     const { fieldDefs, ...columns } = t;
     const created = await tx.credentialTemplate.create({ data: columns });
@@ -213,6 +227,7 @@ export function createCatalogService(db: Db) {
     }
     const { fieldDefs, ...columns } = change;
     if (fieldDefs !== undefined) assertFieldRules(fieldDefs);
+    assertScfhsRules({ scfhsEnabled: change.scfhsEnabled ?? current.scfhsEnabled, scfhsAutoSuspend: change.scfhsAutoSuspend ?? current.scfhsAutoSuspend, fieldDefs: fieldDefs ?? current.fieldDefs });
     if (Object.keys(columns).length) await tx.credentialTemplate.update({ where: { id }, data: columns });
     // Field definitions are replaced as a set; the audit entry keeps before → after.
     if (fieldDefs !== undefined) {
@@ -309,6 +324,7 @@ export function createCatalogService(db: Db) {
       // Validate now so an impossible request never reaches the approval queue.
       await assertSystemWide(db, auth);
       await validateCreate(db, template);
+      assertScfhsRules(template);
       return { status: 'PENDING_APPROVAL', requestId: await initiateApproval(auth, `TEMPLATE_CREATE:${template.code}`, { kind: 'TEMPLATE_CREATE', template, reason }, requestId) };
     },
 
@@ -317,6 +333,7 @@ export function createCatalogService(db: Db) {
       if (auth.breakGlass) return { status: 'APPLIED', template: await db.$transaction((tx) => updateNow(tx, auth, id, change, reason, null, null, requestId)) };
       await assertSystemWide(db, auth);
       const { current, before } = await changedFields(db, id, change);
+      assertScfhsRules({ scfhsEnabled: change.scfhsEnabled ?? current.scfhsEnabled, scfhsAutoSuspend: change.scfhsAutoSuspend ?? current.scfhsAutoSuspend, fieldDefs: change.fieldDefs ?? current.fieldDefs });
       const only = Object.fromEntries(Object.keys(before).map((k) => [k, change[k as keyof TemplateChange]])) as TemplateChange;
       return { status: 'PENDING_APPROVAL', requestId: await initiateApproval(auth, `TEMPLATE_UPDATE:${id}`, { kind: 'TEMPLATE_UPDATE', templateId: id, code: current.code, change: only, before, reason }, requestId) };
     },

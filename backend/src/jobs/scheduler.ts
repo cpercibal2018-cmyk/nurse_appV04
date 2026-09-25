@@ -13,6 +13,7 @@
 //   attendance-alerts every 15 min — coverage gaps (§14.2)
 //   consistency-audit 03:00 daily  — eligibility anti-drift sample (§10.8)
 //   mock-sms-purge    02:40 daily  — intercepted texts older than 30 days (D-59)
+//   scfhs-sync        05:00 daily  — licences checked with SCFHS (§5.4, D-64)
 
 import type { Db } from '../lib/prisma.js';
 import { riyadhDate } from '../lib/dates.js';
@@ -21,6 +22,7 @@ import { withLease } from '../lib/worker-lease.js';
 import { attendanceAlerts } from './attendance-alerts.js';
 import { consistencyAudit } from './consistency-audit.js';
 import { mockSmsPurge } from './mock-sms-purge.js';
+import { scfhsSync } from './scfhs-sync.js';
 import { requestLogPurge } from './request-log-purge.js';
 import { vaultReconcile } from './vault-reconcile.js';
 import { dailyTransition } from './daily-transition.js';
@@ -55,6 +57,7 @@ export const JOBS: JobDefinition[] = [
   { name: 'consistency-audit', schedule: 'daily 03:00 Asia/Riyadh', periodKey: dailyAt('consistency-audit', '03:00'), run: consistencyAudit, maxAgeMinutes: 26 * 60 },
   { name: 'request-log-purge', schedule: 'daily 02:30 Asia/Riyadh', periodKey: dailyAt('request-log-purge', '02:30'), run: requestLogPurge, maxAgeMinutes: 26 * 60 },
   { name: 'mock-sms-purge', schedule: 'daily 02:40 Asia/Riyadh', periodKey: dailyAt('mock-sms-purge', '02:40'), run: mockSmsPurge, maxAgeMinutes: 26 * 60 },
+  { name: 'scfhs-sync', schedule: 'daily 05:00 Asia/Riyadh', periodKey: dailyAt('scfhs-sync', '05:00'), run: scfhsSync, maxAgeMinutes: 26 * 60 },
   { name: 'vault-reconcile', schedule: 'daily 04:30 Asia/Riyadh', periodKey: dailyAt('vault-reconcile', '04:30'), run: vaultReconcile, maxAgeMinutes: 26 * 60 },
 ];
 

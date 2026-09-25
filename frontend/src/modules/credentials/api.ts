@@ -10,7 +10,7 @@ export type EligibilityStatus = 'ELIGIBLE' | 'ELIGIBLE_WITH_GRACE' | 'ELIGIBLE_W
 export const PDPL_CATEGORIES = ['IQAMA', 'PASSPORT', 'SCFHS_REG'] as const;
 export type PdplCategory = (typeof PDPL_CATEGORIES)[number];
 export interface FieldDef { key: string; label: string; type: (typeof FIELD_TYPES)[number]; required: boolean; displayOrder: number; isIssueDate?: boolean; isExpiryDate?: boolean; pdplCategory?: PdplCategory }
-export interface Template { id: number; code: string; name: string; categoryCode: string; description: string | null; hasExpiry: boolean; requiresUpload: boolean; gracePeriodDays: number; displayOrder: number; isActive: boolean; fieldDefs: FieldDef[] }
+export interface Template { id: number; code: string; name: string; categoryCode: string; description: string | null; hasExpiry: boolean; requiresUpload: boolean; gracePeriodDays: number; displayOrder: number; isActive: boolean; fieldDefs: FieldDef[]; scfhsEnabled: boolean; scfhsAutoSuspend: boolean }
 /** The field types the server accepts (catalog.ts `FieldType`). */
 export const FIELD_TYPES = ['text', 'date', 'date_hijri', 'select', 'number', 'country', 'reference'] as const;
 export interface Requirement {
@@ -102,6 +102,26 @@ export function useCredentialAction() {
         case 'waiver': return http.post('/waivers', a.body);
       }
     },
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+// ── SCFHS licence checks (spec §5.4, D-64) ──
+export type ScfhsStatus = 'VERIFIED' | 'EXPIRED' | 'SUSPENDED' | 'REVOKED' | 'NOT_FOUND' | 'ERROR';
+export interface ScfhsCheck {
+  id: string; requestType: 'MANUAL' | 'ON_SUBMIT' | 'SCHEDULED'; driver: 'mock' | 'live'; requestedAt: string; responseStatus: ScfhsStatus;
+  scfhsExpiryDate: string | null; scfhsSpecialty: string | null; regNumberHint: string; errorMessage: string | null;
+  matched: boolean | null; discrepancies: string[]; action: 'NONE' | 'HR_NOTIFIED' | 'SUSPENDED';
+}
+export const useScfhsChecks = (credentialId: number | null) => useQuery({
+  queryKey: ['scfhsChecks', credentialId],
+  queryFn: () => http.get<{ items: ScfhsCheck[]; driver: 'mock' | 'live' }>(`/credentials/${credentialId}/scfhs-checks`),
+  enabled: credentialId !== null,
+});
+export function useScfhsCheckNow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => http.post<{ status: ScfhsStatus; matched: boolean | null; action: ScfhsCheck['action']; discrepancies: string[] }>(`/credentials/${id}/scfhs-check`, {}),
     onSuccess: () => invalidateAll(qc),
   });
 }

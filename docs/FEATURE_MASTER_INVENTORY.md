@@ -88,7 +88,7 @@ Every capability found in the repository, where it lives, how real it is, and wh
 | Suspension / revocation | SPEC | §5.2 | Statuses exist in the type; no action. |
 | Evidence versioning (append-only), PDF magic bytes, 10 MB cap, scan gate | CLIENT | `contracts.ts:170-228`, `store.tsx:73-89, 887-933` | BR-D1…D4. Bytes are held in memory only and lost on reload; "scan" is simulated as CLEAN. |
 | Secure vault, signed URLs 30 s, ClamAV quarantine | **BUILT** (D-53, D-43) | §5.3 | Encrypted vault on local disk; single-use links valid 60 s (not 30 — time to open on a slow hospital network); synchronous ClamAV instead of a quarantine queue (D-43). Object storage waits for hosting |
-| SCFHS nightly sync, circuit breaker, STALE 48 h | SPEC | §5.4 | Gated on U3 agreement. `syncStatus` is a stored label only. |
+| SCFHS nightly sync, circuit breaker, STALE 48 h | **BUILT** (D-64), simulated | §5.4 | Checks on submission, on demand and nightly (`scfhs-sync`), `scfhs_verification_log`, HR notices, auto-suspend per type, stops after 5 failures; freshness through System health (job > 26 h). The live SCFHS call waits on U3; the simulated registry answers until then. |
 
 ## 5. Clinical eligibility
 

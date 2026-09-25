@@ -133,6 +133,13 @@ const EnvSchema = z.object({
     .default('')
     .transform((s) => s.split(',').map((p) => p.replace(/[\s\-()]/g, '')).filter(Boolean))
     .pipe(z.array(z.string().regex(/^\+[1-9]\d{7,14}$/, 'international format, e.g. +966501234567'))),
+  // ── SCFHS licence verification (spec §5.4, D-64) ──────────────────────────
+  /** mock: answers come from the simulated SCFHS registry (Dev Console) — until the hospital has access to
+   *  the SCFHS verification service. live: the SCFHS API (not built yet: needs the SCFHS agreement, U3). */
+  SCFHS_DRIVER: z.enum(['mock', 'live']).default('mock'),
+  /** The SCFHS verification endpoint and API key; required when SCFHS_DRIVER=live. */
+  SCFHS_API_URL: z.string().default(''),
+  SCFHS_API_KEY: z.string().default(''),
   // ── Background jobs (spec §10.2; plan "Jobs") ─────────────────────────────
   /** in-process: the API runs the scheduler (development). worker: a separate `npm run worker` runs it (production). off: nothing runs. */
   JOBS_MODE: z.enum(['in-process', 'worker', 'off']).default('in-process'),
@@ -147,6 +154,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     if (e.SMTP_HOST && !e.SMTP_FROM) ctx.addIssue({ code: 'custom', path: ['SMTP_FROM'], message: 'required when SMTP_HOST is set' });
     for (const k of ['UNIFONIC_APP_SID', 'UNIFONIC_SENDER_ID'] as const) {
       if (e.SMS_DRIVER === 'unifonic' && !e[k]) ctx.addIssue({ code: 'custom', path: [k], message: 'required when SMS_DRIVER=unifonic' });
+    }
+    for (const k of ['SCFHS_API_URL', 'SCFHS_API_KEY'] as const) {
+      if (e.SCFHS_DRIVER === 'live' && !e[k]) ctx.addIssue({ code: 'custom', path: [k], message: 'required when SCFHS_DRIVER=live' });
     }
     if (e.NODE_ENV === 'production' && !e.DOCUMENT_ENCRYPTION_KEY) {
       ctx.addIssue({ code: 'custom', path: ['DOCUMENT_ENCRYPTION_KEY'], message: 'required in production (openssl rand -base64 32)' });

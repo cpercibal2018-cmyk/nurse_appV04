@@ -4,7 +4,7 @@ import { changeBody, createBody, fieldProblems, toFieldDefs, toFormValues } from
 
 const stored: Template = {
   id: 7, code: 'SCFHS', name: 'SCFHS licence', categoryCode: 'LICENSE', description: null, hasExpiry: true, requiresUpload: true,
-  gracePeriodDays: 0, displayOrder: 1, isActive: true,
+  gracePeriodDays: 0, displayOrder: 1, isActive: true, scfhsEnabled: false, scfhsAutoSuspend: false,
   fieldDefs: [
     { key: 'licence_number', label: 'Licence number', type: 'text', required: true, displayOrder: 1 },
     { key: 'issue_date', label: 'Issue date', type: 'date', required: true, displayOrder: 2, isIssueDate: true },
@@ -60,5 +60,12 @@ describe('credential type form', () => {
     expect(body).not.toHaveProperty('description');
     expect(body).not.toHaveProperty('isActive');
     expect((body.fieldDefs as unknown[]).length).toBe(3);
+  });
+
+  it('SCFHS switches (D-64): sends only the switch changed; auto-suspend never without the checks', () => {
+    expect(changeBody(stored, { ...toFormValues(stored), scfhsEnabled: true, reason: 'r' })).toEqual({ scfhsEnabled: true, reason: 'r' });
+    expect(changeBody(stored, { ...toFormValues(stored), scfhsAutoSuspend: true, reason: 'r' })).toEqual({ reason: 'r' });
+    expect(changeBody({ ...stored, scfhsEnabled: true, scfhsAutoSuspend: true }, { ...toFormValues({ ...stored, scfhsEnabled: true, scfhsAutoSuspend: true }), scfhsEnabled: false, reason: 'r' }))
+      .toEqual({ scfhsEnabled: false, scfhsAutoSuspend: false, reason: 'r' });
   });
 });
