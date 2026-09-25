@@ -56,6 +56,7 @@ Every backend setting is in [`.env.example`](../.env.example) and is validated a
 | `UNIFONIC_APP_SID` / `UNIFONIC_SENDER_ID` | — | Required with `SMS_DRIVER=unifonic`: the Unifonic app and the CST-registered Sender ID |
 | `SCFHS_DRIVER` | mock | `mock` answers licence checks from the simulated SCFHS registry in the Dev Console (§2.4, D-64); `live` is the SCFHS verification API (not built yet) |
 | `SCFHS_API_URL` / `SCFHS_API_KEY` | — | Required with `SCFHS_DRIVER=live`: the SCFHS endpoint and key from the SCFHS agreement (U3) |
+| `BADGE_SIMULATOR` | off in production, on elsewhere | `on` lets a System Admin write simulated badge events from the Dev Console (§2.5, D-65). Turn it on in production only for a demonstration, then clear the events and turn it off |
 | `BREAK_GLASS_ALERT_PHONES` | — | Comma-separated, international format (`+9665…`): texted when the break-glass account signs in (spec §3.6) |
 | `TRUST_PROXY` | false | `true` behind the proxy, so login limits and session history see the client address |
 | `JOBS_MODE` | in-process | `worker` on the API in production (§3) |
@@ -133,6 +134,12 @@ Licences of a credential type with **Check with SCFHS** on (Credentials → Cata
 | Unreachable | Logged as `ERROR`; the nightly run stops after 5 failures in a row and System health shows `SCFHS_UNREACHABLE` |
 
 Going live: implement `LiveScfhsGateway.lookup` (`backend/src/lib/scfhs.ts`) against the SCFHS API contract, set `SCFHS_DRIVER=live`, `SCFHS_API_URL` and `SCFHS_API_KEY`, and check one known licence from the credential's SCFHS drawer.
+
+### 2.5 Badge events (the badge system, and a simulator until it is connected)
+
+Attendance gaps and coverage alerts (spec §14.2) compare the published roster with clock-ins in `attendance_events`. The badge system (PACS) delivers them to **`POST /api/v1/attendance/events`** (D-65): register it under **Nursing Administration → API clients** with the **`attendance.ingest`** scope, give its team the client id and secret, and it posts batches of up to 1000 events with a 15-minute token (docs/API.md §2.10 has the format). Each event is keyed by the nurse's job number and stored once — a resent batch is safe — and events that cannot be stored come back with their index and reason. The PACS interface contract is still open (B-15): if the vendor cannot send this format, a small adapter between the two is the job.
+
+Until then, **Nursing Administration → Badge simulator** (System Admin, elevated) writes events through the same path, marked `simulator`: one swipe, or clock-ins for a unit's published shift with a chosen number of nurses left out, who then show as **MISSING** in the gap view and raise the coverage alert. Every simulation is audited HIGH, and **Clear simulated events** deletes them all. Simulated attendance must never reach payroll, so the simulator is **off in production** unless `BADGE_SIMULATOR=on`.
 
 ## 3. Processes and background jobs
 
@@ -245,7 +252,7 @@ To move the workforce history to another provider: `node dist/cli/exit-package.j
 | **`pg` 9 not yet usable** | Inside an interactive transaction Prisma 7.10's query interpreter reads the relations of a multi-relation `include` concurrently on the transaction's single `pg` client ([prisma/prisma#29407](https://github.com/prisma/prisma/issues/29407)). `pg` 8 queues the queries (results are correct) but prints its "client is already executing a query" deprecation, which `pg` 9 turns into a failure. The application's own code issues transaction queries one at a time | Stay on `pg` 8 until a Prisma release with the fix; then upgrade both together and run the full test suite |
 | **SMS simulated** (D-59) | Texts (the break-glass alert, D-48) go through the SMS gateway, but with `SMS_DRIVER=mock` they are kept in the Dev Console SMS inbox and not sent (§2.3) | The hospital's Commercial Registration and a CST-registered Sender ID; then the Unifonic call in `UnifonicSmsGateway` |
 | **SCFHS simulated** (D-64) | Licence checks answer from the simulated registry (§2.4), not from SCFHS | The SCFHS agreement (U3) and its API contract; then `LiveScfhsGateway` |
-| **No badge feed** (D-33) | Attendance gaps and alerts only work once events are loaded into `attendance_events` | The PACS interface contract |
+| **Badge system not connected** (D-33, D-65) | The ingest endpoint is built (§2.5) but no badge system sends to it yet; until then attendance gaps and alerts show only simulated events | The badge system's vendor sends our format, or the PACS contract (B-15) and an adapter; register it as an API client with `attendance.ingest` |
 | **Production server not yet provisioned** (spec §8.3.6, §10.4; D-57) | The single-VPS layout — blue/green releases, backups with an off-site copy, alerts, the exit package — is built and passes its end-to-end harness ([ops/vps](../ops/vps/README.md)); no server in the Kingdom exists yet. A Hostinger VPS may hold synthetic data only (no data centre in the Kingdom) | A VPS in a data centre in the Kingdom, with a contract that says so, and an S3-compatible off-site bucket in the Kingdom; then ops/vps/README.md §2–§9, including the restore drill |
 
 ## 7. Monitoring

@@ -49,6 +49,7 @@ const FAMILIES: Record<string, string[]> = {
   basis_: ['EMPLOYMENT_CONTRACT', 'LEGAL_OBLIGATION', 'CONSENT', 'VITAL_INTEREST', 'PUBLIC_INTEREST'], // processing register
   invitationStatus_: ['OPEN', 'CLAIMED', 'REVOKED', 'EXPIRED'], // GET /employees/:id/invitations (spec §3.2)
   shift_: ['Morning', 'Evening', 'Night'],
+  badgeType_: ['CLOCK_IN', 'CLOCK_OUT', 'BREAK_START', 'BREAK_END'], // badge events (spec §14.2, D-65)
   band_: ['Standard', 'Distress', 'Failing', 'Failed'],
   marital_: ['Single', 'Married', 'Others'],
   contract_: ['Draft', 'PendingApproval', 'Approved', 'Active', 'Expired', 'Suspended', 'Terminated', 'Superseded'],

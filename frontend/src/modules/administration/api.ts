@@ -288,7 +288,7 @@ export function useLogicLifecycle() {
 }
 
 // ── FHIR API clients (D-63) ──
-export type FhirScope = 'system/Practitioner.read' | 'system/PractitionerRole.read';
+export type FhirScope = 'system/Practitioner.read' | 'system/PractitionerRole.read' | 'attendance.ingest';
 export interface ApiClient {
   id: number; clientId: string; name: string; scopes: FhirScope[]; secretVersion: number;
   createdAt: string; secretRotatedAt: string | null; lastTokenAt: string | null; revokedAt: string | null;
@@ -319,5 +319,24 @@ export function useScfhsRegistryChange() {
     mutationFn: (a: { kind: 'set'; reg: string; body: Omit<RegistryEntry, 'registrationNumber' | 'updatedAt'> } | { kind: 'remove'; reg: string }) =>
       a.kind === 'set' ? http.put<unknown>(`/dev-console/scfhs-registry/${encodeURIComponent(a.reg)}`, a.body) : http.delete<unknown>(`/dev-console/scfhs-registry/${encodeURIComponent(a.reg)}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['scfhsRegistry'] }),
+  });
+}
+
+// ── Badge simulator (D-65) ──
+export interface SimulatedEvent { id: number; eventType: 'CLOCK_IN' | 'CLOCK_OUT' | 'BREAK_START' | 'BREAK_END'; eventTimestamp: string; createdAt: string; employee: { jobNumber: string; fullName: string } }
+export const useBadgeSimulator = () => useQuery({
+  queryKey: ['badgeSimulator'],
+  queryFn: () => http.get<{ enabled: boolean; recent: SimulatedEvent[]; total: number }>('/dev-console/badge-simulator'),
+});
+/** What a simulation answers: counts for a swipe or a shift, `deleted` for a clear. */
+export interface BadgeSimResult { accepted?: number; duplicates?: number; alreadyIn?: number; leftOut?: string[]; date?: string; deleted?: number }
+export function useBadgeSimulation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (a: { kind: 'swipe'; body: { jobNumber: string; type: string } } | { kind: 'shift'; body: { unitId: number; date?: string; shiftType: string; leaveOut: number } } | { kind: 'clear' }) =>
+      a.kind === 'swipe' ? http.post<BadgeSimResult>('/dev-console/badge-simulator/events', a.body)
+        : a.kind === 'shift' ? http.post<BadgeSimResult>('/dev-console/badge-simulator/shift', a.body)
+          : http.delete<BadgeSimResult>('/dev-console/badge-simulator/events'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['badgeSimulator'] }),
   });
 }

@@ -9,7 +9,8 @@
 //   JWT_SECRET for this purpose only: a client token is never a user token.
 // - Each FHIR request re-reads the client, so revoking it or replacing its
 //   secret (secret_version) ends its tokens at once.
-// - A client reads system-wide, within its scopes, and nothing but FHIR.
+// - A client reads system-wide, within its scopes, and nothing but FHIR — or,
+//   with the attendance.ingest scope, sends badge events (D-65).
 // - Failed attempts are throttled per address and per client id (D-46).
 
 import crypto from 'node:crypto';
@@ -22,6 +23,9 @@ import { constantTimeEqual, createJwt, randomToken, sha256hex, TokenError } from
 
 export const FHIR_SCOPES = ['system/Practitioner.read', 'system/PractitionerRole.read'] as const;
 export type FhirScope = (typeof FHIR_SCOPES)[number];
+/** Every scope a client can hold: the FHIR reads, and sending badge events (D-65). */
+export const CLIENT_SCOPES = [...FHIR_SCOPES, 'attendance.ingest'] as const;
+export type ClientScope = (typeof CLIENT_SCOPES)[number];
 export const CLIENT_TOKEN_TTL_SECONDS = 900;
 
 /** The calling system, on res.locals.client for a FHIR request made with a client token. */
@@ -29,7 +33,7 @@ export interface ClientContext {
   id: number;
   clientId: string;
   name: string;
-  scopes: FhirScope[];
+  scopes: ClientScope[];
 }
 
 declare global {
@@ -109,7 +113,7 @@ export function createClientAuth(db: Db, jwtSecret: string, throttles: { address
       return deny(401, 'invalid_client', 'Unknown client, wrong secret or revoked client');
     }
 
-    const allowed = client.scopes as FhirScope[];
+    const allowed = client.scopes as ClientScope[];
     const asked = form.data.scope?.trim() ? [...new Set(form.data.scope.trim().split(/\s+/))] : allowed;
     const refused = asked.filter((s) => !(allowed as string[]).includes(s));
     if (refused.length > 0) return deny(400, 'invalid_scope', `Not granted to this client: ${refused.join(' ')}`);
@@ -136,7 +140,7 @@ export function createClientAuth(db: Db, jwtSecret: string, throttles: { address
     const client = await db.apiClient.findUnique({ where: { id: cid as number } });
     if (!client || client.revokedAt || client.secretVersion !== ver) return 'ended';
     // Only scopes still granted: a narrowed client does not keep what an older token said.
-    const scopes = scope.split(' ').filter((s): s is FhirScope => client.scopes.includes(s));
+    const scopes = scope.split(' ').filter((s): s is ClientScope => client.scopes.includes(s));
     return { id: client.id, clientId: client.clientId, name: client.name, scopes };
   }
 

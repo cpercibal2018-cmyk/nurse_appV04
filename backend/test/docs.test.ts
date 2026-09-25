@@ -10,7 +10,8 @@ const rbac = readFileSync(join(__dirname, '..', '..', 'docs', 'RBAC.md'), 'utf8'
 
 describe('docs/RBAC.md', () => {
   it('lists exactly the permissions and roles of permissions.ts', () => {
-    const rows = [...rbac.matchAll(/^\| `([\w.]+)` \| ([A-Z_, ]+) \|/gm)].map((m) => [m[1]!, m[2]!.split(',').map((r) => r.trim()).sort()] as const);
+    // "—": a permission no role holds (D-65: only another system, through its API-client scope).
+    const rows = [...rbac.matchAll(/^\| `([\w.]+)` \| ([A-Z_, ]+|—) \|/gm)].map((m) => [m[1]!, m[2] === '—' ? [] : m[2]!.split(',').map((r) => r.trim()).sort()] as const);
     const documented = Object.fromEntries(rows);
     expect(rows.length, 'a permission is listed twice').toBe(Object.keys(documented).length);
     const code = Object.fromEntries(Object.entries(PERMISSIONS).map(([p, roles]) => [p, [...roles].sort()]));

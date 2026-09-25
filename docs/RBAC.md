@@ -60,6 +60,7 @@ Generated from `backend/src/modules/users/permissions.ts`. **`backend/test/docs.
 | `roster.read` | HR_ADMIN, SYSTEM_ADMIN, SUPERVISOR | Roster board, pool, coverage |
 | `roster.write` | SUPERVISOR | Draft, generate, publish (D-14) |
 | `attendance.read` | HR_ADMIN, SYSTEM_ADMIN, SUPERVISOR | Clock events and the gap view |
+| `attendance.ingest` | — | No role holds it. Delivering badge events: only an API client holding the `attendance.ingest` scope (the badge system), never a person (D-65) |
 | `audit.read` | SYSTEM_ADMIN | Audit search and chain verification (D-20) |
 | `pdpl.read` | HR_ADMIN, SYSTEM_ADMIN | Processing register (spec §8.3.2, D-54) |
 | `pdpl.manage` | SYSTEM_ADMIN | Add or change processing-register entries; audited HIGH (D-54) |
@@ -74,6 +75,8 @@ Generated from `backend/src/modules/users/permissions.ts`. **`backend/test/docs.
 | `devconsole.sms.send` | SYSTEM_ADMIN | Send a test text through the SMS gateway, audited (D-59) |
 | `devconsole.scfhs.read` | SYSTEM_ADMIN | The simulated SCFHS registry the mock SCFHS gateway answers from (D-64) |
 | `devconsole.scfhs.manage` | SYSTEM_ADMIN | Set or remove simulated SCFHS registry entries, audited (number masked) (D-64) |
+| `devconsole.badge.read` | SYSTEM_ADMIN | The badge simulator and the events it wrote (D-65) |
+| `devconsole.badge.write` | SYSTEM_ADMIN | Simulate a swipe or a shift's clock-ins, clear simulated events; audited HIGH; refused while `BADGE_SIMULATOR` is off (D-65) |
 | `credentials.catalog.read` | EMPLOYEE | Credential types and categories |
 | `credentials.catalog.write` | HR_ADMIN, SYSTEM_ADMIN | Credential type changes (system-wide, four-eyes — D-24, D-25) |
 | `requirements.read` | HR_ADMIN, SYSTEM_ADMIN, SUPERVISOR | Unit credential requirements |
