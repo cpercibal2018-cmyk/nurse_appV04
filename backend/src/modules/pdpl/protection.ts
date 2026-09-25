@@ -23,7 +23,7 @@ export function createProtection(crypto: FieldCrypto) {
   async function dataKey(tx: DbClient, employeeId: number, create: boolean): Promise<Buffer | null> {
     let row = await tx.employeeKey.findUnique({ where: { employeeId } });
     if (!row && create) {
-      await tx.employeeKey.createMany({ data: [{ employeeId, wrappedKey: crypto.newWrappedKey(employeeId) }], skipDuplicates: true });
+      await tx.employeeKey.createMany({ data: [{ employeeId, wrappedKey: crypto.newWrappedKey(employeeId), keyVersion: crypto.masterKeyId }], skipDuplicates: true });
       row = await tx.employeeKey.findUnique({ where: { employeeId } });
     }
     if (!row?.wrappedKey) return null;
@@ -59,7 +59,7 @@ export function createProtection(crypto: FieldCrypto) {
     async index(tx: DbClient, credentialId: number, fields: SensitiveField[], plain: TrackingValues) {
       await tx.pdplIdentifierIndex.deleteMany({ where: { credentialId } });
       const rows = fields.filter((f) => f.pdplCategory && typeof plain[f.key] === 'string' && plain[f.key] !== '' && !isSealed(plain[f.key]))
-        .map((f) => ({ credentialId, category: f.pdplCategory!, digest: crypto.blindIndex(f.pdplCategory!, String(plain[f.key])) }));
+        .map((f) => ({ credentialId, category: f.pdplCategory!, digest: crypto.blindIndex(f.pdplCategory!, String(plain[f.key])), keyVersion: crypto.pepperId }));
       if (rows.length > 0) await tx.pdplIdentifierIndex.createMany({ data: rows });
     },
 
@@ -80,7 +80,7 @@ export function createProtection(crypto: FieldCrypto) {
 
     /** Credential ids whose identifier (any category) equals `value`. */
     async findByIdentifier(tx: DbClient, value: string) {
-      const digests = (['IQAMA', 'PASSPORT', 'SCFHS_REG'] as const).map((c) => crypto.blindIndex(c, value));
+      const digests = (['IQAMA', 'PASSPORT', 'SCFHS_REG'] as const).flatMap((c) => crypto.searchDigests(c, value));
       const rows = await tx.pdplIdentifierIndex.findMany({ where: { digest: { in: digests } }, select: { credentialId: true } });
       return [...new Set(rows.map((r) => r.credentialId))];
     },
@@ -97,6 +97,7 @@ export function createProtection(crypto: FieldCrypto) {
       await tx.pdplIdentifierIndex.deleteMany({ where: { credential: { employeeId } } });
     },
     dataKey,
+    crypto,
   };
 }
 

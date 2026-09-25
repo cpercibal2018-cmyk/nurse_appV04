@@ -57,26 +57,27 @@ model User {
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
-  employee           Employee?            @relation(fields: [employeeId], references: [id])
+  employee           Employee?                   @relation(fields: [employeeId], references: [id])
   sessions           RefreshSession[]
-  roleAssignments    RoleAssignment[]     @relation("assignee")
-  grantedAssignments RoleAssignment[]     @relation("granter")
-  revokedAssignments RoleAssignment[]     @relation("revoker")
-  approvalsInitiated ApprovalRequest[]    @relation("initiator")
-  approvalsDecided   ApprovalRequest[]    @relation("approver")
+  roleAssignments    RoleAssignment[]            @relation("assignee")
+  grantedAssignments RoleAssignment[]            @relation("granter")
+  revokedAssignments RoleAssignment[]            @relation("revoker")
+  approvalsInitiated ApprovalRequest[]           @relation("initiator")
+  approvalsDecided   ApprovalRequest[]           @relation("approver")
   privilegedSession  PrivilegedSession?
-  invitationsIssued  Invitation[]         @relation("issuer")
-  invitationClaimed  Invitation?          @relation("claimant")
-  passwordResets     PasswordReset[]      @relation("resetFor")
-  resetsIssued       PasswordReset[]      @relation("resetIssuer")
+  invitationsIssued  Invitation[]                @relation("issuer")
+  invitationClaimed  Invitation?                 @relation("claimant")
+  passwordResets     PasswordReset[]             @relation("resetFor")
+  resetsIssued       PasswordReset[]             @relation("resetIssuer")
   notifications      Notification[]
   mfaFactor          MfaFactor?
   mfaRecoveryCodes   MfaRecoveryCode[]
   mfaChallenges      MfaChallenge[]
   downloadLinks      DownloadLink[]
-  dsrRequested       DataSubjectRequest[] @relation("dsrRequester")
-  dsrReviewed        DataSubjectRequest[] @relation("dsrReviewer")
-  dsrDecided         DataSubjectRequest[] @relation("dsrDecider")
+  dsrRequested       DataSubjectRequest[]        @relation("dsrRequester")
+  dsrReviewed        DataSubjectRequest[]        @relation("dsrReviewer")
+  dsrDecided         DataSubjectRequest[]        @relation("dsrDecider")
+  registerSignOffs   ProcessingRegisterSignOff[]
 
   @@map("users")
 }
@@ -1027,6 +1028,22 @@ model PdplIdentifierIndex {
   @@id([credentialId, category])
   @@index([digest])
   @@map("pdpl_identifier_index")
+}
+
+/// The Data Protection Officer's sign-off of the processing register (B-18):
+/// who reviewed it, when, and the register exactly as reviewed. Never changed.
+model ProcessingRegisterSignOff {
+  id               Int      @id @default(autoincrement())
+  reviewedById     Int      @map("reviewed_by_id")
+  reviewerTitle    String   @map("reviewer_title")
+  note             String?
+  registerSnapshot Json     @map("register_snapshot")
+  reviewedAt       DateTime @default(now()) @map("reviewed_at") @db.Timestamptz
+
+  reviewedBy User @relation(fields: [reviewedById], references: [id])
+
+  @@index([reviewedAt(sort: Desc)])
+  @@map("processing_register_sign_offs")
 }
 
 /// Data-subject rights requests (spec §8.3.3, D-55): access, portability,

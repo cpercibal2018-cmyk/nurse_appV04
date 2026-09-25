@@ -10,6 +10,7 @@
 // modules that are not built (§5.4, §5.3 vault) and are not reported.
 
 import { RESPONSE_DAYS } from '../pdpl/requests.js';
+import { signOffState } from '../pdpl/register.js';
 import { JOBS } from '../../jobs/scheduler.js';
 import type { Db } from '../../lib/prisma.js';
 
@@ -17,7 +18,10 @@ export interface Issue { code: string; message: string }
 
 const MINUTE = 60_000;
 
-export async function businessHealth(db: Db, now = new Date()) {
+/** B-18: the ids of the keys in use, and which previous keys are still configured. */
+export interface KeyStatus { masterKeyId: number; pepperId: number; previous: string[] }
+
+export async function businessHealth(db: Db, now = new Date(), keyStatus?: KeyStatus) {
   const issues: Issue[] = [];
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * MINUTE);
 
@@ -69,7 +73,12 @@ export async function businessHealth(db: Db, now = new Date()) {
         OR (coalesce(c.pending_data -> 'trackingData' ->> f.key, '') NOT IN ('') AND c.pending_data -> 'trackingData' ->> f.key NOT LIKE 'pdpl:v1:%')`;
   // D-55: data-subject requests still open past the 30-day answer deadline.
   const overdueRequests = await db.dataSubjectRequest.count({ where: { status: { in: ['RECEIVED', 'IN_REVIEW', 'APPROVED'] }, requestedAt: { lt: new Date(now.getTime() - RESPONSE_DAYS * 86_400_000) } } });
-  const pdpl = { unprotectedValues: Number(plain?.n ?? 0), overdueRequests };
+  const signOff = await signOffState(db, now);
+  const pdpl = { unprotectedValues: Number(plain?.n ?? 0), overdueRequests, signOff: { lastAt: signOff.last?.reviewedAt ?? null, changedSince: signOff.changedSince, due: signOff.due } };
+  if (signOff.due) {
+    issues.push({ code: 'PDPL_REGISTER_SIGN_OFF_DUE', message: !signOff.last ? 'The processing register has never been signed off by the Data Protection Officer (Administration → Data protection)'
+      : signOff.changedSince ? 'The processing register changed since the Data Protection Officer last signed it off' : 'The yearly Data Protection Officer sign-off of the processing register is due' });
+  }
   if (pdpl.unprotectedValues > 0) issues.push({ code: 'PDPL_PLAINTEXT', message: `${pdpl.unprotectedValues} sensitive value(s) are stored unencrypted — run npm run pdpl:protect` });
   if (overdueRequests > 0) issues.push({ code: 'PDPL_REQUESTS_OVERDUE', message: `${overdueRequests} personal-data request(s) are past the 30-day answer deadline (Administration → Data protection)` });
 
@@ -92,6 +101,21 @@ export async function businessHealth(db: Db, now = new Date()) {
   if (email.pendingOver15Minutes > 0) issues.push({ code: 'EMAIL_BACKLOG', message: `${email.pendingOver15Minutes} e-mail(s) waiting more than 15 minutes` });
   if (email.failedLast24Hours > 0) issues.push({ code: 'EMAIL_FAILED', message: `${email.failedLast24Hours} e-mail(s) failed in the last 24 hours` });
 
+  // ── Key rotation (B-18) ───────────────────────────────────────────────────
+  const keys = keyStatus ? {
+    previousConfigured: keyStatus.previous,
+    employeeKeysOnOldKey: await db.employeeKey.count({ where: { wrappedKey: { not: null }, keyVersion: { not: keyStatus.masterKeyId } } }),
+    searchRowsOnOldPepper: await db.pdplIdentifierIndex.count({ where: { keyVersion: { not: keyStatus.pepperId } } }),
+  } : null;
+  if (keys && (keys.previousConfigured.length > 0 || keys.employeeKeysOnOldKey > 0 || keys.searchRowsOnOldPepper > 0)) {
+    const parts = [
+      ...(keys.previousConfigured.length > 0 ? [`previous key(s) still configured: ${keys.previousConfigured.join(', ')}`] : []),
+      ...(keys.employeeKeysOnOldKey > 0 ? [`${keys.employeeKeysOnOldKey} employee key(s) under an older master key`] : []),
+      ...(keys.searchRowsOnOldPepper > 0 ? [`${keys.searchRowsOnOldPepper} search row(s) under an older pepper`] : []),
+    ];
+    issues.push({ code: 'KEY_ROTATION_PENDING', message: `Key rotation not finished — ${parts.join('; ')}. Run npm run keys:rotate, then remove the previous keys` });
+  }
+
   return {
     status: issues.length === 0 ? 'HEALTHY' as const : 'ATTENTION' as const,
     issues,
@@ -103,6 +127,7 @@ export async function businessHealth(db: Db, now = new Date()) {
     jobs,
     vault,
     pdpl,
+    keys,
     email,
     generatedAt: now,
   };

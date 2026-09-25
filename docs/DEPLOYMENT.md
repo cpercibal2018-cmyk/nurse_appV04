@@ -50,6 +50,7 @@ Every backend setting is in [`.env.example`](../.env.example) and is validated a
 | `TRUST_PROXY` | false | `true` behind the proxy, so login limits and session history see the client address |
 | `JOBS_MODE` | in-process | `worker` on the API in production (§3) |
 | `DATA_RESIDENCY_REGION` / `PDPL_ALLOWED_REGIONS` | local / local | A KSA region id and its allowlist; `local` is refused in production. Never `me-south-1` (Bahrain) or `me-central-1` (UAE) |
+| `MFA_ENCRYPTION_KEY_PREVIOUS` · `DOCUMENT_ENCRYPTION_KEY_PREVIOUS` · `PDPL_FIELD_ENCRYPTION_KEY_PREVIOUS` · `PDPL_BLIND_INDEX_PEPPER_PREVIOUS` | — | Only while rotating that key (B-18, [§5 Rotating a key](#rotating-a-key)): the key being replaced, beside the new one. Refused without the new key, and in production when equal to any other key |
 | `DEMO_PASSWORD` | — | Development fixtures only (`npm run fixtures:demo`); never set in production |
 
 ### 2.1 Malware scanner (ClamAV)
@@ -168,6 +169,18 @@ Never run the demo fixtures on a production database; the command refuses `NODE_
 The scripts, their environment contract and the verified drill are in [`ops/backup/README.md`](../ops/backup/README.md): WAL archiving, an encrypted nightly base backup, point-in-time restore and a restore drill.
 
 **Documents (D-53):** the database holds each document's checksum and storage key; the bytes are in `STORAGE_DIR`, encrypted. Back up `STORAGE_DIR` on the same schedule (on Google Cloud: snapshots of the app VM's data disk), keep `DOCUMENT_ENCRYPTION_KEY` with the backup keys, and after a restore let `vault-reconcile` run (or start it from Administration → Jobs): it lists any document whose object did not come back.
+
+### Rotating a key
+
+The four keys (`MFA_ENCRYPTION_KEY`, `DOCUMENT_ENCRYPTION_KEY`, `PDPL_FIELD_ENCRYPTION_KEY`, `PDPL_BLIND_INDEX_PEPPER`) can each be replaced without downtime (B-18, D-56) — on a schedule the hospital's key policy sets, when someone who held a key leaves, or at once if one may have leaked:
+
+1. Generate the new key (`openssl rand -base64 32`). Put it in the key's variable and the old value in `<NAME>_PREVIOUS`; restart the API and the worker. Data under either key now reads; everything new uses the new key. System health shows `KEY_ROTATION_PENDING`.
+2. Run `npm run keys:rotate -w backend -- --check` to see what is left, then `npm run keys:rotate -w backend` (container: `docker compose run --rm api node dist/cli/keys-rotate.js`). It re-wraps each employee's data key, rebuilds the identifier search index, re-seals authenticator seeds and re-wraps each stored file's key in place — audited `KEYS_ROTATED`, safe to interrupt and rerun. It exits non-zero while anything is left or failed.
+3. When it reports `"done": true`, remove `<NAME>_PREVIOUS` and restart. Keep the old key with the backup keys until the last backup made before step 3 has expired (`BACKUP_RETENTION_DAYS`): restoring such a backup needs it.
+
+Rotate one key at a time or several together; `JWT_SECRET` is replaced by simply changing it (everyone signs in again). Where keys live — deployment secrets today, a KMS or HSM with the hosting decision (spec §13.4.1) — is unchanged by this. After the first release with rotation support, run `npm run keys:rotate -w backend` once: rows written before it carry no key id, and System health reports them until then.
+
+**DPO sign-off (B-18, D-56):** the Data Protection Officer reviews **Administration → Data protection** and records a sign-off there (from an HR Admin or System Admin account). The register as reviewed is kept with it. System health shows `PDPL_REGISTER_SIGN_OFF_DUE` until the first sign-off, a year after the last one, and after any change to the register.
 
 **Erasures after a restore (D-55, spec §8.3.3 "the destroyed key is never restored"):** a backup taken before an erasure still holds that employee's key. After restoring one, search the application logs for `personal data erased` lines newer than the backup and run `npm run pdpl:reerase -w backend -- <employeeId> …` for those employees (container: `docker compose run --rm api node dist/cli/pdpl-reerase.js <employeeId> …`). It destroys the key again, removes the search rows and identity scans, and is audited; an employee already erased is skipped. Keep the application logs at least as long as the backups.
 

@@ -4,6 +4,7 @@ import { z } from 'zod';
 // startup, so a missing or malformed value fails fast instead of surfacing as
 // a confusing error deep inside a request.
 const int = (def: number) => z.coerce.number().int().positive().default(def);
+const key32 = () => z.string().default('').refine((k) => k === '' || Buffer.from(k, 'base64').length === 32, 'must be 32 random bytes, base64-encoded (openssl rand -base64 32)');
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -75,6 +76,14 @@ const EnvSchema = z.object({
     .string()
     .default('')
     .refine((k) => k === '' || Buffer.from(k, 'base64').length === 32, 'must be 32 random bytes, base64-encoded (openssl rand -base64 32)'),
+  /**
+   * B-18 key rotation: the key being replaced, set beside the new one until
+   * `npm run keys:rotate` has moved everything (docs/DEPLOYMENT.md §3). Optional.
+   */
+  MFA_ENCRYPTION_KEY_PREVIOUS: key32(),
+  DOCUMENT_ENCRYPTION_KEY_PREVIOUS: key32(),
+  PDPL_FIELD_ENCRYPTION_KEY_PREVIOUS: key32(),
+  PDPL_BLIND_INDEX_PEPPER_PREVIOUS: key32(),
   /** Spec §5.1.5: 10 MB per upload, configurable. */
   UPLOAD_MAX_SIZE_BYTES: int(10 * 1024 * 1024),
   /** D-10: dev marks files CLEAN after magic-byte checks; production requires clamav. */
@@ -130,7 +139,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       if (e.NODE_ENV === 'production' && !e[k]) ctx.addIssue({ code: 'custom', path: [k], message: 'required in production (openssl rand -base64 32)' });
     }
     // Each key protects something different: one leaked key must not open the others.
-    const keys = (['MFA_ENCRYPTION_KEY', 'DOCUMENT_ENCRYPTION_KEY', 'PDPL_FIELD_ENCRYPTION_KEY', 'PDPL_BLIND_INDEX_PEPPER'] as const).filter((k) => e[k]);
+    const keys = (['MFA_ENCRYPTION_KEY', 'DOCUMENT_ENCRYPTION_KEY', 'PDPL_FIELD_ENCRYPTION_KEY', 'PDPL_BLIND_INDEX_PEPPER',
+      'MFA_ENCRYPTION_KEY_PREVIOUS', 'DOCUMENT_ENCRYPTION_KEY_PREVIOUS', 'PDPL_FIELD_ENCRYPTION_KEY_PREVIOUS', 'PDPL_BLIND_INDEX_PEPPER_PREVIOUS'] as const).filter((k) => e[k]);
+    // A previous key makes sense only beside a new one (B-18).
+    for (const k of ['MFA_ENCRYPTION_KEY', 'DOCUMENT_ENCRYPTION_KEY', 'PDPL_FIELD_ENCRYPTION_KEY', 'PDPL_BLIND_INDEX_PEPPER'] as const) {
+      if (e[`${k}_PREVIOUS`] && !e[k]) ctx.addIssue({ code: 'custom', path: [`${k}_PREVIOUS`], message: `set only together with a new ${k}` });
+    }
     const seen = new Map<string, string>();
     for (const k of keys) {
       const other = seen.get(e[k]);

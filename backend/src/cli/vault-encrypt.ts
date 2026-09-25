@@ -10,6 +10,7 @@ import 'dotenv/config';
 import { appendAudit } from '../lib/audit.js';
 import { loadEnv } from '../config/env.js';
 import { createPrisma, type Db } from '../lib/prisma.js';
+import { previousKey } from '../lib/keyring.js';
 import { createLocalDiskAdapter, createVault, documentKey, type Vault } from '../lib/vault.js';
 
 export async function encryptLegacyObjects(db: Db, vault: Vault) {
@@ -43,7 +44,7 @@ async function main() {
   const env = loadEnv();
   const db = createPrisma(env.DATABASE_URL);
   try {
-    const out = await encryptLegacyObjects(db, createVault(createLocalDiskAdapter(env.STORAGE_DIR), documentKey(env)));
+    const out = await encryptLegacyObjects(db, createVault(createLocalDiskAdapter(env.STORAGE_DIR), documentKey(env), previousKey(env.DOCUMENT_ENCRYPTION_KEY_PREVIOUS)));
     console.log(JSON.stringify(out, null, 2));
     if (out.failed.length > 0) process.exitCode = 1;
   } finally {

@@ -211,3 +211,33 @@ describeDb('sensitive identifiers in credentials (D-54)', () => {
     expect((await businessHealth(db)).pdpl.unprotectedValues).toBe(0);
   });
 });
+
+describeDb('DPO sign-off of the processing register (B-18, D-56)', () => {
+  let db: Db;
+  let app: Express;
+  beforeAll(async () => { db = openDb(); app = testApp(db); });
+  afterAll(async () => { await db.$disconnect(); });
+
+  it('records who signed off and the register as reviewed; a change or a year makes it due again', async () => {
+    const dpo = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] })).email);
+    const sa = await signIn(app, (await makeUser(db, { roles: [{ role: 'SYSTEM_ADMIN', scopeType: 'SYSTEM' }], pam: true })).email);
+    const sup = await signIn(app, (await makeUser(db, { roles: [{ role: 'SUPERVISOR', scopeType: 'SYSTEM' }] })).email);
+    expect((await sup.post('/pdpl/register/sign-offs', { title: 'DPO', confirm: true })).status).toBe(403);
+    expect((await dpo.post('/pdpl/register/sign-offs', { title: 'Data Protection Officer' })).status).toBe(400); // must confirm
+    const signed = await dpo.post('/pdpl/register/sign-offs', { title: 'Data Protection Officer', note: 'Annual review with Legal', confirm: true });
+    expect(signed.status).toBe(201);
+    const reg = (await dpo.get('/pdpl/register')).body;
+    expect(reg.signOff).toMatchObject({ last: { id: signed.body.id, title: 'Data Protection Officer', note: 'Annual review with Legal' }, changedSince: false, due: false });
+    const history = (await dpo.get('/pdpl/register/sign-offs')).body.items;
+    expect(history[0].register.map((e: { dataCategory: string }) => e.dataCategory)).toEqual(expect.arrayContaining(['IQAMA', 'PASSPORT', 'SCFHS_REG', 'IDENTITY_SCAN']));
+    expect(await db.auditEntry.count({ where: { action: 'PROCESSING_REGISTER_SIGNED_OFF', resourceId: String(signed.body.id), priority: 'HIGH' } })).toBe(1);
+    // A year later it is due; so is it after any change.
+    expect((await businessHealth(db, new Date(Date.now() + 366 * 86_400_000))).issues.map((i) => i.code)).toContain('PDPL_REGISTER_SIGN_OFF_DUE');
+    const entry = reg.items.find((e: { dataCategory: string }) => e.dataCategory === 'PASSPORT');
+    await sa.patch(`/pdpl/register/${entry.id}`, { retentionRule: `${entry.retentionRule} (reviewed)`, reason: 'Clarify retention wording' });
+    expect((await dpo.get('/pdpl/register')).body.signOff).toMatchObject({ changedSince: true, due: true });
+    await sa.patch(`/pdpl/register/${entry.id}`, { retentionRule: entry.retentionRule, reason: 'Restore the retention wording' });
+    // Sign-offs are never changed or deleted.
+    await expect(db.processingRegisterSignOff.delete({ where: { id: signed.body.id } })).rejects.toThrow(/cannot be changed or deleted/);
+  });
+});

@@ -15,6 +15,7 @@
     "vault:encrypt": "node dist/cli/vault-encrypt.js",
     "pdpl:protect": "node dist/cli/pdpl-protect.js",
     "pdpl:reerase": "node dist/cli/pdpl-reerase.js",
+    "keys:rotate": "node dist/cli/keys-rotate.js",
     "fixtures:demo": "tsx test/fixtures/demo/cli.ts",
     "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
     "test": "prisma generate && vitest run",
