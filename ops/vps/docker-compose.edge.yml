@@ -1,0 +1,39 @@
+# The always-on part of the VPS (decision D-57): Caddy (HTTPS on 80/443,
+# certificates from Let's Encrypt, renewed automatically) and ClamAV, shared
+# by both release colours. Started by deploy.sh; do not run by hand except for
+# diagnosis. Settings: /etc/nurseapp/deploy.env (SITE_HOST, ACME_EMAIL).
+
+name: nurseapp-edge
+
+services:
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]   # the only published ports on the VPS
+    environment:
+      SITE_HOST: ${SITE_HOST:?set SITE_HOST in /etc/nurseapp/deploy.env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in /etc/nurseapp/deploy.env}
+      CADDY_GLOBAL_EXTRA: ${CADDY_GLOBAL_EXTRA:-}
+    volumes:
+      # Caddyfile (copied from this folder by deploy.sh) and site/upstream.caddy (which colour is
+      # live), both replaced atomically, then `caddy reload` — graceful, no request dropped. A folder
+      # is mounted, not the files, so a replaced file is seen and a new Caddyfile never recreates Caddy.
+      - ${NURSEAPP_STATE:-/srv/nurseapp}/caddy/etc:/etc/caddy:ro
+      - ${NURSEAPP_STATE:-/srv/nurseapp}/caddy/data:/data
+      - ${NURSEAPP_STATE:-/srv/nurseapp}/caddy/config:/config
+    networks:
+      nurseapp: { ipv4_address: 172.30.0.2 }   # the web containers trust X-Client-Ip only from this address
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    volumes:
+      - ${NURSEAPP_STATE:-/srv/nurseapp}/clamav:/var/lib/clamav   # signatures survive restarts; freshclam in the container updates them
+    networks: [nurseapp]
+
+networks:
+  nurseapp:
+    external: true   # created once by setup-host.sh: 172.30.0.0/24, containers get .128–.255, so the fixed .2 (Caddy) never clashes

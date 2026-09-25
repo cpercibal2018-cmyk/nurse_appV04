@@ -91,7 +91,7 @@ These stay in the reference and get their own migration and module when schedule
 | §5.4 | SCFHS credential verification integration |
 | §9.2 | (Request-level forensic log is **built**, D-52: `request_audit_log`, one row per API request except the liveness probe, written after the response in batches; no bodies or query strings — the body only as an HMAC with secrets removed; 365 days; Audit → Requests) |
 | §9.3 | Redis (not used; the database is read on every request) |
-| §10.4–10.5 | Blue/green deployment and production operations tooling |
+| §10.4–10.5 | (Blue/green releases are **built** for the single-VPS layout, D-57: [ops/vps](../ops/vps/README.md). Not built: blue/green for the Google Cloud layout, and further operations tooling) |
 | §10.7 | Database privilege separation (runtime / migration / backup / audit-reader roles). The audit table is append-only by trigger regardless of role; the roles and grants are in [`ops/db`](../ops/db/README.md) (tested; adaptations from the spec listed there) and still have to be applied per server — see [DEPLOYMENT.md](DEPLOYMENT.md#6-known-gaps-before-production) |
 | §10.8 | (Consistency auditor and business health are **built**: daily sample of max(1%, 50) nurses, drift logged + corrected + audited; `GET /system/health/business`. Not reported: SCFHS sync freshness and evidence checksums, whose modules are not built) |
 | §10.9 | Shadow mode |
