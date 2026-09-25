@@ -80,4 +80,4 @@ jobs:
       - name: HTTPS browser test of the session cookies
         run: TAG=ci ops/e2e/run.sh
       - name: VPS release path — db-init, blue/green switch, rollback, restart with zero failed requests (D-57)
-        run: TAG=ci ops/vps/test/run.sh
+        run: sudo --preserve-env=PATH TAG=ci ops/vps/test/run.sh   # as root, like the scripts on the VPS
