@@ -24,7 +24,9 @@ export function ScfhsDrawer({ credential, onClose }: { credential: { id: number;
     if (!credential) return;
     try {
       const r = await checkNow.mutateAsync(credential.id);
-      const text = t(`scfhsResult_${r.action}`, { status: t(`scfhsStatus_${r.status}`) });
+      // An answer that differs but needs nothing new (already reported or already suspended) is KNOWN.
+      const outcome = r.status === 'ERROR' ? 'ERROR' : r.action === 'NONE' && r.matched === false ? 'KNOWN' : r.action;
+      const text = t(`scfhsResult_${outcome}`, { status: t(`scfhsStatus_${r.status}`) });
       if (r.status === 'ERROR') message.warning(text); else if (r.matched) message.success(text); else message.info(text);
     } catch (e) {
       message.error(describeApiError(e));

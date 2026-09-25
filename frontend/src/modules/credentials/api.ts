@@ -122,6 +122,6 @@ export function useScfhsCheckNow() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => http.post<{ status: ScfhsStatus; matched: boolean | null; action: ScfhsCheck['action']; discrepancies: string[] }>(`/credentials/${id}/scfhs-check`, {}),
-    onSuccess: () => invalidateAll(qc),
+    onSuccess: async () => { await Promise.all([invalidateAll(qc), qc.invalidateQueries({ queryKey: ['scfhsChecks'] })]); },
   });
 }

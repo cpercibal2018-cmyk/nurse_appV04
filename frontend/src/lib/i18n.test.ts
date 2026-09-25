@@ -40,7 +40,7 @@ const FAMILIES: Record<string, string[]> = {
   scfhsStatus_: ['VERIFIED', 'EXPIRED', 'SUSPENDED', 'REVOKED', 'NOT_FOUND', 'ERROR'], // SCFHS answers (spec §5.4, D-64)
   scfhsTrigger_: ['MANUAL', 'ON_SUBMIT', 'SCHEDULED'],
   scfhsAction_: ['HR_NOTIFIED', 'SUSPENDED'],
-  scfhsResult_: ['NONE', 'HR_NOTIFIED', 'SUSPENDED'],
+  scfhsResult_: ['NONE', 'HR_NOTIFIED', 'SUSPENDED', 'KNOWN', 'ERROR'],
   pdpl_: ['IQAMA', 'PASSPORT', 'SCFHS_REG', 'IDENTITY_SCAN'], // D-54 sensitive data categories
   dsr_: ['ACCESS', 'PORTABILITY', 'RECTIFICATION', 'ERASURE'], // D-55 data-subject requests
   dsrHint_: ['ACCESS', 'PORTABILITY', 'RECTIFICATION', 'ERASURE'],
