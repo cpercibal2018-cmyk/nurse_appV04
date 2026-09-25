@@ -78,6 +78,9 @@ model User {
   dsrReviewed        DataSubjectRequest[]        @relation("dsrReviewer")
   dsrDecided         DataSubjectRequest[]        @relation("dsrDecider")
   registerSignOffs   ProcessingRegisterSignOff[]
+  logicPromoted      EligibilityLogicVersion[]   @relation("logicPromoter")
+  logicRetired       EligibilityLogicVersion[]   @relation("logicRetirer")
+  shadowDecisions    EligibilityShadowLog[]
 
   @@map("users")
 }
@@ -336,10 +339,11 @@ model Employee {
   createdAt             DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt             DateTime       @updatedAt @map("updated_at") @db.Timestamptz
 
-  unit             Unit?                 @relation(fields: [unitId], references: [id])
-  position         Position              @relation(fields: [positionCode], references: [code])
+  unit             Unit?                  @relation(fields: [unitId], references: [id])
+  position         Position               @relation(fields: [positionCode], references: [code])
   user             User?
   driftFindings    ConsistencyAuditLog[]
+  shadowFindings   EligibilityShadowLog[]
   invitations      Invitation[]
   contracts        Contract[]
   credentials      Credential[]
@@ -639,6 +643,60 @@ model ConsistencyAuditLog {
   @@index([detectedAt])
   @@index([employeeId, detectedAt])
   @@map("consistency_audit_log")
+}
+
+/// Eligibility logic versions (spec §10.9 shadow mode, D-60). Each engine version
+/// the release ships (modules/eligibility/logic.ts) has a row: exactly one ACTIVE
+/// (its results are stored and shown), at most one SHADOW (run beside it on every
+/// stored evaluation; differences go to eligibility_shadow_log), the rest RETIRED.
+/// SQL: CHECK status; one ACTIVE and one SHADOW at most (partial unique indexes).
+model EligibilityLogicVersion {
+  version      Int       @id
+  status       String
+  shadowSince  DateTime? @map("shadow_since") @db.Timestamptz
+  promotedAt   DateTime? @map("promoted_at") @db.Timestamptz
+  promotedById Int?      @map("promoted_by_id")
+  retiredAt    DateTime? @map("retired_at") @db.Timestamptz
+  retiredById  Int?      @map("retired_by_id")
+  note         String?
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  promotedBy User?                  @relation("logicPromoter", fields: [promotedById], references: [id], onDelete: Restrict)
+  retiredBy  User?                  @relation("logicRetirer", fields: [retiredById], references: [id], onDelete: Restrict)
+  findings   EligibilityShadowLog[]
+
+  @@map("eligibility_logic_versions")
+}
+
+/// A stored evaluation where the SHADOW logic disagreed with the ACTIVE one
+/// (spec §10.9). One row per version, nurse, day and pair of outcomes. HR decides
+/// each: APPROVED (the new result is right) or REJECTED (it is wrong — the version
+/// cannot be promoted). candidate_status ERROR = the new logic failed; never approvable.
+/// SQL: decision fields all set or all empty; a decided row and any row cannot be deleted.
+model EligibilityShadowLog {
+  id               Int       @id @default(autoincrement())
+  logicVersion     Int       @map("logic_version")
+  employeeId       Int       @map("employee_id")
+  evalDate         String    @map("eval_date") // Riyadh date evaluated
+  activeVersion    Int       @map("active_version")
+  activeStatus     String    @map("active_status")
+  candidateStatus  String    @map("candidate_status")
+  activeReasons    Json      @map("active_reasons")
+  candidateReasons Json      @map("candidate_reasons")
+  event            String
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  decision         String?
+  decisionNote     String?   @map("decision_note")
+  decidedById      Int?      @map("decided_by_id")
+  decidedAt        DateTime? @map("decided_at") @db.Timestamptz
+
+  version   EligibilityLogicVersion @relation(fields: [logicVersion], references: [version])
+  employee  Employee                @relation(fields: [employeeId], references: [id])
+  decidedBy User?                   @relation(fields: [decidedById], references: [id], onDelete: Restrict)
+
+  @@unique([logicVersion, employeeId, evalDate, activeStatus, candidateStatus])
+  @@index([logicVersion, decision])
+  @@map("eligibility_shadow_log")
 }
 
 /// Emergency waiver (spec §6.1.2, rule L9).

@@ -78,6 +78,9 @@ Generated from `backend/src/modules/users/permissions.ts`. **`backend/test/docs.
 | `credentials.manage` | HR_ADMIN, SYSTEM_ADMIN | Record, verify, suspend, revoke, renewal decisions |
 | `credentials.self` | EMPLOYEE | Own submission, evidence and renewal |
 | `eligibility.read` | HR_ADMIN, SYSTEM_ADMIN, SUPERVISOR | Eligibility states in scope |
+| `eligibility.logic.read` | HR_ADMIN, SYSTEM_ADMIN | Shadow mode (spec §10.9, D-60): the eligibility logic versions and the disagreements a version in shadow found (within scope) |
+| `eligibility.logic.review` | HR_ADMIN | Approve or reject a disagreement, with a note; system-wide scope only (D-60) |
+| `eligibility.logic.promote` | HR_ADMIN | Promote the version in shadow when §10.9 allows it, or retire it; system-wide scope only (D-60) |
 | `waivers.read` | HR_ADMIN, SYSTEM_ADMIN, SUPERVISOR | Waiver list |
 | `waivers.write` | SUPERVISOR, HR_ADMIN | Issue a waiver (spec §6.1.2; System Admin excluded — D-28) |
 

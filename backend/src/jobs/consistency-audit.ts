@@ -12,7 +12,8 @@
 import { appendAudit } from '../lib/audit.js';
 import { riyadhDate } from '../lib/dates.js';
 import type { Db } from '../lib/prisma.js';
-import { evaluate, type Reason } from '../modules/eligibility/engine.js';
+import type { Reason } from '../modules/eligibility/engine.js';
+import { currentLogic } from '../modules/eligibility/logic.js';
 import { loadFacts, refreshEligibility } from '../modules/eligibility/state.service.js';
 
 export const MIN_SAMPLE = 50;
@@ -40,7 +41,7 @@ export async function auditEmployees(db: Db, employeeIds: number[], now = new Da
       const facts = await loadFacts(tx, employeeId, now);
       if (!facts.employee) return;
       out.checked++;
-      const expected = evaluate(facts, { date: today, today, now });
+      const expected = (await currentLogic(tx)).engine(facts, { date: today, today, now });
       const actual = await tx.eligibilityState.findUnique({ where: { employeeId } });
       const expectedKeys = reasonKeys(expected.reasons);
       const actualKeys = actual ? reasonKeys(actual.reasons as unknown as Reason[]) : null;

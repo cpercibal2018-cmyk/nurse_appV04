@@ -4,11 +4,15 @@
 // stored state commits with the change. Date passage (expiries, waiver ends,
 // deadlines) is caught by the daily transition job (jobs/daily-transition.ts); publication
 // never trusts this snapshot and re-runs the engine (L7).
+//
+// The engine is the ACTIVE logic version (logic.ts, spec §10.9); a stored
+// evaluation also runs the SHADOW version, if any, and keeps a disagreement.
 
 import { appendAudit } from '../../lib/audit.js';
 import { dbDate, riyadhDate, type IsoDate } from '../../lib/dates.js';
 import type { DbClient } from '../../lib/prisma.js';
-import { evaluate, type EngineFacts, type EngineResult } from './engine.js';
+import type { EngineFacts, EngineResult } from './engine.js';
+import { compareShadow, currentLogic, todayInput, type Engine } from './logic.js';
 
 export async function loadFacts(tx: DbClient, employeeId: number, now: Date): Promise<EngineFacts> {
   const emp = await tx.employee.findUnique({
@@ -55,7 +59,8 @@ export async function loadFacts(tx: DbClient, employeeId: number, now: Date): Pr
 
 /** Evaluates a nurse for a given day without storing anything (pool checks, publication, previews). */
 export async function evaluateFor(tx: DbClient, employeeId: number, date: IsoDate, now = new Date()): Promise<EngineResult> {
-  return evaluate(await loadFacts(tx, employeeId, now), { date, today: riyadhDate(now), now });
+  const { engine } = await currentLogic(tx);
+  return engine(await loadFacts(tx, employeeId, now), { date, today: riyadhDate(now), now });
 }
 
 /**
@@ -85,7 +90,10 @@ export async function refreshEligibility(tx: DbClient, employeeId: number, event
   const now = opts.now ?? new Date();
   const facts = await loadFacts(tx, employeeId, now);
   if (!facts.employee) return null;
-  const result = evaluate(facts, { date: riyadhDate(now), today: riyadhDate(now), now });
+  const logic = await currentLogic(tx);
+  const input = todayInput(now);
+  const result = logic.engine(facts, input);
+  await compareShadow(tx, logic, employeeId, facts, input, result, event);
 
   const previous = await tx.eligibilityState.findUnique({ where: { employeeId }, select: { status: true } });
   const data = { status: result.status, reasons: result.reasons as object[], calculatedAt: now, updatedByEvent: event, logicVersion: result.logicVersion };
@@ -116,7 +124,7 @@ export async function refreshEligibility(tx: DbClient, employeeId: number, event
     });
   }
 
-  await demoteInvalidPublished(tx, facts, employeeId, event, opts, now);
+  await demoteInvalidPublished(tx, logic.engine, facts, employeeId, event, opts, now);
 
   if (previous?.status !== result.status) {
     await appendAudit(tx, {
@@ -145,7 +153,7 @@ export async function refreshUnit(tx: DbClient, unitId: number, positionCode: st
  * supervisors. Date passage is handled by the daily job (jobs/daily-transition.ts).
  */
 async function demoteInvalidPublished(
-  tx: DbClient, facts: EngineFacts, employeeId: number, event: string,
+  tx: DbClient, engine: Engine, facts: EngineFacts, employeeId: number, event: string,
   opts: { actorUserId?: number | null; requestId?: string }, now: Date,
 ) {
   const today = riyadhDate(now);
@@ -155,7 +163,7 @@ async function demoteInvalidPublished(
   });
   for (const a of published) {
     const date = dbDate(a.shiftDate);
-    const result = evaluate(facts, { date, today, now });
+    const result = engine(facts, { date, today, now });
     const reasons: string[] = result.status === 'INELIGIBLE' ? result.reasons.filter((r) => r.severity === 'BLOCK').map((r) => r.code) : [];
     if (facts.employee?.unitId !== a.unitId) reasons.push('NOT_HOME_UNIT');
     if (reasons.length === 0) continue;

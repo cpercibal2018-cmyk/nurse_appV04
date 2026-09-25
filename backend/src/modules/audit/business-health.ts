@@ -82,6 +82,18 @@ export async function businessHealth(db: Db, now = new Date(), keyStatus?: KeySt
   if (pdpl.unprotectedValues > 0) issues.push({ code: 'PDPL_PLAINTEXT', message: `${pdpl.unprotectedValues} sensitive value(s) are stored unencrypted — run npm run pdpl:protect` });
   if (overdueRequests > 0) issues.push({ code: 'PDPL_REQUESTS_OVERDUE', message: `${overdueRequests} personal-data request(s) are past the 30-day answer deadline (Nursing Administration → Data protection)` });
 
+  // ── Eligibility logic, shadow mode (spec §10.9, D-60) ───────────────────────
+  const logicRows = await db.eligibilityLogicVersion.findMany({ where: { status: { in: ['ACTIVE', 'SHADOW'] } } });
+  const activeLogic = logicRows.find((v) => v.status === 'ACTIVE');
+  const shadowLogic = logicRows.find((v) => v.status === 'SHADOW');
+  const shadowUndecided = shadowLogic ? await db.eligibilityShadowLog.count({ where: { logicVersion: shadowLogic.version, decision: null } }) : 0;
+  const staleStates = activeLogic ? await db.eligibilityState.count({ where: { logicVersion: { not: activeLogic.version } } }) : 0;
+  if (shadowUndecided > 0) issues.push({ code: 'ELIGIBILITY_SHADOW_UNDECIDED', message: `Eligibility logic version ${shadowLogic!.version} (in shadow) disagreed with the active logic on ${shadowUndecided} evaluation(s) awaiting an HR decision (Nursing Administration → Eligibility logic)` });
+  // Right after a promotion the re-evaluation is still running; an hour later every state should be on the new logic.
+  if (staleStates > 0 && activeLogic?.promotedAt && now.getTime() - activeLogic.promotedAt.getTime() > 60 * MINUTE) {
+    issues.push({ code: 'ELIGIBILITY_LOGIC_STALE', message: `${staleStates} stored eligibility state(s) were calculated with an older logic than version ${activeLogic.version}; the daily transition recalculates them` });
+  }
+
   // ── E-mail delivery ────────────────────────────────────────────────────────
   const stuckBefore = new Date(now.getTime() - 15 * MINUTE);
   const dayAgo = new Date(now.getTime() - 24 * 60 * MINUTE);

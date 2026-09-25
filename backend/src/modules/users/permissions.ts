@@ -76,6 +76,11 @@ export const PERMISSIONS = {
   'credentials.manage': ['HR_ADMIN', 'SYSTEM_ADMIN'], // record, verify, suspend, revoke, renewal decisions
   'credentials.self': ['EMPLOYEE'], // own submission, evidence, alerts
   'eligibility.read': ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'],
+  // Shadow mode (spec §10.9, D-60): new eligibility logic runs beside the active one; HR decides
+  // each disagreement and promotes it (system-wide scope, enforced in the service).
+  'eligibility.logic.read': ['HR_ADMIN', 'SYSTEM_ADMIN'],
+  'eligibility.logic.review': ['HR_ADMIN'],
+  'eligibility.logic.promote': ['HR_ADMIN'],
   'waivers.read': ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'],
   // Spec §6.1.2: "only users with the Supervisor or HR_Admin role can issue a waiver".
   'waivers.write': ['SUPERVISOR', 'HR_ADMIN'],
