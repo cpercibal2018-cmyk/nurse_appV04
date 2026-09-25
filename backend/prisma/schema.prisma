@@ -73,6 +73,7 @@ model User {
   mfaFactor          MfaFactor?
   mfaRecoveryCodes   MfaRecoveryCode[]
   mfaChallenges      MfaChallenge[]
+  downloadLinks      DownloadLink[]
 
   @@map("users")
 }
@@ -564,9 +565,10 @@ model DocumentVersion {
   uploadedById Int?                 @map("uploaded_by_id")
   uploadedAt   DateTime             @default(now()) @map("uploaded_at") @db.Timestamptz
 
-  contract   Contract?   @relation(fields: [contractId], references: [id])
-  credential Credential? @relation(fields: [credentialId], references: [id])
-  evidenceOf Credential? @relation("latestEvidence")
+  contract      Contract?      @relation(fields: [contractId], references: [id])
+  credential    Credential?    @relation(fields: [credentialId], references: [id])
+  evidenceOf    Credential?    @relation("latestEvidence")
+  downloadLinks DownloadLink[]
 
   @@unique([contractId, version])
   @@unique([credentialId, version])
@@ -922,6 +924,26 @@ model MfaChallenge {
 
   @@index([userId, createdAt])
   @@map("mfa_challenges")
+}
+
+/// Short-lived, single-use link to one stored document (spec §5.3.1, D-53):
+/// issued only after the same authorisation as a download, redeemed once
+/// within 60 seconds by a plain browser request. Only a SHA-256 is stored.
+model DownloadLink {
+  id         Int       @id @default(autoincrement())
+  tokenHash  String    @unique @map("token_hash")
+  documentId Int       @map("document_id")
+  userId     Int       @map("user_id")
+  inline     Boolean   @default(true)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  usedAt     DateTime? @map("used_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  document DocumentVersion @relation(fields: [documentId], references: [id])
+  user     User            @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+  @@map("download_links")
 }
 
 /// Request-level forensic log (spec §9.2): one row per API request — who,

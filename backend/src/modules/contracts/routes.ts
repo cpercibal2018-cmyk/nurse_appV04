@@ -7,6 +7,7 @@ import type { Db } from '../../lib/prisma.js';
 import { authOf, authorize } from '../../middleware/authorize.js';
 import { idempotent } from '../../middleware/idempotency.js';
 import { CreateBody, ListQuery, PickerQuery, RenewBody, TransitionBody, type ContractService } from './service.js';
+import { fileHeaders, LinkBody } from '../documents/access.js';
 
 const IdParam = z.object({ id: z.coerce.number().int().positive() });
 const DocParam = z.object({ id: z.coerce.number().int().positive(), docId: z.coerce.number().int().positive() });
@@ -40,11 +41,13 @@ export function createContractsRouter(db: Db, contracts: ContractService, maxUpl
   r.get('/contracts/:id/documents/:docId', async (req, res) => {
     const { id, docId } = DocParam.parse(req.params);
     const file = await contracts.download(authOf(res), id, docId, rid(res));
-    res.set({
-      'Content-Type': file.mimeType,
-      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
-      'X-Content-Type-Options': 'nosniff',
-    }).send(file.bytes);
+    res.set(fileHeaders(file, false)).send(file.bytes);
+  });
+  // D-53: a 60-second single-use link, redeemed at GET /api/v1/files/:token (opens in a browser tab).
+  r.post('/contracts/:id/documents/:docId/link', async (req, res) => {
+    const { id, docId } = DocParam.parse(req.params);
+    const { inline } = LinkBody.parse(req.body ?? {});
+    res.status(201).json(await contracts.link(authOf(res), id, docId, inline, rid(res)));
   });
 
   return r;

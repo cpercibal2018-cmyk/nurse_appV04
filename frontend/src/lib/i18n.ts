@@ -500,6 +500,7 @@ const en = {
   notSignedIn: 'Not signed in',
   request: 'Request',
   duration: 'Time',
+  view: 'View',
   // Business health (spec §10.8)
   businessHealth: 'System health',
   health_HEALTHY: 'Healthy',
@@ -1010,6 +1011,7 @@ const ar: Record<keyof typeof en, string> = {
   notSignedIn: 'غير مسجل الدخول',
   request: 'الطلب',
   duration: 'المدة',
+  view: 'عرض',
   // سلامة النظام (المواصفات §10.8)
   businessHealth: 'سلامة النظام',
   health_HEALTHY: 'سليم',

@@ -31,7 +31,8 @@ Every backend setting is in [`.env.example`](../.env.example) and is validated a
 | `MFA_REQUIRED_ROLES` | SYSTEM_ADMIN,HR_ADMIN,SUPERVISOR | Holders must use an authenticator app (spec §3.5, D-51). Production refuses a list without `SYSTEM_ADMIN` and `HR_ADMIN` |
 | `MFA_ENCRYPTION_KEY` | — (development derives one) | **Required in production:** 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts the authenticator secrets; keep it in the deployment secrets **and** with the backup keys — a restore without it means every authenticator is set up again (HR resets each) |
 | `LOGIN_THROTTLE_WINDOW_SECONDS` / `_MAX_PER_ACCOUNT` / `_MAX_PER_CLIENT` | 900 / 5 / 20 | D-23. Counted in the database (`login_throttle`, D-46), so they hold across any number of API instances and restarts |
-| `STORAGE_DIR` | ./storage | Persistent, backed-up volume; never served directly |
+| `STORAGE_DIR` | ./storage | Persistent, backed-up volume; never served directly. Holds the document vault's **encrypted** objects (D-53) — back it up with the database, and restore both from the same night |
+| `DOCUMENT_ENCRYPTION_KEY` | — (development derives one) | **Required in production:** 32 random bytes, base64 (`openssl rand -base64 32`), different from `MFA_ENCRYPTION_KEY`. Wraps every document's own key; without it no stored document can be read — keep it in the deployment secrets **and** with the backup keys |
 | `UPLOAD_MAX_SIZE_BYTES` | 10485760 | Spec §5.1.5 |
 | `UPLOAD_SCANNER` | dev-magic-bytes | `clamav` — production refuses anything else (D-10, §2.1) |
 | `CLAMAV_HOST` / `CLAMAV_PORT` | — / 3310 | The `clamd` TCP endpoint; the host is required with `clamav` |
@@ -108,7 +109,7 @@ Delivery is at-least-once: a crash after the relay accepted a message but before
 | `worker` | Production: the separate worker runs the jobs (spec §10.2) |
 | `off` | Maintenance; nothing runs. Missed periods run when jobs are next enabled |
 
-**Job schedule (Asia/Riyadh, independent of the server time zone):** `daily-transition` 00:05, `expiry-scan` 06:00, `consistency-audit` 03:00 (re-evaluates a random sample of nurses' eligibility — 1%, at least 50 — and corrects any drift, spec §10.8), `request-log-purge` 02:30 (deletes request-log rows older than 365 days, D-52), `attendance-alerts` every 15 minutes. Running two workers by mistake is safe (leases and unique run keys), but wasteful. A System Admin sees run history and can start a job from **Administration → Jobs**.
+**Job schedule (Asia/Riyadh, independent of the server time zone):** `daily-transition` 00:05, `expiry-scan` 06:00, `consistency-audit` 03:00 (re-evaluates a random sample of nurses' eligibility — 1%, at least 50 — and corrects any drift, spec §10.8), `request-log-purge` 02:30 (deletes request-log rows older than 365 days, D-52), `vault-reconcile` 04:30 (document vault: removes orphaned objects older than a day, reports missing objects, re-verifies a random 50, counts unencrypted objects, deletes old download links — D-53), `attendance-alerts` every 15 minutes. Running two workers by mistake is safe (leases and unique run keys), but wasteful. A System Admin sees run history and can start a job from **Administration → Jobs**.
 
 ## 4. Release procedure
 
@@ -127,6 +128,8 @@ curl -fsS https://<host>/api/v1/health   # 200 {"status":"ok","database":"up"}; 
 CI has already run the HTTPS browser test of the session cookies against the release images ([ops/e2e](../ops/e2e/README.md)).
 
 After a release, a System Admin should open **Audit → Verify chain** (expected: intact) and **Administration → Jobs** (expected: recent runs completed).
+
+**First release with the document vault (D-53):** set `DOCUMENT_ENCRYPTION_KEY` before starting it (it refuses to start without it). New uploads are stored encrypted at once; files uploaded earlier are still served and are then encrypted by `npm run vault:encrypt -w backend` (in a container: `docker compose run --rm api node dist/cli/vault-encrypt.js`) — safe to interrupt and rerun. Administration → Jobs → System health reports `VAULT_PLAINTEXT` until it has run.
 
 **First release with MFA (D-51):** set `MFA_ENCRYPTION_KEY` before starting the new version (it refuses to start without it). Every HR, supervisor and System Admin account is asked to set up an authenticator app at its next sign-in; sessions already open continue until they end (at most 24 hours). Tell those users beforehand to install an authenticator app (Microsoft Authenticator, Google Authenticator or similar). A lost phone: the person signs in with a recovery code, or HR / a System Admin resets it in **Administration → Accounts → Reset two-factor** after confirming who is asking.
 
@@ -159,6 +162,8 @@ Never run the demo fixtures on a production database; the command refuses `NODE_
 ## 5. Backups and restore
 
 The scripts, their environment contract and the verified drill are in [`ops/backup/README.md`](../ops/backup/README.md): WAL archiving, an encrypted nightly base backup, point-in-time restore and a restore drill.
+
+**Documents (D-53):** the database holds each document's checksum and storage key; the bytes are in `STORAGE_DIR`, encrypted. Back up `STORAGE_DIR` on the same schedule (on Google Cloud: snapshots of the app VM's data disk), keep `DOCUMENT_ENCRYPTION_KEY` with the backup keys, and after a restore let `vault-reconcile` run (or start it from Administration → Jobs): it lists any document whose object did not come back.
 
 **Schedule (D-40):** nightly at **01:00 Asia/Riyadh (22:00 UTC)**, as spec §10.6 says. `aigh-backup.timer` names the `Asia/Riyadh` time zone, so it is right whatever the host clock; `crontab.example` has one line for a UTC host and one for a Riyadh host — use exactly one. It does not collide with the application jobs (00:05 and 06:00 Riyadh).
 

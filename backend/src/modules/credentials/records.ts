@@ -16,7 +16,8 @@ import { fromHijriIso, toHijriIso } from '../../lib/hijri.js';
 import { HttpError, notFound } from '../../lib/http-errors.js';
 import { Prisma, type Db, type DbClient } from '../../lib/prisma.js';
 import { scanOrReject, type UploadScanner } from '../../lib/scanner.js';
-import { checkUpload, type Storage } from '../../lib/uploads.js';
+import { checkUpload } from '../../lib/uploads.js';
+import type { DocumentAccess } from '../documents/access.js';
 import { refreshEligibility } from '../eligibility/state.service.js';
 import { unitScope, type AuthContext } from '../users/access.js';
 import { HR_ROLES, viewerOf, type Viewer } from './access.js';
@@ -130,7 +131,7 @@ function present(c: WithRelations, viewer: Viewer, today: IsoDate) {
   };
 }
 
-export function createRecordService(db: Db, storage: Storage, scanner: UploadScanner, maxUploadBytes: number) {
+export function createRecordService(db: Db, documents: DocumentAccess, scanner: UploadScanner, maxUploadBytes: number) {
   async function load(tx: DbClient, id: number) {
     const c = await tx.credential.findUnique({ where: { id }, include: withRelations });
     if (!c) throw notFound('Credential not found');
@@ -326,7 +327,7 @@ export function createRecordService(db: Db, storage: Storage, scanner: UploadSca
       if (c.status === 'Revoked') throw new HttpError(409, 'CREDENTIAL_REVOKED', 'Evidence cannot be added to a revoked credential');
       const checked = checkUpload('CREDENTIAL_EVIDENCE', bytes, contentType, fileName, maxUploadBytes);
       const scannedBy = await scanOrReject(scanner, db, bytes, { actorUserId: auth.user.id, resource: 'credential', resourceId: id, ...checked, requestId });
-      const storageKey = await storage.put(bytes);
+      const storageKey = await documents.vault.put(bytes);
       return db.$transaction(async (tx) => {
         const last = await tx.documentVersion.aggregate({ where: { credentialId: id }, _max: { version: true } });
         const doc = await tx.documentVersion.create({
@@ -356,16 +357,24 @@ export function createRecordService(db: Db, storage: Storage, scanner: UploadSca
 
     /** Only CLEAN files are served (D4); only the owner and scoped HR/System Admin (D5). */
     async download(auth: AuthContext, id: number, documentId: number, requestId?: string) {
-      const c = await load(db, id);
-      await viewerOf(db, auth, c.employeeId, ['OWN', 'HR']);
-      const doc = await db.documentVersion.findFirst({ where: { id: documentId, credentialId: id } });
-      if (!doc) throw notFound('Document not found');
-      if (doc.scanStatus !== 'CLEAN') throw new HttpError(409, 'DOCUMENT_NOT_CLEAN', 'This file has not passed scanning and cannot be downloaded');
-      const bytes = await storage.get(doc.storageKey);
-      await appendAudit(db, { actorUserId: auth.user.id, action: 'DOCUMENT_DOWNLOADED', resource: 'credential', resourceId: id, changes: { documentId, version: doc.version }, requestId });
-      return { bytes, mimeType: doc.mimeType, fileName: doc.fileName };
+      return documents.read(await readable(auth, id, documentId), auth.user.id, requestId);
+    },
+
+    /** A 60-second single-use link (D-53), after the same checks as a download. */
+    async link(auth: AuthContext, id: number, documentId: number, inline: boolean, requestId?: string) {
+      return documents.issueLink(await readable(auth, id, documentId), auth.user.id, inline, requestId);
     },
   };
+
+  /** The document, when the caller may read it and it passed scanning. */
+  async function readable(auth: AuthContext, id: number, documentId: number) {
+    const c = await load(db, id);
+    await viewerOf(db, auth, c.employeeId, ['OWN', 'HR']);
+    const doc = await db.documentVersion.findFirst({ where: { id: documentId, credentialId: id } });
+    if (!doc) throw notFound('Document not found');
+    if (doc.scanStatus !== 'CLEAN') throw new HttpError(409, 'DOCUMENT_NOT_CLEAN', 'This file has not passed scanning and cannot be downloaded');
+    return doc;
+  }
 
   /** The evidence to approve: the chosen or newest CLEAN pending version; required when the template requires upload. */
   async function pickEvidence(tx: DbClient, c: WithRelations, documentId: number | undefined): Promise<number | null> {

@@ -7,6 +7,7 @@ import {
   CategoryCreateBody, CategoryParam, CategoryUpdateBody, RequirementBody, RequirementBulkBody, RequirementQuery, RequirementUpdateBody, TemplateCreateBody, TemplateUpdateBody, type CatalogService,
 } from './catalog.js';
 import { ApproveRenewalBody, DecisionBody, ListQuery, RecordBody, RenewalBody, SelfRecordBody, VerifyBody, type RecordService } from './records.js';
+import { fileHeaders, LinkBody } from '../documents/access.js';
 
 const IdParam = z.object({ id: z.coerce.number().int().positive() });
 const DocParam = z.object({ id: z.coerce.number().int().positive(), docId: z.coerce.number().int().positive() });
@@ -98,11 +99,13 @@ export function createCredentialsRouter(catalog: CatalogService, records: Record
   r.get('/credentials/:id/documents/:docId', async (req, res) => {
     const { id, docId } = DocParam.parse(req.params);
     const file = await records.download(authOf(res), id, docId, rid(res));
-    res.set({
-      'Content-Type': file.mimeType,
-      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
-      'X-Content-Type-Options': 'nosniff',
-    }).send(file.bytes);
+    res.set(fileHeaders(file, false)).send(file.bytes);
+  });
+  // D-53: a 60-second single-use link, redeemed at GET /api/v1/files/:token (opens in a browser tab).
+  r.post('/credentials/:id/documents/:docId/link', async (req, res) => {
+    const { id, docId } = DocParam.parse(req.params);
+    const { inline } = LinkBody.parse(req.body ?? {});
+    res.status(201).json(await records.link(authOf(res), id, docId, inline, rid(res)));
   });
 
   // ── Eligibility (§6.1) and waivers (§6.1.2) ───────────────────────────────

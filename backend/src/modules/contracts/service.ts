@@ -22,7 +22,8 @@ import { toHijriIso } from '../../lib/hijri.js';
 import { conflict, HttpError, notFound, unprocessable } from '../../lib/http-errors.js';
 import type { Db, DbClient } from '../../lib/prisma.js';
 import { scanOrReject, type UploadScanner } from '../../lib/scanner.js';
-import { checkUpload, type Storage } from '../../lib/uploads.js';
+import { checkUpload } from '../../lib/uploads.js';
+import type { DocumentAccess } from '../documents/access.js';
 import { refreshEligibility } from '../eligibility/state.service.js';
 import { HR_ROLES, inScope, viewerOf, type Viewer } from '../credentials/access.js';
 import { unitScope, type AuthContext } from '../users/access.js';
@@ -104,7 +105,7 @@ function fullView(c: WithRefs) {
 }
 const shape = (c: WithRefs, viewer: Viewer) => (viewer === 'HR' ? fullView(c) : reducedView(c));
 
-export function createContractService(db: Db, storage: Storage, scanner: UploadScanner, maxUploadBytes: number) {
+export function createContractService(db: Db, documents: DocumentAccess, scanner: UploadScanner, maxUploadBytes: number) {
   const hrScope = (tx: DbClient, auth: AuthContext) => unitScope(tx, auth, HR_ROLES);
 
   async function loadForHr(tx: DbClient, auth: AuthContext, id: number) {
@@ -295,7 +296,7 @@ export function createContractService(db: Db, storage: Storage, scanner: UploadS
       if (auth.user.employeeId === c.employeeId) throw new HttpError(403, 'SELF_ACTION_FORBIDDEN', 'You cannot manage your own contract');
       const checked = checkUpload('CONTRACT_COPY', bytes, contentType, fileName, maxUploadBytes);
       const scannedBy = await scanOrReject(scanner, db, bytes, { actorUserId: auth.user.id, resource: 'contract', resourceId: id, ...checked, requestId });
-      const storageKey = await storage.put(bytes);
+      const storageKey = await documents.vault.put(bytes);
       return db.$transaction(async (tx) => {
         const last = await tx.documentVersion.aggregate({ where: { contractId: id }, _max: { version: true } });
         const doc = await tx.documentVersion.create({
@@ -321,17 +322,25 @@ export function createContractService(db: Db, storage: Storage, scanner: UploadS
     },
 
     async download(auth: AuthContext, id: number, documentId: number, requestId?: string) {
-      const c = await db.contract.findUnique({ where: { id }, select: { employeeId: true } });
-      if (!c) throw notFound('Contract not found');
-      await viewerOf(db, auth, c.employeeId, ['OWN', 'HR']);
-      const doc = await db.documentVersion.findFirst({ where: { id: documentId, contractId: id } });
-      if (!doc) throw notFound('Document not found');
-      if (doc.scanStatus !== 'CLEAN') throw new HttpError(409, 'DOCUMENT_NOT_CLEAN', 'This file has not passed scanning and cannot be downloaded (D4)');
-      const bytes = await storage.get(doc.storageKey);
-      await appendAudit(db, { actorUserId: auth.user.id, action: 'DOCUMENT_DOWNLOADED', resource: 'contract', resourceId: id, changes: { documentId, version: doc.version }, requestId });
-      return { bytes, mimeType: doc.mimeType, fileName: doc.fileName };
+      return documents.read(await readable(auth, id, documentId), auth.user.id, requestId);
+    },
+
+    /** A 60-second single-use link (D-53), after the same checks as a download. */
+    async link(auth: AuthContext, id: number, documentId: number, inline: boolean, requestId?: string) {
+      return documents.issueLink(await readable(auth, id, documentId), auth.user.id, inline, requestId);
     },
   };
+
+  /** The document, when the caller may read it and it passed scanning (D4, D5). */
+  async function readable(auth: AuthContext, id: number, documentId: number) {
+    const c = await db.contract.findUnique({ where: { id }, select: { employeeId: true } });
+    if (!c) throw notFound('Contract not found');
+    await viewerOf(db, auth, c.employeeId, ['OWN', 'HR']);
+    const doc = await db.documentVersion.findFirst({ where: { id: documentId, contractId: id } });
+    if (!doc) throw notFound('Document not found');
+    if (doc.scanStatus !== 'CLEAN') throw new HttpError(409, 'DOCUMENT_NOT_CLEAN', 'This file has not passed scanning and cannot be downloaded (D4)');
+    return doc;
+  }
 }
 
 export type ContractService = ReturnType<typeof createContractService>;
