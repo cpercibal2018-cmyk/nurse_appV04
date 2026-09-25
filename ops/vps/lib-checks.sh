@@ -79,7 +79,7 @@ check_offsite() {
   last="$(grep 'offsite-sync: copied' /var/log/aigh-backup.log 2>/dev/null | tail -n1 | cut -d' ' -f1)"
   [[ -n "$last" ]] || { echo "the off-site copy has never completed"; return 1; }
   age=$(( ($(date +%s) - $(date -d "$last" +%s)) / 60 ))
-  (( age <= 60 )) || { echo "last off-site copy ${age} min ago"; return 1; }
+  (( age <= 20 )) || { echo "last off-site copy ${age} min ago (it runs every 5)"; return 1; }
   echo "last off-site copy ${age} min ago"
 }
 
