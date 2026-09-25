@@ -33,7 +33,7 @@ There is no seed: hospital data lives only in the database ([docs/DATABASE_ARCHI
 npm run build -w backend && npm run bootstrap -w backend   # first System Admin + HR Admin (hidden password prompt)
 ```
 
-then sign in and use **Administration → Hospital baseline import** with `backend/prisma/baseline/aigh-baseline.json`. For a development database with demo accounts and fictional staff instead (database name ending `_dev`, `_test` or `_demo`, no accounts yet):
+then sign in and use **Nursing Administration → Hospital baseline import** with `backend/prisma/baseline/aigh-baseline.json`. For a development database with demo accounts and fictional staff instead (database name ending `_dev`, `_test` or `_demo`, no accounts yet):
 
 ```bash
 DEMO_PASSWORD='choose-12-or-more-chars' npm run fixtures:demo -w backend
