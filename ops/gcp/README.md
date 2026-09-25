@@ -1,5 +1,7 @@
 # Production on Google Cloud — Dammam, `me-central2` (decision D-49)
 
+> **Alternative layout, not chosen.** Production runs on a single VPS in the Kingdom (D-57, [ops/vps](../vps/README.md)). This folder is kept, tested, in case the hospital later moves to Google Cloud; its Deploy workflow skips itself while `GCP_PROJECT` is unset.
+
 How V04 runs in production and how a release reaches it. The container images, the app-VM runtime and the release scripts in this folder are built and tested locally (see *Verification*); **the Google Cloud commands below have not been run against a real project from this repository** — run them once with the hospital's cloud administrator, in order, and correct anything the console reports.
 
 ```
