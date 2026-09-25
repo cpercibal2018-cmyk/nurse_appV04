@@ -92,8 +92,17 @@ export function createAuditRouter(db: Db, keyStatus?: KeyStatus) {
     ]);
     const actors = await db.user.findMany({ where: { id: { in: [...new Set(rows.flatMap((x) => (x.actorUserId ? [x.actorUserId] : [])))] } }, select: { id: true, displayName: true } });
     const name = new Map(actors.map((a) => [a.id, a.displayName]));
+    // D-63: another system's requests carry its client id as client:<id>.
+    const clientOf = (x: (typeof rows)[number]) => (x.actorRoles === 'API_CLIENT' && x.sessionFamily?.startsWith('client:') ? x.sessionFamily.slice(7) : null);
+    const clientIds = [...new Set(rows.flatMap((x) => clientOf(x) ?? []))];
+    const clients = new Map((clientIds.length ? await db.apiClient.findMany({ where: { clientId: { in: clientIds } }, select: { clientId: true, name: true } }) : []).map((c) => [c.clientId, c.name]));
+    const actorName = (x: (typeof rows)[number]) => {
+      if (x.actorUserId) return name.get(x.actorUserId) ?? null;
+      const cid = clientOf(x);
+      return cid ? `API client: ${clients.get(cid) ?? cid}` : null;
+    };
     res.json({
-      items: rows.map((x) => ({ ...x, id: x.id.toString(), actorName: x.actorUserId ? name.get(x.actorUserId) ?? null : null })),
+      items: rows.map((x) => ({ ...x, id: x.id.toString(), actorName: actorName(x) })),
       total, page: q.page, pageSize: q.pageSize,
     });
   });

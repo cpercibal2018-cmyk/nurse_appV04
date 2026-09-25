@@ -1,11 +1,12 @@
 // Administration: accounts, role assignments, four-eyes approvals, PAM, jobs, the
-// Dev Console SMS inbox (D-59) and the spec §8.1 access matrix. Tabs follow what
+// Dev Console SMS inbox (D-59), FHIR API clients (D-63) and the spec §8.1 access matrix. Tabs follow what
 // /auth/me says the user holds; the server still authorizes every call.
 
 import { Card, Table, Tabs, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { usePermissions } from '../../hooks/usePermissions';
 import { AccountsTab } from './AccountsTab';
+import { ApiClientsTab } from './ApiClientsTab';
 import { ApprovalsTab } from './ApprovalsTab';
 import { BaselineImportTab } from './BaselineImportTab';
 import { DataProtectionTab } from './DataProtectionTab';
@@ -52,6 +53,7 @@ export default function AdministrationPage() {
     ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'pam', label: t('privilegedAccess'), children: <PamTab /> }] : []),
     ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'jobs', label: t('backgroundJobs'), children: <JobsTab /> }] : []),
     ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'smsInbox', label: t('smsInbox'), children: <SmsInboxTab /> }] : []),
+    ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'apiClients', label: t('apiClients'), children: <ApiClientsTab /> }] : []),
     { key: 'matrix', label: t('accessMatrix'), children: <MatrixTab /> },
   ];
 

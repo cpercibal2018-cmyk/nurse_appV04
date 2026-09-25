@@ -26,7 +26,7 @@ const MAX_BUFFER = 5000;
 /** Never part of the body hash, at any depth (spec §9.2 REDACTED_FIELDS, plus V04's own secrets). */
 const REDACTED = new Set([
   'password', 'currentpassword', 'newpassword', 'token', 'refreshtoken', 'invitationtoken', 'authorization', 'cookie',
-  'challenge', 'code', 'secret', 'recoverycodes',
+  'challenge', 'code', 'secret', 'recoverycodes', 'client_secret', 'clientsecret',
 ]);
 
 export interface RequestLogRow {
@@ -99,12 +99,14 @@ export function createRequestLog(db: Pick<Db, 'requestLogEntry'>, hmacKey: Buffe
     const at = new Date();
     res.on('finish', () => {
       const auth = res.locals.auth;
+      // Another system (D-63): no user; its role is API_CLIENT and its client id stands in for the session.
+      const client = res.locals.client;
       record({
         requestId: String(res.locals.requestId ?? '').slice(0, 128),
         at,
         actorUserId: auth?.user.id ?? null,
-        actorRoles: auth ? ([...new Set(auth.effective.map((g) => g.role))].join(',') || 'EMPLOYEE').slice(0, 100) : null,
-        sessionFamily: auth?.sessionFamily?.slice(0, 64) ?? null,
+        actorRoles: auth ? ([...new Set(auth.effective.map((g) => g.role))].join(',') || 'EMPLOYEE').slice(0, 100) : client ? 'API_CLIENT' : null,
+        sessionFamily: (auth?.sessionFamily ?? (client ? `client:${client.clientId}` : null))?.slice(0, 64) ?? null,
         method: req.method.slice(0, 10),
         // A download-link token is a credential until used, and the file name may be personal: never logged (D-53).
         path: req.originalUrl.split('?')[0]!.replace(/^(\/api\/v1\/files\/).+/, '$1:token').slice(0, 500),

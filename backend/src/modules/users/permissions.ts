@@ -63,6 +63,8 @@ export const PERMISSIONS = {
   'pdpl.erase': ['SYSTEM_ADMIN'],
   // FHIR R4 read API (spec §14.1, D-61): Practitioner / PractitionerRole within the caller's scope.
   'fhir.read': ['HR_ADMIN', 'SYSTEM_ADMIN'],
+  // FHIR API clients (D-63): the systems that may call the FHIR API without a person signed in.
+  'apiclients.manage': ['SYSTEM_ADMIN'],
   'jobs.read': ['SYSTEM_ADMIN'],
   // Dev Console (D-59): the texts the mock SMS gateway intercepted, and a test text for demonstrations.
   'devconsole.sms.read': ['SYSTEM_ADMIN'],

@@ -214,16 +214,34 @@ Eligibility in every response is the **live engine for the shift date** (L7), no
 
 ### 2.12 Interoperability — FHIR R4 (`modules/interop`, D-61)
 
-FHIR R4 (4.0.1) read API for the hospital's other systems (spec §14.1). Responses are `application/fhir+json`; route errors are `OperationOutcome` (404 `not-found`, 410 `deleted`, 400 `not-supported`); authentication and permission errors keep the API's own shape. Resources are those of the caller's scope — a nurse outside it reads as not found. Checked by the HL7 validator in CI (spec §11.3).
+FHIR R4 (4.0.1) read API for the hospital's other systems (spec §14.1). Responses are `application/fhir+json`; route errors are `OperationOutcome` (404 `not-found`, 410 `deleted`, 400 `not-supported`, 403 `forbidden` for a scope the client's token lacks); authentication errors keep the API's own shape. Two kinds of caller: **another system** with a client token (D-63, below), which reads every nurse within its scopes; or a signed-in HR or System Admin, who reads within their scope — a nurse outside it reads as not found. Checked by the HL7 validator in CI (spec §11.3).
 
 | Method | Endpoint | Returns | Permission |
 | :--- | :--- | :--- | :--- |
-| GET | `/api/v1/fhir/metadata` | `CapabilityStatement` | `fhir.read` (HR, SA) |
-| GET | `/api/v1/fhir/Practitioner/:id` | Job number (`http://aigh.sa/job-number`), name, work e-mail, verified current licences as `qualification` (SCFHS number as the identifier, `http://scfhs.org.sa/registration`) | `fhir.read` |
-| GET | `/api/v1/fhir/PractitionerRole/:id` | Position (`code`), unit (`specialty`), the contract covering today (`period`; `active` only while one does) | `fhir.read` |
-| GET | `/api/v1/fhir/Practitioner?identifier=[system\|]<job number>` · `/api/v1/fhir/PractitionerRole?practitioner=Practitioner/<id>` | `Bundle` (searchset) | `fhir.read` |
+| GET | `/api/v1/fhir/metadata` | `CapabilityStatement` | `fhir.read` (HR, SA) · any client |
+| GET | `/api/v1/fhir/Practitioner/:id` | Job number (`http://aigh.sa/job-number`), name, work e-mail, verified current licences as `qualification` (SCFHS number as the identifier, `http://scfhs.org.sa/registration`) | `fhir.read` · scope `system/Practitioner.read` |
+| GET | `/api/v1/fhir/PractitionerRole/:id` | Position (`code`), unit (`specialty`), the contract covering today (`period`; `active` only while one does) | `fhir.read` · scope `system/PractitionerRole.read` |
+| GET | `/api/v1/fhir/Practitioner?identifier=[system\|]<job number>` · `/api/v1/fhir/PractitionerRole?practitioner=Practitioner/<id>` | `Bundle` (searchset) | as the resource |
 
 The ids are the employee id for both resource types. The spec's example puts qualifications on `PractitionerRole`; R4 has no such element, so licences are `Practitioner.qualification`.
+
+**Other systems — OAuth 2.0 client credentials (D-63).** A System Admin registers the system under Nursing Administration → API clients and hands over its client id and secret (shown once) over a secure channel. The system then:
+
+```bash
+curl -s -u "$CLIENT_ID:$CLIENT_SECRET" -d grant_type=client_credentials https://nurse.<hospital-domain>/api/v1/fhir/token
+# → {"access_token":"…","token_type":"Bearer","expires_in":900,"scope":"system/Practitioner.read system/PractitionerRole.read"}
+curl -s -H "Authorization: Bearer $ACCESS_TOKEN" "https://nurse.<hospital-domain>/api/v1/fhir/Practitioner?identifier=J-1001"
+```
+
+| Method | Endpoint | Purpose | Permission |
+| :--- | :--- | :--- | :--- |
+| POST | `/api/v1/fhir/token` | `application/x-www-form-urlencoded`: `grant_type=client_credentials`, optional `scope` (space-separated, a subset of the client's); credentials in HTTP Basic or as `client_id` / `client_secret`. Errors per RFC 6749 §5.2: 400 `invalid_request` / `unsupported_grant_type` / `invalid_scope`, 401 `invalid_client`; 429 with `Retry-After` after repeated failures | public (the credentials) |
+| GET | `/api/v1/api-clients` | Registered clients (never the secret) | `apiclients.manage` (SA) |
+| POST | `/api/v1/api-clients` | `{name, scopes?}` → `{client, clientSecret}` — the only time the secret is returned | `apiclients.manage` |
+| POST | `/api/v1/api-clients/:id/secret` | New secret → `{client, clientSecret}`; the old secret and every token under it stop at once | `apiclients.manage` |
+| POST | `/api/v1/api-clients/:id/revoke` | Permanent; its tokens stop at once | `apiclients.manage` |
+
+A client token is accepted only on `GET /api/v1/fhir/*` (401 anywhere else, 403 for other methods) and lasts 15 minutes: request a new one when it expires.
 
 ### 2.13 Removed from V03
 

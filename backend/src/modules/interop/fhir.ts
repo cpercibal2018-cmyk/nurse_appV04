@@ -95,7 +95,7 @@ export function searchBundle(resources: Array<Practitioner | PractitionerRole>, 
   };
 }
 
-export function operationOutcome(code: 'not-found' | 'deleted' | 'invalid' | 'not-supported', diagnostics: string): OperationOutcome {
+export function operationOutcome(code: 'not-found' | 'deleted' | 'invalid' | 'not-supported' | 'forbidden', diagnostics: string): OperationOutcome {
   return { resourceType: 'OperationOutcome', issue: [{ severity: 'error', code, diagnostics }] };
 }
 
@@ -113,7 +113,10 @@ export function capabilityStatement(now: Date, baseUrl: string): CapabilityState
     implementation: { description: 'AIGH Nursing Workforce FHIR R4 API', url: baseUrl }, // cpb-14: required for kind = instance
     rest: [{
       mode: 'server',
-      security: { description: 'Bearer token of a signed-in HR or System Admin; results limited to their scope' },
+      security: {
+        service: [{ coding: [{ system: 'http://terminology.hl7.org/CodeSystem/restful-security-service', code: 'OAuth', display: 'OAuth' }] }],
+        description: `Bearer token: another system's, from the OAuth 2.0 client-credentials grant at ${baseUrl}/token (scopes system/Practitioner.read and system/PractitionerRole.read; system-wide), or a signed-in HR or System Admin's (limited to their scope)`,
+      },
       resource: [
         { type: 'Practitioner', interaction: read, searchParam: [{ name: 'identifier', type: 'token', documentation: `The job number, optionally as ${FHIR_SYSTEMS.jobNumber}|value` }] },
         { type: 'PractitionerRole', interaction: read, searchParam: [{ name: 'practitioner', type: 'reference', documentation: 'Practitioner/ followed by the employee id' }] },
