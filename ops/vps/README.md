@@ -43,7 +43,7 @@ The specification requires **all production data, backups and WAL archives to re
    ```bash
    sudo ADMIN_USER=<you> DEPLOY_PUBKEY="$(cat deploy_key.pub)" ADMIN_SSH_CIDR=<hospital egress IP>/32 ops/vps/setup-host.sh
    ```
-   [`setup-host.sh`](setup-host.sh) — idempotent — updates the OS and turns on unattended security updates; SSH keys only, no root login, fail2ban; firewall: SSH (from `ADMIN_SSH_CIDR` if given), 80, 443 and nothing else; Docker Engine + Compose; PostgreSQL 15 listening only on `localhost` and the Docker host address, with the containers' subnet allowed only to the application database; the `deploy` account; `/etc/nurseapp`, `/srv/nurseapp` and the containers' network. If the provider has its own firewall (Hostinger: VPS → Firewall), open the same three ports there.
+   [`setup-host.sh`](setup-host.sh) — idempotent — updates the OS and turns on unattended security updates; SSH keys only, no root login, fail2ban; firewall: SSH (from `ADMIN_SSH_CIDR` if given), 80, 443 and nothing else; Docker Engine + Compose; PostgreSQL 15 listening only on `localhost` and the Docker host address, with the containers' subnet allowed only to the application database; the `deploy` account; `/etc/nurseapp`, `/srv/nurseapp` and the containers' network; and the 5-minute health monitor (§8). If the provider has its own firewall (Hostinger: VPS → Firewall), open the same three ports there.
 
 **HTTPS** needs nothing else: on the first release Caddy obtains the certificate from Let's Encrypt, redirects HTTP to HTTPS and renews it by itself. HSTS, CSP and the other security headers come from the web container's nginx, as in every deployment.
 
@@ -143,13 +143,38 @@ It runs the bootstrap command ([`backend/src/cli/bootstrap.ts`](../../backend/sr
 | What is live | `sudo /opt/nurseapp/vps/deploy.sh status` |
 | Apply changed settings | `sudo /opt/nurseapp/vps/deploy.sh restart` |
 | Logs | `sudo docker logs --since 1h nurseapp-blue-api-1` (colour as `status` shows); Caddy: `nurseapp-edge-caddy-1`; backups: `/var/log/aigh-backup.log` |
-| Backup health | Administration → Jobs → System health in the app; `sudo -u postgres psql -c 'select * from pg_stat_archiver'` |
+| Health now | `sudo /opt/nurseapp/vps/monitor.sh` (PASS / WARN / FAIL per check); the app's own view: Administration → Jobs → System health |
 | OS updates | security updates install themselves; reboot monthly (Docker and PostgreSQL start by themselves; `live-restore` keeps containers up across Docker upgrades) |
 | Disk | `df -h /srv` — the WAL archive grows until the nightly backup prunes it |
 | Outside monitoring | an external uptime check on `https://<host>/api/v1/health` (it answers 503 when the database is down) |
 
+### Alerts
+
+[`monitor.sh`](monitor.sh) runs every 5 minutes (`nurseapp-monitor.timer`) and checks: the site over HTTPS through Caddy (and the database behind it), the live colour's containers plus Caddy and ClamAV, PostgreSQL, WAL archiving (last segment ≤ 30 min, no failed attempt), the nightly base backup (≤ 26 h), the off-site copy (≤ 1 h), disk (warn 80 %, fail 90 %), the certificate (warn < 14 days, fail < 7 — Caddy renews at 30) and a pending reboot. It alerts when a check starts failing, turns to a warning or recovers, and repeats every 6 hours while something still fails. Who hears it — `/etc/nurseapp/monitor.env` (root, `0600`):
+
+```bash
+ALERT_EMAILS=it-oncall@hospital.sa,dba@hospital.sa
+# Optional: a Microsoft Teams / Slack incoming webhook as well (JSON {"text": …})
+ALERT_WEBHOOK_URL=
+# The relay; by default the app's own SMTP settings from app.env are used
+# SMTP_HOST=…  SMTP_PORT=587  SMTP_USER=…  SMTP_PASS=…  SMTP_FROM=NurseApp monitor <nurseapp@hospital.sa>
+```
+
+Until e-mail works (the hospital relay, D-47), use the webhook — or at least an **outside** uptime check on `https://<host>/api/v1/health` (it answers 503 when the database is down), since a monitor on the VPS cannot report the VPS itself being down.
+
+## 9. Go-live checklist
+
+`sudo /opt/nurseapp/vps/verify-install.sh` checks the installation against §2–§8 — OS, SSH, firewall, security updates, PostgreSQL's listen addresses, the deploy key's restriction, the settings files and residency region, `verify.sql`, backups (archiving, timer, *no private key on the server*), off-site copy, DNS, HTTPS/HSTS/CSP, certificate, the live release, the first administrators and monitoring — and ends with **READY** or **NOT READY**. Then, before the first real user:
+
+1. `verify-install.sh` reads READY; every WARN is fixed or accepted by name.
+2. The **restore drill** passed ([ops/backup](../backup/README.md)) with the private key, on a machine other than the VPS — timed against the RTO.
+3. `/etc/nurseapp` and the backup private key are in the offline key store, in two places, and someone other than the installer has checked they open.
+4. The hosting contract confirms the data centre (and every backup and snapshot) is in the Kingdom; the DPO has signed off the processing register (Administration → Data protection).
+5. Alerts reach a person: stop Caddy for 5 minutes (`sudo docker stop nurseapp-edge-caddy-1`, then `start`) and confirm the FAILING and RECOVERED messages arrive.
+6. A release and a rollback have run through the GitHub workflow with the `production` approval.
+
 ## Verification (what was tested, 2026-09-25)
 
-`test/run.sh` stands in for the VPS with Docker — a PostgreSQL 15 container in the host database's place, Caddy with its own local CA instead of Let's Encrypt — and runs the real release images: `db-init.sh` (database, roles, settings files `0600`, and refusing to overwrite them); a first release onto blue; a second release onto green **the way GitHub Actions does it** — a bundle through `nurseapp-release`, which also refused a bundle with a foreign path and a malformed command; then a rollback to blue, then `restart` after a settings change (green). A client polling `https://…/api/v1/health` every 0.2 s during all three switches saw **752 requests, 0 failed**; HTTP redirected to HTTPS; HSTS present; the retired colour stopped each time; `verify.sql` passed on every release.
+`test/run.sh` stands in for the VPS with Docker — a PostgreSQL 15 container in the host database's place, Caddy with its own local CA instead of Let's Encrypt — and runs the real release images: `db-init.sh` (database, roles, settings files `0600`, and refusing to overwrite them); a first release onto blue; a second release onto green **the way GitHub Actions does it** — a bundle through `nurseapp-release`, which also refused a bundle with a foreign path and a malformed command; then a rollback to blue, then `restart` after a settings change (green). A client polling `https://…/api/v1/health` every 0.2 s during all three switches saw **about 760 requests per run, 0 failed**; HTTP redirected to HTTPS; HSTS present; the retired colour stopped each time; `verify.sql` passed on every release. Monitoring: with Caddy stopped, `monitor.sh --notify` failed and e-mailed FAILING alerts to a test mailbox (once — a second run within 6 hours stayed quiet), and RECOVERED alerts after Caddy was back; `verify-install.sh` passed the checks that apply without a real server (settings, `verify.sql`, HTTPS headers, containers, site) and flagged the missing administrators.
 
-Not tested here: `setup-host.sh` and `setup-backup.sh` on a real Ubuntu 24.04 server (they need systemd; the backup kit itself is verified in [ops/backup](../backup/README.md)), Let's Encrypt issuance (needs public DNS), and the workflow's run against a real VPS. Run §2–§7 once on the server with hospital IT and correct anything that differs.
+Not tested here: `setup-host.sh`, `setup-backup.sh` and the host-level checks of `verify-install.sh` (SSH, firewall, timers) on a real Ubuntu 24.04 server (they need systemd; the backup kit itself is verified in [ops/backup](../backup/README.md)), Let's Encrypt issuance (needs public DNS), and the workflow's run against a real VPS. Run §2–§7 once on the server with hospital IT and correct anything that differs.
