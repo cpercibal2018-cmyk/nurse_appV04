@@ -96,7 +96,7 @@ These stay in the reference and get their own migration and module when schedule
 | §10.8 | (Consistency auditor and business health are **built**: daily sample of max(1%, 50) nurses, drift logged + corrected + audited; `GET /system/health/business`. Not reported: SCFHS sync freshness and evidence checksums, whose modules are not built) |
 | §10.9 | (Shadow mode is **built**, D-60: engine versions registered in `modules/eligibility/logic.ts`; a new one runs in shadow beside the active one on every stored evaluation, disagreements kept in `eligibility_shadow_log` for a system-wide HR Admin to approve or reject; promotion after 7 days without a disagreement or once all are approved; Nursing Administration → Eligibility logic. Previews and pool checks run the active logic only) |
 | §10.10 | Legacy migration bridge (no V03 production data exists — [MIGRATION.md](MIGRATION.md)) |
-| §14.1, §14.3 | (The FHIR R4 read API is **built**, D-61: Practitioner and PractitionerRole, search by job number, validated by the HL7 validator in CI; a signed-in HR or System Admin, within scope. Not built: sign-in for another system without a person — a client-credentials token — and the §14.3 exit package) |
+| §14.1, §14.3 | (The FHIR R4 read API is **built**, D-61: Practitioner and PractitionerRole, search by job number, validated by the HL7 validator in CI; a signed-in HR or System Admin, within scope. The §14.3 exit package is **built**, D-62: a server-side command, encrypted to the backup key on the VPS. Not built: sign-in for another system without a person — a client-credentials token) |
 
 ## 6. How V04 implements the rest
 
