@@ -56,6 +56,38 @@ jobs:
           NODE_ENV: production
         run: npm run build -w frontend
 
+  # Spec §11.3: the FHIR resources the API serves (spec §14.1, D-61) must pass
+  # the HL7 FHIR R4 validator. The samples are built by the same mapping code;
+  # terminology checks are off (-tx n/a: the codes are the hospital's own).
+  fhir-validate:
+    runs-on: ubuntu-24.04
+    env:
+      VALIDATOR_VERSION: 6.10.4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Cache the validator and the R4 core package
+        uses: actions/cache@v4
+        with:
+          path: |
+            validator_cli.jar
+            ~/.fhir/packages
+          key: fhir-validator-${{ env.VALIDATOR_VERSION }}
+      - name: Write the sample resources
+        run: npx tsx backend/test/fixtures/fhir-samples.ts fhir-samples
+      - name: HL7 FHIR R4 validator
+        run: |
+          [ -f validator_cli.jar ] || curl -fsSL -o validator_cli.jar "https://github.com/hapifhir/org.hl7.fhir.core/releases/download/${VALIDATOR_VERSION}/validator_cli.jar"
+          java -jar validator_cli.jar fhir-samples/*.json -version 4.0.1 -tx n/a
+
   # The release images (ops/gcp, D-49) must keep building; nothing is pushed
   # here. They are then tested as deployed: the HTTPS browser test of the
   # session cookies (B-03, ops/e2e/README.md).
