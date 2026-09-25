@@ -84,10 +84,12 @@ export function toPractitionerRole(e: FhirEmployee): PractitionerRole {
   };
 }
 
-export function searchBundle(resources: Array<Practitioner | PractitionerRole>, baseUrl: string): Bundle {
+/** `selfUrl` is the search as asked (the searchset's self link). */
+export function searchBundle(resources: Array<Practitioner | PractitionerRole>, baseUrl: string, selfUrl: string): Bundle {
   return {
     resourceType: 'Bundle',
     type: 'searchset',
+    link: [{ relation: 'self', url: selfUrl }],
     total: resources.length,
     entry: resources.map((resource) => ({ fullUrl: `${baseUrl}/${resource.resourceType}/${resource.id}`, resource, search: { mode: 'match' } })),
   };
@@ -97,8 +99,8 @@ export function operationOutcome(code: 'not-found' | 'deleted' | 'invalid' | 'no
   return { resourceType: 'OperationOutcome', issue: [{ severity: 'error', code, diagnostics }] };
 }
 
-/** What this server supports (GET /fhir/metadata). */
-export function capabilityStatement(now: Date): CapabilityStatement {
+/** What this server supports (GET /fhir/metadata); `baseUrl` is this server's FHIR base. */
+export function capabilityStatement(now: Date, baseUrl: string): CapabilityStatement {
   const read = [{ code: 'read' as const }, { code: 'search-type' as const }];
   return {
     resourceType: 'CapabilityStatement',
@@ -108,12 +110,13 @@ export function capabilityStatement(now: Date): CapabilityStatement {
     fhirVersion: '4.0.1',
     format: ['application/fhir+json'],
     software: { name: 'AIGH Nursing Workforce Management System', version: '4' },
+    implementation: { description: 'AIGH Nursing Workforce FHIR R4 API', url: baseUrl }, // cpb-14: required for kind = instance
     rest: [{
       mode: 'server',
       security: { description: 'Bearer token of a signed-in HR or System Admin; results limited to their scope' },
       resource: [
-        { type: 'Practitioner', interaction: read, searchParam: [{ name: 'identifier', type: 'token', documentation: `${FHIR_SYSTEMS.jobNumber}|<job number>` }] },
-        { type: 'PractitionerRole', interaction: read, searchParam: [{ name: 'practitioner', type: 'reference', documentation: 'Practitioner/<id>' }] },
+        { type: 'Practitioner', interaction: read, searchParam: [{ name: 'identifier', type: 'token', documentation: `The job number, optionally as ${FHIR_SYSTEMS.jobNumber}|value` }] },
+        { type: 'PractitionerRole', interaction: read, searchParam: [{ name: 'practitioner', type: 'reference', documentation: 'Practitioner/ followed by the employee id' }] },
       ],
     }],
   };

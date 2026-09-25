@@ -99,6 +99,7 @@ describeDb('FHIR read API (spec §14.1)', () => {
     const byId = await hr.get(`/fhir/Practitioner?identifier=${encodeURIComponent(`${FHIR_SYSTEMS.jobNumber}|${emp.jobNumber}`)}`);
     expect(byId.body).toMatchObject({ resourceType: 'Bundle', type: 'searchset', total: 1, entry: [{ resource: { id: String(emp.id) }, search: { mode: 'match' } }] });
     expect(byId.body.entry[0].fullUrl).toMatch(new RegExp(`/api/v1/fhir/Practitioner/${emp.id}$`));
+    expect(byId.body.link).toEqual([{ relation: 'self', url: expect.stringMatching(/\/api\/v1\/fhir\/Practitioner\?identifier=/) }]);
     expect((await hr.get(`/fhir/Practitioner?identifier=${emp.jobNumber}`)).body.total).toBe(1);
     expect((await hr.get('/fhir/Practitioner?identifier=http://other.org|x')).body.total).toBe(0);
     expect((await hr.get(`/fhir/PractitionerRole?practitioner=Practitioner/${emp.id}`)).body.total).toBe(1);
@@ -123,6 +124,6 @@ describeDb('FHIR read API (spec §14.1)', () => {
 
     const sup = await signIn(app(), (await makeUser(db, { roles: [{ role: 'SUPERVISOR', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
     expect((await sup.get('/fhir/metadata')).status).toBe(403);
-    expect((await hr.get('/fhir/metadata')).body).toMatchObject({ resourceType: 'CapabilityStatement', fhirVersion: '4.0.1', kind: 'instance' });
+    expect((await hr.get('/fhir/metadata')).body).toMatchObject({ resourceType: 'CapabilityStatement', fhirVersion: '4.0.1', kind: 'instance', implementation: { url: expect.stringMatching(/\/api\/v1\/fhir$/) } });
   });
 });

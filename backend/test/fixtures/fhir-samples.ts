@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { capabilityStatement, operationOutcome, searchBundle, toPractitioner, toPractitionerRole, type FhirEmployee } from '../../src/modules/interop/fhir.js';
 
 const out = process.argv[2] ?? 'fhir-samples';
+const BASE = 'https://nurse.aigh.sa/api/v1/fhir';
 mkdirSync(out, { recursive: true });
 
 const nurse: FhirEmployee = {
@@ -26,8 +27,8 @@ const samples: Record<string, object> = {
   'Practitioner-1002.json': toPractitioner(unassigned, []),
   'PractitionerRole-1001.json': toPractitionerRole(nurse),
   'PractitionerRole-1002.json': toPractitionerRole(unassigned),
-  'Bundle-search.json': searchBundle([practitioner], 'https://nurse.aigh.sa/api/v1/fhir'),
-  'CapabilityStatement.json': capabilityStatement(new Date('2026-09-25T08:00:00Z')),
+  'Bundle-search.json': searchBundle([practitioner], BASE, `${BASE}/Practitioner?identifier=J-1001`),
+  'CapabilityStatement.json': capabilityStatement(new Date('2026-09-25T08:00:00Z'), BASE),
   'OperationOutcome.json': operationOutcome('not-found', 'No Practitioner with this id'),
 };
 for (const [name, resource] of Object.entries(samples)) writeFileSync(join(out, name), JSON.stringify(resource, null, 2));
