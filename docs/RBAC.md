@@ -68,6 +68,8 @@ Generated from `backend/src/modules/users/permissions.ts`. **`backend/test/docs.
 | `pdpl.erase` | SYSTEM_ADMIN | Approve an erasure (crypto-shredding); never the person who logged it (D-55) |
 | `jobs.read` | SYSTEM_ADMIN | Background job runs |
 | `jobs.run` | SYSTEM_ADMIN | Run a job now |
+| `devconsole.sms.read` | SYSTEM_ADMIN | Dev Console SMS inbox: the texts the mock SMS gateway intercepted (D-59) |
+| `devconsole.sms.send` | SYSTEM_ADMIN | Send a test text through the SMS gateway, audited (D-59) |
 | `credentials.catalog.read` | EMPLOYEE | Credential types and categories |
 | `credentials.catalog.write` | HR_ADMIN, SYSTEM_ADMIN | Credential type changes (system-wide, four-eyes — D-24, D-25) |
 | `requirements.read` | HR_ADMIN, SYSTEM_ADMIN, SUPERVISOR | Unit credential requirements |
@@ -117,7 +119,7 @@ These routes are open to any signed-in user; the service limits them to the call
 
 **PAM (R13).** System Admin assignments are dormant. The holder elevates with a reason (≥ 10 characters) for 1–4 hours (default 2); elevation ends early on `POST /pam/end`. Expired elevations are ignored at once and removed and audited by the daily job.
 
-**Break-glass (R18, spec §3.6, D-9).** One flagged account. A successful sign-in writes an irrevocable `break_glass_events` row (delete is rejected by trigger), a HIGH audit entry and a CRITICAL in-app notification to every System Admin. The session has root access without PAM or four-eyes and ends after 4 hours. It still **cannot issue waivers** (D-28). **Not built:** the SMS / e-mail alert to the CEO and IT Director (no SMTP/SMS decided).
+**Break-glass (R18, spec §3.6, D-9).** One flagged account. A successful sign-in writes an irrevocable `break_glass_events` row (delete is rejected by trigger), a HIGH audit entry and a CRITICAL in-app notification to every System Admin. The session has root access without PAM or four-eyes and ends after 4 hours. It still **cannot issue waivers** (D-28). The CEO and IT Director are alerted by e-mail (`BREAK_GLASS_ALERT_EMAILS`, D-47) and by text (`BREAK_GLASS_ALERT_PHONES`); the text is kept in the Dev Console SMS inbox, not sent, while `SMS_DRIVER=mock` (D-59).
 
 ## 7. Open access questions
 

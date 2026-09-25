@@ -52,6 +52,9 @@ Every backend setting is in [`.env.example`](../.env.example) and is validated a
 | `SMTP_RETRY_MAX` / `SMTP_RETRY_DELAY_SECONDS` | 8 / 60 | Spec §7.2 |
 | `APP_BASE_URL` | `CORS_ORIGIN` | The public app URL used in e-mail links |
 | `BREAK_GLASS_ALERT_EMAILS` | — | Comma-separated: the CEO and IT Director (spec §3.6) |
+| `SMS_DRIVER` | mock | `mock` keeps texts in the Dev Console SMS inbox and sends nothing (§2.3, D-59); `unifonic` is the live gateway (not built yet) |
+| `UNIFONIC_APP_SID` / `UNIFONIC_SENDER_ID` | — | Required with `SMS_DRIVER=unifonic`: the Unifonic app and the CST-registered Sender ID |
+| `BREAK_GLASS_ALERT_PHONES` | — | Comma-separated, international format (`+9665…`): texted when the break-glass account signs in (spec §3.6) |
 | `TRUST_PROXY` | false | `true` behind the proxy, so login limits and session history see the client address |
 | `JOBS_MODE` | in-process | `worker` on the API in production (§3) |
 | `DATA_RESIDENCY_REGION` / `PDPL_ALLOWED_REGIONS` | local / local | A KSA region id and its allowlist; `local` is refused in production. Never `me-south-1` (Bahrain) or `me-central-1` (UAE) |
@@ -103,6 +106,19 @@ Delivery is at-least-once: a crash after the relay accepted a message but before
 
 **Go-live checklist** (spec §7.3): send one notification to a staging mailbox and check it in Outlook and on a phone (Arabic renders, From / Reply-To correct); run the expiry scan and confirm the e-mail arrives within about a minute; stop the relay and confirm retries and `FAILED` after the last attempt, then restart it and confirm new mail flows; sign in with the break-glass account and confirm the CEO and IT Director e-mails arrive.
 
+### 2.3 SMS (mock gateway until the Sender ID exists)
+
+Every text goes through one SMS gateway (`backend/src/lib/sms.ts`, D-59); `SMS_DRIVER` picks the driver. A live Saudi gateway needs a Sender ID registered with the CST, which needs the hospital's Commercial Registration — not available yet. So production runs with **`SMS_DRIVER=mock`**: each text is saved to `mock_sms_outbox` and shown in **Administration → SMS inbox** (System Admin, elevated), and nothing leaves the server. The API logs `SMS is simulated` at start-up in production as a reminder.
+
+| Driver | What `send` does |
+| :--- | :--- |
+| `mock` (default) | Saves the text as `intercepted` in `mock_sms_outbox`; kept 30 days (`mock-sms-purge`, daily 02:40 Riyadh) |
+| `unifonic` | Nothing yet — the Unifonic HTTP call is a TODO; each text logs `sms not sent: the Unifonic driver is not built yet` |
+
+What texts today: the break-glass sign-in, to each `BREAK_GLASS_ALERT_PHONES` number (spec §3.6), after the sign-in is committed, so a failing gateway never blocks emergency access. The outcome is audited HIGH (`BREAK_GLASS_SMS_SENT` or `BREAK_GLASS_SMS_FAILED`). For a demonstration, **Send test SMS** in the inbox sends any text to any number (audited `SMS_TEST_SENT`, the number masked).
+
+Going live: once the Sender ID is registered, build the Unifonic call in `UnifonicSmsGateway.send`, set `SMS_DRIVER=unifonic`, `UNIFONIC_APP_SID` and `UNIFONIC_SENDER_ID`, and send a test text from the inbox.
+
 ## 3. Processes and background jobs
 
 | Process | Command | Notes |
@@ -117,7 +133,7 @@ Delivery is at-least-once: a crash after the relay accepted a message but before
 | `worker` | Production: the separate worker runs the jobs (spec §10.2) |
 | `off` | Maintenance; nothing runs. Missed periods run when jobs are next enabled |
 
-**Job schedule (Asia/Riyadh, independent of the server time zone):** `daily-transition` 00:05, `expiry-scan` 06:00, `consistency-audit` 03:00 (re-evaluates a random sample of nurses' eligibility — 1%, at least 50 — and corrects any drift, spec §10.8), `request-log-purge` 02:30 (deletes request-log rows older than 365 days, D-52), `vault-reconcile` 04:30 (document vault: removes orphaned objects older than a day, reports missing objects, re-verifies a random 50, counts unencrypted objects, deletes old download links — D-53), `attendance-alerts` every 15 minutes. Running two workers by mistake is safe (leases and unique run keys), but wasteful. A System Admin sees run history and can start a job from **Administration → Jobs**.
+**Job schedule (Asia/Riyadh, independent of the server time zone):** `daily-transition` 00:05, `expiry-scan` 06:00, `consistency-audit` 03:00 (re-evaluates a random sample of nurses' eligibility — 1%, at least 50 — and corrects any drift, spec §10.8), `request-log-purge` 02:30 (deletes request-log rows older than 365 days, D-52), `mock-sms-purge` 02:40 (deletes texts the mock SMS gateway kept more than 30 days ago, D-59), `vault-reconcile` 04:30 (document vault: removes orphaned objects older than a day, reports missing objects, re-verifies a random 50, counts unencrypted objects, deletes old download links — D-53), `attendance-alerts` every 15 minutes. Running two workers by mistake is safe (leases and unique run keys), but wasteful. A System Admin sees run history and can start a job from **Administration → Jobs**.
 
 ## 4. Release procedure
 
@@ -198,7 +214,7 @@ Rotate one key at a time or several together; `JWT_SECRET` is replaced by simply
 | **Database roles: to be applied on each server** (spec §10.7) | [`ops/db`](../ops/db/README.md) holds the roles, grants and a read-only check (`verify.sql`), all tested in CI; the open spec items are decided (D-44, D-45). The API and worker **refuse to start in production** until `DATABASE_URL` is a data-only login | On each server: the README steps 1–5 (a DBA, about 15 minutes), `verify.sql` all PASS, then switch the URLs |
 | **Prisma CLI advisories** | `npm audit`: 4 high-severity advisories in the Prisma CLI's bundled dependencies (`mysql2`, `deepmerge-ts`). The CLI is a development/migration tool; the running API uses `@prisma/client` with the PostgreSQL adapter and does not load the MySQL driver. npm's suggested "fix" downgrades to Prisma 6 (breaking) and was **not** applied | Run migrations from the CI/release host rather than installing dev tools on the runtime host; upgrade Prisma when a patched release exists; re-run `npm audit` at every release |
 | **`pg` 9 not yet usable** | Inside an interactive transaction Prisma 7.10's query interpreter reads the relations of a multi-relation `include` concurrently on the transaction's single `pg` client ([prisma/prisma#29407](https://github.com/prisma/prisma/issues/29407)). `pg` 8 queues the queries (results are correct) but prints its "client is already executing a query" deprecation, which `pg` 9 turns into a failure. The application's own code issues transaction queries one at a time | Stay on `pg` 8 until a Prisma release with the fix; then upgrade both together and run the full test suite |
-| **No SMS** | E-mail (§2.2), registration by invitation and password reset (D-50) are built; all need the relay and the private link from Google Cloud. SMS (the break-glass alert by text, D-48) is not built yet | The hospital SMS gateway's API details (D-48) |
+| **SMS simulated** (D-59) | Texts (the break-glass alert, D-48) go through the SMS gateway, but with `SMS_DRIVER=mock` they are kept in the Dev Console SMS inbox and not sent (§2.3) | The hospital's Commercial Registration and a CST-registered Sender ID; then the Unifonic call in `UnifonicSmsGateway` |
 | **No badge feed** (D-33) | Attendance gaps and alerts only work once events are loaded into `attendance_events` | The PACS interface contract |
 | **Google Cloud not yet provisioned; no blue/green** (spec §10.4) | Images, the app-VM runtime and the Deploy workflow are built and tested locally ([ops/gcp](../ops/gcp/README.md)); the project, network, VMs, load balancer and HA VPN to the hospital do not exist yet. A release briefly restarts the containers (no blue/green) | The cloud administrator runs ops/gcp/README.md §1–§7; blue/green if the brief restart is not acceptable |
 
@@ -211,7 +227,7 @@ Rotate one key at a time or several together; `JWT_SECRET` is replaced by simply
 | Background jobs | `job_runs` (Administration → Jobs); the `worker_lease_status` view shows lease holders and heartbeats |
 | Audit integrity | `GET /api/v1/audit/verify` (Audit page); the `audit_chain_breaks` view must be empty |
 | Malware scanner | Error log lines `malware detected in upload`, `upload scan failed; upload refused` and `clamav signatures are stale`; HIGH audit `DOCUMENT_REJECTED_INFECTED` |
-| Break-glass use | CRITICAL in-app notification and e-mail to every System Admin; e-mail to `BREAK_GLASS_ALERT_EMAILS`; `break_glass_events` |
+| Break-glass use | CRITICAL in-app notification and e-mail to every System Admin; e-mail to `BREAK_GLASS_ALERT_EMAILS`; a text to `BREAK_GLASS_ALERT_PHONES` (HIGH audit `BREAK_GLASS_SMS_FAILED` if the gateway refused it); `break_glass_events` |
 | Request log | **Audit → Requests** (`GET /api/v1/audit/requests`, System Admin): every API request with its actor, outcome and error code — filter by user, path, `4xx`/`5xx`, error code or request id (the `X-Request-Id` a user reports). Growth: roughly 1 row per request; kept 365 days |
 | Business health | Administration → Jobs → **System health** (`GET /api/v1/system/health/business`): eligibility drift found and corrected by the daily consistency audit, jobs that are late or failed, e-mail backlog and failures. System Admins also get an in-app notice on any day drift is corrected |
 | E-mail delivery | Error log `e-mail delivery failed; giving up`. Backlog: `SELECT email_status, count(*), min(created_at) FROM notifications WHERE created_at > now() - interval '1 day' GROUP BY 1` — a growing `PENDING` count or old `min` means the relay or the worker is down; the same for `email_outbox.status` |

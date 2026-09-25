@@ -32,6 +32,7 @@ const stopJobs = env.JOBS_MODE === 'in-process' ? startScheduler(db) : () => und
 // E-mail (D-47) goes out from wherever the jobs run.
 const stopMail = env.JOBS_MODE === 'in-process' ? startEmailDispatcher(db, createMailer(env), dispatchConfigFrom(env)) : () => undefined;
 if (env.NODE_ENV === 'production' && !env.SMTP_HOST) logger.warn('e-mail is off: SMTP_HOST is not set; notifications stay in-app (D-47)');
+if (env.NODE_ENV === 'production' && env.SMS_DRIVER === 'mock') logger.warn('SMS is simulated (SMS_DRIVER=mock): texts are kept in the Dev Console SMS inbox and not sent (D-59)');
 
 const server = app.listen(env.PORT, () => {
   logger.info('listening', { port: env.PORT, environment: env.NODE_ENV, region: env.DATA_RESIDENCY_REGION });
