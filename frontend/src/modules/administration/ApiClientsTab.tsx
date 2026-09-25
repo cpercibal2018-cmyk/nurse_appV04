@@ -9,7 +9,7 @@ import { describeApiError } from '../../lib/errors';
 import { API_PREFIX } from '../../services/http';
 import { useApiClients, useCreateApiClient, useReplaceApiClientSecret, useRevokeApiClient, type ApiClient, type FhirScope } from './api';
 
-const SCOPES: FhirScope[] = ['system/Practitioner.read', 'system/PractitionerRole.read'];
+const SCOPES: FhirScope[] = ['system/Practitioner.read', 'system/PractitionerRole.read', 'attendance.ingest'];
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
 
 export function ApiClientsTab() {
@@ -70,7 +70,7 @@ export function ApiClientsTab() {
 
       <Modal open={adding} title={t('apiClientAdd')} onCancel={() => setAdding(false)} onOk={() => form.submit()}
         okText={t('submit')} cancelText={t('cancel')} confirmLoading={create.isPending} destroyOnHidden>
-        <Form form={form} layout="vertical" initialValues={{ scopes: SCOPES }}
+        <Form form={form} layout="vertical" initialValues={{ scopes: SCOPES.filter((s) => s !== 'attendance.ingest') }}
           onFinish={async (v) => { if (await run(create.mutateAsync(v), '')) setAdding(false); }}>
           <Form.Item name="name" label={t('name')} extra={t('apiClientNameHint')} rules={[{ required: true, whitespace: true, min: 2, max: 100, message: t('fieldRequired') }]}>
             <Input maxLength={100} />

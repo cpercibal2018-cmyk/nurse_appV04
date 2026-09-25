@@ -157,7 +157,7 @@ Spec order of checks (§6.1) and what the live engine does:
 
 | Capability | Status | Where | Notes |
 | :--- | :--- | :--- | :--- |
-| Clock events (IN/OUT/BREAK) from badge/PACS feed | SPEC + REF model | `backend` `AttendanceEvent`; spec §14.2 | Integration-dependent (tracker B-15). |
+| Clock events (IN/OUT/BREAK) from badge/PACS feed | **BUILT** (D-65) | `POST /api/v1/attendance/events`; spec §14.2 | Badge system as an API client (`attendance.ingest`); idempotent batches; Dev Console badge simulator until it is connected. The PACS contract itself is open (B-15). |
 | Missing clock-in gap detection (15 min window, Asia/Riyadh) | SPEC | `AdminModule.tsx:218` (display), spec §14.2 | |
 | Attendance states, absence, leave | **NOT ESTABLISHED** | — | |
 | Overtime | **NOT ESTABLISHED** | — | |

@@ -49,7 +49,7 @@ The V03 remediation tracker (`AIGH_v2_8_7_remediation_tracker.md` in the V03 rep
 | B-12 | Four-eyes (row lock, PENDING precondition, transactional execution, partial unique index) | **Done** |
 | B-13 | Consistency auditor | **Done** — daily `consistency-audit` job and business health view (spec §10.8) |
 | B-14 | FHIR adapter | **Deferred** |
-| B-15 | Time-zone-safe coverage-gap query; PACS feed contract | Gap query and alerts **done**; feed contract **open** (D-33) |
+| B-15 | Time-zone-safe coverage-gap query; PACS feed contract | Gap query and alerts **done**; ingest endpoint and badge simulator **done** (D-65); the PACS contract itself **open** |
 | B-16 | SSO / MFA | MFA **done** (D-51: authenticator app + recovery codes, required for System Admin, HR Admin and Supervisor). SSO **deferred** (identity provider not chosen) |
 | B-17 | 72-hour waiver limit at the database; expiry reverts eligibility | **Done** (`chk_waiver_max_window`; engine judges waivers at the evaluation instant) |
 | B-18 | Key management, pepper rotation, DPO sign-off | **Done** (D-56) — every key (MFA, documents, PDPL master key, blind-index pepper) rotates without downtime: previous key beside the new one, `npm run keys:rotate`, key ids in the `key_version` columns, `KEY_ROTATION_PENDING` in System health ([runbook](DEPLOYMENT.md#rotating-a-key)); the DPO's sign-off of the processing register is recorded with the register as reviewed and falls due yearly and after any change. Where the keys are held (KMS / HSM) follows the hosting decision (U1) |

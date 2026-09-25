@@ -786,6 +786,7 @@ model AttendanceEvent {
   employee Employee @relation(fields: [employeeId], references: [id])
 
   @@unique([employeeId, eventTimestamp, eventType])
+  @@index([source, createdAt(sort: Desc)])
   @@map("attendance_events")
 }
 

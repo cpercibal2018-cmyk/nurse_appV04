@@ -1,7 +1,7 @@
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { Router } from 'express';
-import type { Env } from './config/env.js';
+import { badgeSimulatorOn, type Env } from './config/env.js';
 import { createPasswordService, type PasswordService } from './lib/passwords.js';
 import type { Db } from './lib/prisma.js';
 import { createThrottle } from './lib/throttle.js';
@@ -148,7 +148,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   api.use(createNotificationsRouter(db));
   api.use(createAuditRouter(db, keyStatus));
   api.use(createPdplRouter(db));
-  api.use(createDevConsoleRouter(db, sms, scfhs.driver));
+  api.use(createDevConsoleRouter(db, sms, scfhs.driver, badgeSimulatorOn(env)));
   api.use(createEligibilityLogicRouter(db, logic));
   api.use(createFhirRouter(db, protection, env.APP_BASE_URL ?? env.CORS_ORIGIN));
   api.use(createApiClientRouter(db));

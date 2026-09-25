@@ -50,6 +50,8 @@ export const PERMISSIONS = {
   'roster.read': ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'],
   'roster.write': ['SUPERVISOR'],
   'attendance.read': ['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR'],
+  // D-65: badge events are delivered by the badge system (an API client with the attendance.ingest scope), never by a person.
+  'attendance.ingest': [],
 
   // Audit (D-20: System Admin only until decided) and background jobs.
   'audit.read': ['SYSTEM_ADMIN'],
@@ -72,6 +74,9 @@ export const PERMISSIONS = {
   // Dev Console (D-64): the simulated SCFHS registry the mock SCFHS gateway answers from.
   'devconsole.scfhs.read': ['SYSTEM_ADMIN'],
   'devconsole.scfhs.manage': ['SYSTEM_ADMIN'],
+  // Dev Console (D-65): the badge simulator — clock events as if from the badge system, for demonstrations.
+  'devconsole.badge.read': ['SYSTEM_ADMIN'],
+  'devconsole.badge.write': ['SYSTEM_ADMIN'],
   'jobs.run': ['SYSTEM_ADMIN'],
 
   // Credentials and eligibility — spec §8.1 Credentials row, §5.1.4, §6.1.

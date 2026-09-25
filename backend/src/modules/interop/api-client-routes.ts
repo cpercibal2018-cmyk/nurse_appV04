@@ -10,11 +10,11 @@ import { HttpError } from '../../lib/http-errors.js';
 import type { Db } from '../../lib/prisma.js';
 import { sha256hex } from '../../lib/tokens.js';
 import { authOf, authorize } from '../../middleware/authorize.js';
-import { FHIR_SCOPES, newClientId, newClientSecret } from './api-clients.js';
+import { CLIENT_SCOPES, FHIR_SCOPES, newClientId, newClientSecret } from './api-clients.js';
 
 export const CreateClientBody = z.strictObject({
   name: z.string().trim().min(2).max(100),
-  scopes: z.array(z.enum(FHIR_SCOPES)).min(1).default([...FHIR_SCOPES]).transform((s) => [...new Set(s)]),
+  scopes: z.array(z.enum(CLIENT_SCOPES)).min(1).default([...FHIR_SCOPES]).transform((s) => [...new Set(s)]),
 });
 const IdParam = z.object({ id: z.coerce.number().int().positive() });
 
@@ -28,7 +28,7 @@ export function createApiClientRouter(db: Db) {
 
   r.get('/api-clients', authorize('apiclients.manage'), async (_req, res) => {
     const items = await db.apiClient.findMany({ select: PUBLIC_FIELDS, orderBy: [{ revokedAt: { sort: 'desc', nulls: 'first' } }, { name: 'asc' }] });
-    res.json({ items, scopes: FHIR_SCOPES });
+    res.json({ items, scopes: CLIENT_SCOPES });
   });
 
   r.post('/api-clients', authorize('apiclients.manage'), async (req, res) => {

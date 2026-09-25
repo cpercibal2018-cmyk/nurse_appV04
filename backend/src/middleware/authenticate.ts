@@ -5,8 +5,9 @@
 //   3. break-glass sessions end at their 4-hour cap (R18);
 //   4. state-changing requests carry the session's CSRF token and, per the
 //      spec's CsrfGuard, an Origin equal to the application origin.
-// A FHIR read may instead carry another system's client token (D-63): it sets
-// res.locals.client, never res.locals.auth, and is refused on any other path.
+// A FHIR read (D-63) or a badge-event delivery (D-65) may instead carry another
+// system's client token: it sets res.locals.client, never res.locals.auth, and
+// is refused on any other path.
 
 import type { RequestHandler } from 'express';
 import { constantTimeEqual, sha256hex, TokenError, type TokenService } from '../lib/tokens.js';
@@ -22,12 +23,13 @@ export function createAuthenticate(db: Db, tokens: TokenService, appOrigin: stri
     const match = /^Bearer ([A-Za-z0-9_\-.]+)$/.exec(req.get('authorization') ?? '');
     if (!match?.[1]) return next(unauthorized());
 
-    // Another system's token: FHIR reads only (signed with its own key, so it never verifies as a user token).
-    if (clients && req.path.startsWith('/fhir/')) {
+    // Another system's token: FHIR reads, and badge events (signed with its own key, so it never verifies as a user token).
+    const ingest = req.method === 'POST' && req.path === '/attendance/events';
+    if (clients && (req.path.startsWith('/fhir/') || ingest)) {
       const client = await clients.authenticate(match[1]);
       if (client === 'ended') return next(unauthorized('This API client was revoked or its secret replaced — request a new token'));
       if (client) {
-        if (!SAFE_METHODS.has(req.method)) return next(new HttpError(403, 'FORBIDDEN', 'API clients can only read'));
+        if (!ingest && !SAFE_METHODS.has(req.method)) return next(new HttpError(403, 'FORBIDDEN', 'API clients can only read'));
         res.locals.client = client;
         return next();
       }

@@ -140,6 +140,10 @@ const EnvSchema = z.object({
   /** The SCFHS verification endpoint and API key; required when SCFHS_DRIVER=live. */
   SCFHS_API_URL: z.string().default(''),
   SCFHS_API_KEY: z.string().default(''),
+  // ── Badge simulator (spec §14.2, D-65) ─────────────────────────────────────
+  /** The Dev Console badge simulator, which writes clock events as if from the badge system. Off in production
+   *  unless set to on (fabricated attendance must not reach payroll by accident); on elsewhere. */
+  BADGE_SIMULATOR: z.enum(['on', 'off']).optional(),
   // ── Background jobs (spec §10.2; plan "Jobs") ─────────────────────────────
   /** in-process: the API runs the scheduler (development). worker: a separate `npm run worker` runs it (production). off: nothing runs. */
   JOBS_MODE: z.enum(['in-process', 'worker', 'off']).default('in-process'),
@@ -148,6 +152,9 @@ const EnvSchema = z.object({
 });
 
 export type Env = z.infer<typeof EnvSchema>;
+
+/** D-65: whether the Dev Console badge simulator may write events. */
+export const badgeSimulatorOn = (env: Pick<Env, 'BADGE_SIMULATOR' | 'NODE_ENV'>) => (env.BADGE_SIMULATOR ?? (env.NODE_ENV === 'production' ? 'off' : 'on')) === 'on';
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const parsed = EnvSchema.superRefine((e, ctx) => {
