@@ -1,9 +1,9 @@
 # Deployment and operations
 
-How to run V04 and what must be settled before production. Two production layouts are built, both with releases through GitHub Actions and a manual approval:
+How to run V04 and what must be settled before production. Two production layouts are built, both with releases through GitHub Actions and a manual approval. **The single VPS is the chosen one (D-57)**; the Google Cloud layout stays in the repository as an alternative, tested locally but not provisioned:
 
 - **A single VPS (D-57)** — Ubuntu 24.04, PostgreSQL 15 on the host, the API, worker, web server and ClamAV as containers, Caddy for HTTPS, blue/green releases with no dropped requests: [ops/vps/README.md](../ops/vps/README.md). The server must be in a data centre **in the Kingdom** (spec §8.3.6) — Hostinger has none, so it can serve staging with synthetic data only.
-- **Google Cloud, Dammam (`me-central2`, D-49)** — two Compute Engine VMs behind a regional HTTPS load balancer: [ops/gcp/README.md](../ops/gcp/README.md).
+- **Google Cloud, Dammam (`me-central2`, D-49) — alternative, not chosen** — two Compute Engine VMs behind a regional HTTPS load balancer: [ops/gcp/README.md](../ops/gcp/README.md). Its **Deploy** workflow skips itself while the `GCP_PROJECT` variable is unset.
 
 This guide covers the settings, jobs, database, backups and monitoring that apply however the processes are run.
 
@@ -137,7 +137,7 @@ Going live: once the Sender ID is registered, build the Unifonic call in `Unifon
 
 ## 4. Release procedure
 
-In production the **Deploy** workflow does these steps with container images after a reviewer approves ([ops/gcp/README.md §8](../ops/gcp/README.md#8-a-release)). By hand, on any server:
+In production the **Deploy (VPS)** workflow does these steps with container images after a reviewer approves, then switches blue/green with no dropped requests ([ops/vps/README.md §6](../ops/vps/README.md#6-releases-github-actions-bluegreen)). By hand, on any server:
 
 ```bash
 npm ci
@@ -199,7 +199,7 @@ Rolling the release back after a promotion is safe: the older release does not s
 
 The scripts, their environment contract and the verified drill are in [`ops/backup/README.md`](../ops/backup/README.md): WAL archiving, an encrypted nightly base backup, point-in-time restore and a restore drill.
 
-**Documents (D-53):** the database holds each document's checksum and storage key; the bytes are in `STORAGE_DIR`, encrypted. Back up `STORAGE_DIR` on the same schedule (on Google Cloud: snapshots of the app VM's data disk), keep `DOCUMENT_ENCRYPTION_KEY` with the backup keys, and after a restore let `vault-reconcile` run (or start it from Nursing Administration → Jobs): it lists any document whose object did not come back.
+**Documents (D-53):** the database holds each document's checksum and storage key; the bytes are in `STORAGE_DIR`, encrypted. Back up `STORAGE_DIR` on the same schedule (on the VPS the off-site copy mirrors the vault every 5 minutes, [ops/vps/README.md §5](../ops/vps/README.md#5-backups-and-point-in-time-recovery-on-one-machine); on the Google Cloud alternative: snapshots of the app VM's data disk), keep `DOCUMENT_ENCRYPTION_KEY` with the backup keys, and after a restore let `vault-reconcile` run (or start it from Nursing Administration → Jobs): it lists any document whose object did not come back.
 
 ### Rotating a key
 
@@ -231,7 +231,7 @@ To move the workforce history to another provider: `node dist/cli/exit-package.j
 | **SMS simulated** (D-59) | Texts (the break-glass alert, D-48) go through the SMS gateway, but with `SMS_DRIVER=mock` they are kept in the Dev Console SMS inbox and not sent (§2.3) | The hospital's Commercial Registration and a CST-registered Sender ID; then the Unifonic call in `UnifonicSmsGateway` |
 | **FHIR: people only** (D-61) | The FHIR API (`/api/v1/fhir`, docs/API.md §2.12) answers a signed-in HR or System Admin; another system cannot yet call it on its own | A client-credentials token for each integrating system (HIS, payroll), when one is ready to connect |
 | **No badge feed** (D-33) | Attendance gaps and alerts only work once events are loaded into `attendance_events` | The PACS interface contract |
-| **Google Cloud not yet provisioned; no blue/green** (spec §10.4) | Images, the app-VM runtime and the Deploy workflow are built and tested locally ([ops/gcp](../ops/gcp/README.md)); the project, network, VMs, load balancer and HA VPN to the hospital do not exist yet. A release briefly restarts the containers (no blue/green) | The cloud administrator runs ops/gcp/README.md §1–§7; blue/green if the brief restart is not acceptable |
+| **Production server not yet provisioned** (spec §8.3.6, §10.4; D-57) | The single-VPS layout — blue/green releases, backups with an off-site copy, alerts, the exit package — is built and passes its end-to-end harness ([ops/vps](../ops/vps/README.md)); no server in the Kingdom exists yet. A Hostinger VPS may hold synthetic data only (no data centre in the Kingdom) | A VPS in a data centre in the Kingdom, with a contract that says so, and an S3-compatible off-site bucket in the Kingdom; then ops/vps/README.md §2–§9, including the restore drill |
 
 ## 7. Monitoring
 

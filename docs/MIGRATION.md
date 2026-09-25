@@ -62,4 +62,4 @@ The V03 remediation tracker (`AIGH_v2_8_7_remediation_tracker.md` in the V03 rep
 | B-25 | Fail-closed KSA residency check | **Done** |
 | B-26 | KSA sandbox and hosting decision sprint | **Open** (organisational) — the owner is moving to a self-managed VPS (D-57, [ops/vps](../ops/vps/README.md) built); the provider must have a data centre in the Kingdom |
 
-**Decision gates** from the tracker (Part D), still open: **U1 hosting** (unblocks B-05, B-20, the key store for B-18, and production), **U2 credential policy and position rules** (Director of Nursing — the real credential requirements and grace windows), **U3 SCFHS agreement**.
+**Decision gates** from the tracker (Part D), still open: **U1 hosting** (the layout is decided — a single VPS, D-57; open until a provider with a data centre in the Kingdom is contracted; unblocks B-05, B-20, the key store for B-18, and production), **U2 credential policy and position rules** (Director of Nursing — the real credential requirements and grace windows), **U3 SCFHS agreement**.
