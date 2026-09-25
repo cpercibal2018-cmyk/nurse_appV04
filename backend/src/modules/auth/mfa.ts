@@ -39,6 +39,8 @@ export type FactorUsed = 'TOTP' | 'RECOVERY_CODE';
 // Recovery codes: 10 characters from an alphabet without look-alikes, shown as XXXXX-XXXXX.
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const normaliseRecovery = (code: string) => code.toUpperCase().replace(/[\s-]/g, '');
+// Authenticator apps show a code as "123 456", and copying it may keep the space.
+const normaliseTotp = (code: string) => code.replace(/\s/g, '');
 const hashRecovery = (code: string) => sha256hex(`mfa-recovery:${normaliseRecovery(code)}`);
 function newRecoveryCode() {
   const bytes = crypto.randomBytes(10);
@@ -110,7 +112,7 @@ export function createMfa(db: Db, env: Env, box: SecretBox) {
     const factor = await tx.mfaFactor.findUnique({ where: { userId } });
     if (!factor) throw conflict('MFA_SETUP_NOT_STARTED', 'Start the set-up again');
     if (factor.confirmedAt) throw conflict('MFA_ALREADY_ENABLED', 'Two-factor sign-in is already set up for this account');
-    const step = matchTotp(box.open(factor.secretEnc), code.trim(), now.getTime());
+    const step = matchTotp(box.open(factor.secretEnc), normaliseTotp(code), now.getTime());
     if (step === null) return null;
     await tx.mfaFactor.update({ where: { userId }, data: { confirmedAt: now, lastUsedStep: BigInt(step) } });
     return newRecoveryCodes(tx, userId);
@@ -125,8 +127,9 @@ export function createMfa(db: Db, env: Env, box: SecretBox) {
     const factor = await tx.mfaFactor.findUnique({ where: { userId } });
     if (!factor?.confirmedAt) return null;
     const code = input.trim();
-    if (/^\d{6}$/.test(code)) {
-      const step = matchTotp(box.open(factor.secretEnc), code, now.getTime());
+    const digits = normaliseTotp(code);
+    if (/^\d{6}$/.test(digits)) {
+      const step = matchTotp(box.open(factor.secretEnc), digits, now.getTime());
       if (step === null || (factor.lastUsedStep !== null && BigInt(step) <= factor.lastUsedStep)) return null;
       await tx.mfaFactor.update({ where: { userId }, data: { lastUsedStep: BigInt(step) } });
       return 'TOTP';

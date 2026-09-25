@@ -100,6 +100,18 @@ describeDb('MFA (spec §3.5)', () => {
     expect(audit.changes).toEqual({ mfa: 'TOTP' });
   });
 
+  it('an authenticator code is accepted with the space the apps display ("123 456")', async () => {
+    const u = await supervisor();
+    const first = await login(app, u.email);
+    const { secret } = (await post(app, '/mfa/enroll/start', { challenge: first.body.mfa.challenge })).body;
+    const spaced = (c: string) => `${c.slice(0, 3)} ${c.slice(3)}`;
+    expect((await post(app, '/mfa/enroll/confirm', { challenge: first.body.mfa.challenge, code: spaced(totp(secret)) })).status).toBe(200);
+    const next = await login(app, u.email);
+    const ok = await post(app, '/mfa/verify', { challenge: next.body.mfa.challenge, code: ` ${spaced(await freshCode(u.id, secret))} ` });
+    expect(ok.status).toBe(200);
+    expect((await db.auditEntry.findFirstOrThrow({ where: { action: 'LOGIN_SUCCEEDED', resourceId: String(u.id) }, orderBy: { id: 'desc' } })).changes).toEqual({ mfa: 'TOTP' });
+  });
+
   it('a recovery code signs in once, in any case and with or without the dash', async () => {
     const u = await hr();
     const { recoveryCodes } = await enrol(app, u.email);
