@@ -64,7 +64,7 @@ export function createCredentialsRouter(catalog: CatalogService, records: Record
   });
 
   // ── Records and lifecycle (§5.1.5, §5.2) ──────────────────────────────────
-  r.get('/credentials', authorize('credentials.read'), async (req, res) => { res.json(await records.list(authOf(res), ListQuery.parse(req.query))); });
+  r.get('/credentials', authorize('credentials.read'), async (req, res) => { res.json(await records.list(authOf(res), ListQuery.parse(req.query), rid(res))); });
   r.post('/credentials', authorize('credentials.manage'), async (req, res) => {
     res.status(201).json(await records.record(authOf(res), RecordBody.parse(req.body), false, rid(res)));
   });

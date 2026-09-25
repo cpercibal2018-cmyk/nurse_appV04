@@ -172,3 +172,18 @@ export function useBaselineRequest() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['approvals'] }),
   });
 }
+
+/** Spec §8.3.2 (D-54): the lawful basis per category of sensitive data. */
+export interface RegisterEntry {
+  id: number; dataCategory: 'IQAMA' | 'PASSPORT' | 'SCFHS_REG' | 'IDENTITY_SCAN';
+  lawfulBasis: 'EMPLOYMENT_CONTRACT' | 'LEGAL_OBLIGATION' | 'CONSENT' | 'VITAL_INTEREST' | 'PUBLIC_INTEREST';
+  purpose: string; retentionRule: string; isActive: boolean; updatedAt: string;
+}
+export const useProcessingRegister = () => useQuery({ queryKey: ['pdpl', 'register'], queryFn: () => http.get<{ items: RegisterEntry[] }>('/pdpl/register') });
+export function useUpdateRegister() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: { purpose?: string; retentionRule?: string; isActive?: boolean; reason: string } }) => http.patch<RegisterEntry>(`/pdpl/register/${id}`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pdpl'] }),
+  });
+}

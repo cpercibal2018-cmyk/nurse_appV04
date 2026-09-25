@@ -11,7 +11,7 @@ import type { FieldDef } from './catalog.js';
 /** Prisma `include` that loads a template's fields in their stored order. */
 export const WITH_FIELDS = { fields: { orderBy: { ordinal: 'asc' } } } as const;
 
-type FieldRow = Pick<CredentialTemplateField, 'key' | 'label' | 'type' | 'required' | 'displayOrder' | 'isIssueDate' | 'isExpiryDate'>;
+type FieldRow = Pick<CredentialTemplateField, 'key' | 'label' | 'type' | 'required' | 'displayOrder' | 'isIssueDate' | 'isExpiryDate' | 'pdplCategory'>;
 
 /** Canonical form of one definition. */
 export function canonicalField(d: FieldRow | FieldDef): FieldDef {
@@ -19,6 +19,7 @@ export function canonicalField(d: FieldRow | FieldDef): FieldDef {
     key: d.key, label: d.label, type: d.type, required: d.required, displayOrder: d.displayOrder,
     ...(d.isIssueDate ? { isIssueDate: true } : {}),
     ...(d.isExpiryDate ? { isExpiryDate: true } : {}),
+    ...(d.pdplCategory ? { pdplCategory: d.pdplCategory as FieldDef['pdplCategory'] } : {}),
   };
 }
 
@@ -29,6 +30,7 @@ export const fieldRows = (templateId: number, defs: readonly FieldDef[]) =>
   defs.map((d, ordinal) => ({
     templateId, ordinal, key: d.key, label: d.label, type: d.type, required: d.required,
     displayOrder: d.displayOrder, isIssueDate: d.isIssueDate === true, isExpiryDate: d.isExpiryDate === true,
+    pdplCategory: d.pdplCategory ?? null,
   }));
 
 export type TemplateView = CredentialTemplate & { fieldDefs: FieldDef[] };

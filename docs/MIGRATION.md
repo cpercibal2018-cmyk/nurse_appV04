@@ -41,7 +41,7 @@ The V03 remediation tracker (`AIGH_v2_8_7_remediation_tracker.md` in the V03 rep
 | B-04 | CSRF on every mutating endpoint | **Done** — enforced centrally in `authenticate` for every state-changing request (header bound to the token + `Origin`); tested |
 | B-05 | Database privilege separation; contract lifecycle as the runtime role | **Written, to be applied** — roles and grants in [`ops/db`](../ops/db/README.md), tested in CI; not yet applied on a server ([DEPLOYMENT.md §6](DEPLOYMENT.md#6-known-gaps-before-production)). Contract transitions are enforced by the service's transition map, not a database guard function |
 | B-06 | Canonical audit DDL in the migration chain; single write path | **Done** — `fn_append_audit_entry` in `init`; append-only trigger. Post-restore check not re-run on V04 |
-| B-07 | V35 PDPL encryption, processing register, data-subject requests | **Deferred** (not built) |
+| B-07 | V35 PDPL encryption, processing register, data-subject requests | Encryption, blind index, processing register and log redaction **done** (D-54). Data-subject requests (access, export, erasure by destroying the employee's key) **open** — next |
 | B-08 | Idempotency with minimal replay payloads | **Done** — `[I]` endpoints store identifier-only responses; expired keys purged daily |
 | B-09 | Eligibility refresh in the caller's transaction; publish-time re-validation | **Done** |
 | B-10 | Worker leases for every job | **Done** for the three V04 jobs. The other V03 jobs (SMTP queue, SCFHS sync, backup monitor, quarantine scan) do not exist in V04 |

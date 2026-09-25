@@ -24,6 +24,8 @@ export const FieldDefSchema = z.strictObject({
   displayOrder: z.number().int().min(0),
   isIssueDate: z.boolean().optional(),
   isExpiryDate: z.boolean().optional(),
+  /** D-54: sensitive personal data (spec §8.3.1) — encrypted per employee and blind-indexed. Text fields only. */
+  pdplCategory: z.enum(['IQAMA', 'PASSPORT', 'SCFHS_REG']).optional(),
 });
 export type FieldDef = z.infer<typeof FieldDefSchema>;
 
@@ -37,9 +39,12 @@ export const FieldDefs = z.array(FieldDefSchema).max(30).superRefine((defs, ctx)
     }
     // One field as both would make every credential of the type expire on the day it was issued.
     if (d.isIssueDate && d.isExpiryDate) ctx.addIssue({ code: 'custom', message: `${d.key}: a field cannot be both the issue date and the expiry date` });
+    if (d.pdplCategory && d.type !== 'text') ctx.addIssue({ code: 'custom', message: `${d.key}: only a text field can hold a sensitive identifier` });
   }
   if (defs.filter((d) => d.isIssueDate).length > 1) ctx.addIssue({ code: 'custom', message: 'At most one issue-date field' });
   if (defs.filter((d) => d.isExpiryDate).length > 1) ctx.addIssue({ code: 'custom', message: 'At most one expiry-date field' });
+  const categories = defs.flatMap((d) => (d.pdplCategory ? [d.pdplCategory] : []));
+  if (new Set(categories).size !== categories.length) ctx.addIssue({ code: 'custom', message: 'Each sensitive category at most once per credential type' });
 }).transform((defs) => defs.map(canonicalField)); // same shape as stored rows, so comparisons are exact
 
 /** Every catalog change goes to a second administrator (D-24), who needs to know why. */

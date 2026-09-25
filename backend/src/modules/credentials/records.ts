@@ -18,6 +18,7 @@ import { Prisma, type Db, type DbClient } from '../../lib/prisma.js';
 import { scanOrReject, type UploadScanner } from '../../lib/scanner.js';
 import { checkUpload } from '../../lib/uploads.js';
 import type { DocumentAccess } from '../documents/access.js';
+import type { Protection } from '../pdpl/protection.js';
 import { refreshEligibility } from '../eligibility/state.service.js';
 import { unitScope, type AuthContext } from '../users/access.js';
 import { HR_ROLES, viewerOf, type Viewer } from './access.js';
@@ -47,6 +48,8 @@ export const ListQuery = z.object({
   templateId: z.coerce.number().int().positive().optional(),
   status: z.enum(['PendingVerification', 'Valid', 'ExpiringSoon', 'Expired', 'Suspended', 'Revoked']).optional(),
   queue: z.enum(['review']).optional(),
+  /** D-54: exact match on an Iqama, passport or SCFHS number (blind index). HR scope only. */
+  identifier: z.string().trim().min(3).max(40).optional(),
 });
 
 /** Stored status for a verified credential on a given day (L1). */
@@ -115,7 +118,7 @@ const withRelations = {
   employee: { select: { id: true, fullName: true, jobNumber: true, unitId: true } },
 } satisfies Prisma.CredentialInclude;
 
-function present(c: WithRelations, viewer: Viewer, today: IsoDate) {
+function present(c: WithRelations & { personalDataErased?: boolean }, viewer: Viewer, today: IsoDate) {
   const pendingDoc = c.documents.some((d) => d.reviewStatus === 'PENDING_REVIEW' && d.scanStatus !== 'INFECTED');
   const base = {
     id: c.id, employeeId: c.employeeId, employee: { fullName: c.employee.fullName, jobNumber: c.employee.jobNumber, unitId: c.employee.unitId },
@@ -127,11 +130,26 @@ function present(c: WithRelations, viewer: Viewer, today: IsoDate) {
   if (viewer === 'SUPERVISOR') return base; // compliance view (spec §5.2)
   return {
     ...base, trackingData: c.trackingData, pendingData: c.pendingData, statusReason: c.statusReason,
+    ...(c.personalDataErased ? { personalDataErased: true } : {}), // D-54: sensitive values erased (§8.3.3)
     latestEvidenceId: c.latestEvidenceId, verifiedAt: c.verifiedAt, documentsPendingReview: c.documents.filter((d) => d.reviewStatus === 'PENDING_REVIEW').length,
   };
 }
 
-export function createRecordService(db: Db, documents: DocumentAccess, scanner: UploadScanner, maxUploadBytes: number) {
+export function createRecordService(db: Db, documents: DocumentAccess, scanner: UploadScanner, maxUploadBytes: number, protection: Protection) {
+  /** The credential with its sensitive values opened (D-54) — for viewers who see tracking data. */
+  async function revealed<T extends { employeeId: number; trackingData: unknown; pendingData: unknown }>(c: T, cache = new Map<number, Buffer | null>()) {
+    const tracking = await protection.reveal(db, c.employeeId, c.trackingData, cache);
+    const pending = c.pendingData && typeof c.pendingData === 'object' && 'trackingData' in c.pendingData
+      ? await protection.reveal(db, c.employeeId, (c.pendingData as { trackingData: unknown }).trackingData, cache)
+      : { data: undefined, erased: false };
+    return {
+      ...c,
+      trackingData: tracking.data as T['trackingData'],
+      pendingData: (pending.data === undefined ? c.pendingData : { ...(c.pendingData as object), trackingData: pending.data }) as T['pendingData'],
+      personalDataErased: tracking.erased || pending.erased,
+    };
+  }
+
   async function load(tx: DbClient, id: number) {
     const c = await tx.credential.findUnique({ where: { id }, include: withRelations });
     if (!c) throw notFound('Credential not found');
@@ -145,33 +163,47 @@ export function createRecordService(db: Db, documents: DocumentAccess, scanner: 
     refreshEligibility(tx, employeeId, event, { actorUserId: auth.user.id, requestId });
 
   return {
-    async list(auth: AuthContext, q: z.infer<typeof ListQuery>) {
+    async list(auth: AuthContext, q: z.infer<typeof ListQuery>, requestId?: string) {
       const today = riyadhDate();
       const hr = await unitScope(db, auth, HR_ROLES);
       const sup = await unitScope(db, auth, ['SUPERVISOR']);
+      let byIdentifier: number[] | undefined;
+      if (q.identifier) {
+        // Searching by a sensitive identifier is an HR task (D-54); the value is never stored or logged.
+        if (!hr.all && hr.unitIds.size === 0) throw new HttpError(403, 'FORBIDDEN', 'Searching by identifier number is limited to HR');
+        byIdentifier = await protection.findByIdentifier(db, q.identifier);
+        await appendAudit(db, { actorUserId: auth.user.id, action: 'IDENTIFIER_SEARCHED', resource: 'credential', changes: { matches: byIdentifier.length }, requestId });
+      }
       const scopeAll = hr.all || sup.all;
       const units = new Set([...(hr.all ? [] : hr.unitIds), ...(sup.all ? [] : sup.unitIds)]);
       const rows = await db.credential.findMany({
         where: {
           ...(q.employeeId ? { employeeId: q.employeeId } : {}), ...(q.templateId ? { templateId: q.templateId } : {}), ...(q.status ? { status: q.status } : {}),
           ...(q.queue === 'review' ? { OR: [{ status: 'PendingVerification' as const }, { pendingData: { not: Prisma.DbNull } }, { documents: { some: { reviewStatus: 'PENDING_REVIEW' as const } } }] } : {}),
-          employee: { deletedAt: null, ...(scopeAll ? {} : { unitId: { in: [...units] } }) },
+          ...(byIdentifier ? { id: { in: byIdentifier } } : {}),
+          employee: { deletedAt: null, ...(byIdentifier ? (hr.all ? {} : { unitId: { in: [...hr.unitIds] } }) : scopeAll ? {} : { unitId: { in: [...units] } }) },
         },
         include: withRelations,
         orderBy: [{ expiryDate: 'asc' }, { id: 'asc' }],
         take: 1000,
       });
-      // Each row is shaped by how the caller relates to that employee.
-      return {
-        items: rows.map((c) => present(c, hr.all || (c.employee.unitId !== null && hr.unitIds.has(c.employee.unitId)) ? 'HR' : 'SUPERVISOR', today)),
-        total: rows.length,
-      };
+      // Each row is shaped by how the caller relates to that employee; only HR rows carry (opened) tracking data.
+      const cache = new Map<number, Buffer | null>();
+      const items = [];
+      for (const c of rows) {
+        const viewer = hr.all || (c.employee.unitId !== null && hr.unitIds.has(c.employee.unitId)) ? 'HR' : 'SUPERVISOR';
+        items.push(present(viewer === 'HR' ? await revealed(c, cache) : c, viewer, today));
+      }
+      return { items, total: items.length };
     },
 
     async listOwn(auth: AuthContext) {
       if (auth.user.employeeId === null) return { items: [], total: 0 };
       const rows = await db.credential.findMany({ where: { employeeId: auth.user.employeeId }, include: withRelations, orderBy: { id: 'asc' } });
-      return { items: rows.map((c) => present(c, 'OWN', riyadhDate())), total: rows.length };
+      const cache = new Map<number, Buffer | null>();
+      const items = [];
+      for (const c of rows) items.push(present(await revealed(c, cache), 'OWN', riyadhDate()));
+      return { items, total: items.length };
     },
 
     /** The requirements that apply to the caller (their unit and position). */
@@ -190,7 +222,7 @@ export function createRecordService(db: Db, documents: DocumentAccess, scanner: 
     async get(auth: AuthContext, id: number) {
       const c = await load(db, id);
       const { viewer } = await viewerOf(db, auth, c.employeeId, ['OWN', 'HR', 'SUPERVISOR']);
-      return present(c, viewer, riyadhDate());
+      return present(viewer === 'SUPERVISOR' ? c : await revealed(c), viewer, riyadhDate());
     },
 
     /** Records a credential as PendingVerification (HR for a scoped employee, or the employee themselves). */
@@ -202,13 +234,15 @@ export function createRecordService(db: Db, documents: DocumentAccess, scanner: 
       if (!tpl.isActive) throw new HttpError(422, 'TEMPLATE_INACTIVE', 'The credential template is inactive');
       const dates = readTrackingData(tpl, body.trackingData, body);
       return db.$transaction(async (tx) => {
+        const sealed = await protection.seal(tx, body.employeeId, tpl.fieldDefs, body.trackingData);
         const c = await tx.credential.create({
           data: {
-            employeeId: body.employeeId, templateId: body.templateId, status: 'PendingVerification', trackingData: body.trackingData,
+            employeeId: body.employeeId, templateId: body.templateId, status: 'PendingVerification', trackingData: sealed,
             issueDate: dates.issueDate ? toDbDate(dates.issueDate) : null, expiryDate: dates.expiryDate ? toDbDate(dates.expiryDate) : null,
             expiryDateHijri: dates.expiryDate ? toHijriIso(dates.expiryDate) : null,
           },
         });
+        await protection.index(tx, c.id, tpl.fieldDefs, body.trackingData);
         await appendAudit(tx, { actorUserId: auth.user.id, action: 'CREDENTIAL_RECORDED', resource: 'credential', resourceId: c.id, changes: { employeeId: body.employeeId, templateId: body.templateId, ...dates, selfService }, requestId });
         await refresh(tx, body.employeeId, 'CREDENTIAL_RECORDED', auth, requestId);
         return { id: c.id };
@@ -259,7 +293,8 @@ export function createRecordService(db: Db, documents: DocumentAccess, scanner: 
         const tpl = presentTemplate(await tx.credentialTemplate.findUniqueOrThrow({ where: { id: c.templateId }, include: WITH_FIELDS }));
         const dates = readTrackingData(tpl, body.trackingData, body);
         if (tpl.hasExpiry && !dates.expiryDate) throw new HttpError(422, 'EXPIRY_DATE_REQUIRED', 'A renewal must state the new expiry date');
-        const pendingData = { trackingData: body.trackingData, ...dates, submittedById: auth.user.id, submittedAt: new Date().toISOString() };
+        const sealed = await protection.seal(tx, c.employeeId, tpl.fieldDefs, body.trackingData);
+        const pendingData = { trackingData: sealed, ...dates, submittedById: auth.user.id, submittedAt: new Date().toISOString() };
         await tx.credential.update({ where: { id }, data: { pendingData } });
         await appendAudit(tx, { actorUserId: auth.user.id, action: 'CREDENTIAL_RENEWAL_SUBMITTED', resource: 'credential', resourceId: id, changes: { employeeId: c.employeeId, ...dates }, requestId });
         await refresh(tx, c.employeeId, 'CREDENTIAL_RENEWAL_SUBMITTED', auth, requestId);
@@ -293,6 +328,10 @@ export function createRecordService(db: Db, documents: DocumentAccess, scanner: 
         });
         if (evidenceId) await tx.documentVersion.update({ where: { id: evidenceId }, data: { reviewStatus: 'APPROVED', reviewedById: auth.user.id, reviewedAt: now } });
         await tx.documentVersion.updateMany({ where: { credentialId: id, reviewStatus: 'PENDING_REVIEW' }, data: { reviewStatus: 'REJECTED', reviewedById: auth.user.id, reviewedAt: now } });
+        // The approved values replace the searchable identifiers (D-54).
+        const tpl = presentTemplate(await tx.credentialTemplate.findUniqueOrThrow({ where: { id: c.templateId }, include: WITH_FIELDS }));
+        const opened = await protection.reveal(tx, c.employeeId, pending.trackingData);
+        await protection.index(tx, id, tpl.fieldDefs, opened.data as Record<string, string | number>);
         if (c.graceCycleId && !c.graceCycleId.endsWith(':closed')) {
           await appendAudit(tx, { actorUserId: auth.user.id, action: 'GRACE_COMPLETED', resource: 'credential', resourceId: id, changes: { employeeId: c.employeeId, cycleId: c.graceCycleId, reason: 'RENEWAL_APPROVED' }, requestId, priority: 'HIGH' });
         }
