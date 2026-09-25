@@ -8,7 +8,7 @@
 #
 # Checks: site (HTTPS health through Caddy), containers (live colour, Caddy,
 # ClamAV), database, wal (archiving current), backup (base backup < 26 h),
-# offsite (copy < 1 h), disk, cert (renewal working), reboot.
+# offsite (copy ≤ 20 min), disk, cert (renewal working), reboot.
 #
 # Alerts go by e-mail and/or webhook, set in /etc/nurseapp/monitor.env (0600):
 #   ALERT_EMAILS=it-oncall@hospital.sa,dba@hospital.sa

@@ -56,7 +56,7 @@ The V03 remediation tracker (`AIGH_v2_8_7_remediation_tracker.md` in the V03 rep
 | B-19 | Bundle gate in CI; entry < 200 KB gz | **Done** — about 173 KB gz |
 | B-20 | Reverse proxy configuration, TLS, HTTPS-only exposure | **Done in the repository** — the web image's nginx (security headers, HSTS), Caddy with automatic Let's Encrypt certificates on the single VPS ([ops/vps](../ops/vps/README.md), D-57), the TLS proxy used by the HTTPS browser test ([ops/e2e](../ops/e2e/README.md)), and the Google Cloud design's regional HTTPS load balancer ([ops/gcp](../ops/gcp/README.md)). Applying it waits on the server in the Kingdom (U1) |
 | B-21 | Backup scripts on real PostgreSQL 15 with a timed restore drill | Verified by the backup kit ([ops/backup/README.md](../ops/backup/README.md) §5); the schedule is 01:00 Riyadh (D-40, [DEPLOYMENT.md §5](DEPLOYMENT.md#5-backups-and-restore)) |
-| B-22 | Decide `archive_timeout` (RPO) | **Open** — owner decision; the kit uses 300 s |
+| B-22 | Decide `archive_timeout` (RPO) | **Decided** (D-58): at most **5 minutes** of changes may be lost — `archive_timeout = 300`; on the VPS the off-site copy also runs every 5 minutes, so the bound holds if the whole server is lost |
 | B-23 | Positions route `/api/v1/positions` | **Done** |
 | B-24 | Bulk bed capacity, CSV import, configuration grid | **Done** |
 | B-25 | Fail-closed KSA residency check | **Done** |

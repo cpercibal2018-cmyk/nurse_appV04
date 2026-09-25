@@ -11,7 +11,7 @@
 #   2. turns on WAL archiving through ops/backup/scripts/wal-archive.sh
 #      (continuous: every change is encrypted into /srv/backup/wal);
 #   3. installs the nightly base backup (01:00 Riyadh, aigh-backup.timer);
-#   4. installs the off-site copy (offsite-sync.sh, every 15 minutes) — it
+#   4. installs the off-site copy (offsite-sync.sh, every 5 minutes) — it
 #      stays inactive until /etc/nurseapp/offsite.env names the destination.
 # Restores and the restore drill: ops/backup/README.md.
 
@@ -40,7 +40,7 @@ cat > "/etc/postgresql/$PG/main/conf.d/20-archive.conf" <<CONF
 # ops/vps/setup-backup.sh — continuous, encrypted WAL archive (ops/backup)
 wal_level = replica
 archive_mode = on
-archive_timeout = 300
+archive_timeout = 300   # D-58: at most 5 minutes of changes may be lost (B-22)
 archive_command = 'BACKUP_STORAGE_PATH=$STORE BACKUP_ENCRYPTION_KEY_PATH=$PUB GNUPGHOME=$GNUPG BACKUP_LOG_FILE=$LOG bash "$KIT/wal-archive.sh" %p %f'
 max_wal_senders = 3
 CONF
@@ -65,7 +65,7 @@ ENV
 sed "s#/opt/nurse_appV04/ops/backup/scripts#$KIT#" /opt/nurseapp/backup/systemd/aigh-backup.service > /etc/systemd/system/aigh-backup.service
 install -m 644 /opt/nurseapp/backup/systemd/aigh-backup.timer /etc/systemd/system/aigh-backup.timer
 
-echo "== 4. off-site copy (every 15 minutes, once /etc/nurseapp/offsite.env exists)"
+echo "== 4. off-site copy (every 5 minutes, once /etc/nurseapp/offsite.env exists)"
 command -v rclone >/dev/null || apt-get install -y -q rclone
 cat > /etc/systemd/system/nurseapp-offsite.service <<UNIT
 [Unit]
@@ -77,9 +77,9 @@ ExecStart=/bin/bash /opt/nurseapp/vps/offsite-sync.sh
 UNIT
 cat > /etc/systemd/system/nurseapp-offsite.timer <<UNIT
 [Unit]
-Description=Off-site backup copy every 15 minutes
+Description=Off-site backup copy every 5 minutes (D-58: at most 5 minutes lost, even if the VPS is)
 [Timer]
-OnCalendar=*:0/15
+OnCalendar=*:0/5
 Persistent=true
 [Install]
 WantedBy=timers.target

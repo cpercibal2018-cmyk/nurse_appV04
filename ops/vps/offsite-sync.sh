@@ -1,6 +1,6 @@
 #!/bin/bash
 # ops/vps/offsite-sync.sh — copies the encrypted backups off the VPS (decision
-# D-57), every 15 minutes (nurseapp-offsite.timer). A single machine is a
+# D-57), every 5 minutes (nurseapp-offsite.timer; D-58). A single machine is a
 # single point of loss: without this copy, losing the VPS loses the backups too.
 #
 # /etc/nurseapp/offsite.env (root-only):

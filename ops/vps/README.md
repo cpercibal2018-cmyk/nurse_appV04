@@ -11,7 +11,7 @@ How V04 runs on one Ubuntu 24.04 virtual server with no managed cloud services, 
                     │  Docker network 172.30.0.0/24, no published ports
                     ▼  db.host = the Docker host address (172.17.0.1), firewall: containers only
           PostgreSQL 15 on the host  ──WAL archive + nightly base backup (ops/backup, GPG)──▶ /srv/backup
-                                                                          └─ every 15 min ─▶ off-site bucket (in the Kingdom)
+                                                                          └─ every 5 min ──▶ off-site bucket (in the Kingdom)
  Admin: SSH with keys only.   GitHub Actions: SSH key that can run one command (nurseapp-release).
 ```
 
@@ -84,7 +84,7 @@ The backup kit ([ops/backup](../backup/README.md)) runs unchanged, on the host, 
    gpg --armor --export-secret-keys it@hospital > backup-private.asc   # → the offline key store only
    ```
    The VPS gets only the public half: it can encrypt its backups but never read them — a stolen server does not give away its own backups.
-2. **Turn it on:** `scp backup.pub <you>@vps:` then `sudo BACKUP_PUBKEY=~/backup.pub /opt/nurseapp/vps/setup-backup.sh`. [`setup-backup.sh`](setup-backup.sh) turns on continuous WAL archiving (every change, encrypted, into `/srv/backup/wal`; at most 5 minutes behind — `archive_timeout`, open decision B-22), the nightly encrypted base backup at 01:00 Riyadh, and the off-site copy. Take the first base backup at once: `sudo systemctl start aigh-backup.service`.
+2. **Turn it on:** `scp backup.pub <you>@vps:` then `sudo BACKUP_PUBKEY=~/backup.pub /opt/nurseapp/vps/setup-backup.sh`. [`setup-backup.sh`](setup-backup.sh) turns on continuous WAL archiving (every change, encrypted, into `/srv/backup/wal`; at most 5 minutes behind — `archive_timeout`, decided D-58), the nightly encrypted base backup at 01:00 Riyadh, and the off-site copy. Take the first base backup at once: `sudo systemctl start aigh-backup.service`.
 3. **Off-site copy.** One machine is one point of loss: the backups must also leave it. Create a bucket at an S3-compatible object store **in the Kingdom**, with **versioning on** and a lifecycle rule **deleting non-current versions after 31 days**; give the VPS credentials that can write it. Then:
    ```bash
    sudo rclone config --config /etc/nurseapp/rclone.conf          # a remote, e.g. "ksa-backup"
@@ -92,7 +92,7 @@ The backup kit ([ops/backup](../backup/README.md)) runs unchanged, on the host, 
    sudo chmod 600 /etc/nurseapp/offsite.env /etc/nurseapp/rclone.conf
    sudo systemctl start nurseapp-offsite.service && tail /var/log/aigh-backup.log
    ```
-   [`offsite-sync.sh`](offsite-sync.sh) mirrors the WAL archive, the base backups and the document vault (all already encrypted) every 15 minutes. Versioning keeps anything deleted on the VPS — by retention, by an erasure (D-55) or by an intruder — for 31 days, which is the backup window the erasure record states.
+   [`offsite-sync.sh`](offsite-sync.sh) mirrors the WAL archive, the base backups and the document vault (all already encrypted) every 5 minutes. Versioning keeps anything deleted on the VPS — by retention, by an erasure (D-55) or by an intruder — for 31 days, which is the backup window the erasure record states.
 4. **Restores** never go over the live database. The kit restores to a *second* cluster on another port (`RESTORE_PORT`), to any instant (PITR), on this VPS or a new one; you check it, then switch. Follow [ops/backup/README.md](../backup/README.md) — including the **restore drill before go-live**, run with the private key on the machine doing the restore. Losing the VPS entirely: a new VPS, §2–§3 with the saved `/etc/nurseapp`, `rclone copy` the bucket back, restore, release.
 
 ## 6. Releases: GitHub Actions, blue/green
@@ -150,7 +150,7 @@ It runs the bootstrap command ([`backend/src/cli/bootstrap.ts`](../../backend/sr
 
 ### Alerts
 
-[`monitor.sh`](monitor.sh) runs every 5 minutes (`nurseapp-monitor.timer`) and checks: the site over HTTPS through Caddy (and the database behind it), the live colour's containers plus Caddy and ClamAV, PostgreSQL, WAL archiving (last segment ≤ 30 min, no failed attempt), the nightly base backup (≤ 26 h), the off-site copy (≤ 1 h), disk (warn 80 %, fail 90 %), the certificate (warn < 14 days, fail < 7 — Caddy renews at 30) and a pending reboot. It alerts when a check starts failing, turns to a warning or recovers, and repeats every 6 hours while something still fails. Who hears it — `/etc/nurseapp/monitor.env` (root, `0600`):
+[`monitor.sh`](monitor.sh) runs every 5 minutes (`nurseapp-monitor.timer`) and checks: the site over HTTPS through Caddy (and the database behind it), the live colour's containers plus Caddy and ClamAV, PostgreSQL, WAL archiving (last segment ≤ 30 min, no failed attempt), the nightly base backup (≤ 26 h), the off-site copy (≤ 20 min), disk (warn 80 %, fail 90 %), the certificate (warn < 14 days, fail < 7 — Caddy renews at 30) and a pending reboot. It alerts when a check starts failing, turns to a warning or recovers, and repeats every 6 hours while something still fails. Who hears it — `/etc/nurseapp/monitor.env` (root, `0600`):
 
 ```bash
 ALERT_EMAILS=it-oncall@hospital.sa,dba@hospital.sa
