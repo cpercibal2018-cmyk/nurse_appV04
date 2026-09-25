@@ -8,12 +8,13 @@ import {
 } from './catalog.js';
 import { ApproveRenewalBody, DecisionBody, ListQuery, RecordBody, RenewalBody, SelfRecordBody, VerifyBody, type RecordService } from './records.js';
 import { fileHeaders, LinkBody } from '../documents/access.js';
+import type { ScfhsService } from './scfhs.js';
 
 const IdParam = z.object({ id: z.coerce.number().int().positive() });
 const DocParam = z.object({ id: z.coerce.number().int().positive(), docId: z.coerce.number().int().positive() });
 
 /** Credentials, requirements, eligibility and waivers (spec §5, §6.1). */
-export function createCredentialsRouter(catalog: CatalogService, records: RecordService, eligibility: ReturnType<typeof createEligibilityService>, maxUploadBytes: number) {
+export function createCredentialsRouter(catalog: CatalogService, records: RecordService, eligibility: ReturnType<typeof createEligibilityService>, maxUploadBytes: number, scfhs: ScfhsService) {
   const r = Router();
   const rid = (res: express.Response) => res.locals.requestId as string;
 
@@ -60,18 +61,39 @@ export function createCredentialsRouter(catalog: CatalogService, records: Record
   r.post('/credentials/me', authorize('credentials.self'), async (req, res) => {
     const auth = authOf(res);
     if (auth.user.employeeId === null) throw new HttpError(403, 'NO_EMPLOYEE_RECORD', 'Your account is not linked to an employee record');
-    res.status(201).json(await records.record(auth, { ...SelfRecordBody.parse(req.body), employeeId: auth.user.employeeId }, true, rid(res)));
+    const created = await records.record(auth, { ...SelfRecordBody.parse(req.body), employeeId: auth.user.employeeId }, true, rid(res));
+    // Spec §5.4: checked with SCFHS on submission; the nurse sees only that it was recorded.
+    await scfhs.check(created.id, 'ON_SUBMIT', auth.user.id, rid(res));
+    res.status(201).json(created);
   });
 
   // ── Records and lifecycle (§5.1.5, §5.2) ──────────────────────────────────
   r.get('/credentials', authorize('credentials.read'), async (req, res) => { res.json(await records.list(authOf(res), ListQuery.parse(req.query), rid(res))); });
   r.post('/credentials', authorize('credentials.manage'), async (req, res) => {
-    res.status(201).json(await records.record(authOf(res), RecordBody.parse(req.body), false, rid(res)));
+    const auth = authOf(res);
+    const created = await records.record(auth, RecordBody.parse(req.body), false, rid(res));
+    res.status(201).json({ ...created, scfhs: await scfhs.check(created.id, 'ON_SUBMIT', auth.user.id, rid(res)) });
   });
   // Own-or-scoped checks happen in the service, so these accept any signed-in user.
   r.get('/credentials/:id', async (req, res) => { res.json(await records.get(authOf(res), IdParam.parse(req.params).id)); });
   r.post('/credentials/:id/verify', authorize('credentials.manage'), async (req, res) => {
     res.json(await records.verify(authOf(res), IdParam.parse(req.params).id, VerifyBody.parse(req.body ?? {}), rid(res)));
+  });
+  // Spec §5.4 (D-64): check with SCFHS now, and the history of checks. HR within scope.
+  r.post('/credentials/:id/scfhs-check', authorize('credentials.manage'), async (req, res) => {
+    const auth = authOf(res);
+    const { id } = IdParam.parse(req.params);
+    await scfhs.assertHr(auth, id);
+    const result = await scfhs.check(id, 'MANUAL', auth.user.id, rid(res));
+    if (!result.checked) throw new HttpError(422, `SCFHS_${result.skipped}`, result.skipped === 'NOT_ENABLED'
+      ? 'This credential type is not checked with SCFHS' : result.skipped === 'ERASED' ? 'The registration number was erased (data-subject request)' : 'No SCFHS registration number is recorded on this credential');
+    res.json({ ...result, driver: scfhs.driver });
+  });
+  r.get('/credentials/:id/scfhs-checks', authorize('credentials.manage'), async (req, res) => {
+    const auth = authOf(res);
+    const { id } = IdParam.parse(req.params);
+    await scfhs.assertHr(auth, id);
+    res.json({ items: await scfhs.history(id), driver: scfhs.driver });
   });
   r.post('/credentials/:id/suspend', authorize('credentials.manage'), async (req, res) => {
     res.json(await records.decide(authOf(res), IdParam.parse(req.params).id, 'Suspended', DecisionBody.parse(req.body).reason, rid(res)));

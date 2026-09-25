@@ -355,6 +355,7 @@ model Employee {
   attendanceEvents AttendanceEvent[]
   dataKey          EmployeeKey?
   subjectRequests  DataSubjectRequest[]
+  scfhsChecks      ScfhsCheck[]
 
   @@index([unitId])
   @@index([positionCode])
@@ -456,6 +457,10 @@ model CredentialTemplate {
   gracePeriodDays Int      @default(0) @map("grace_period_days")
   displayOrder    Int      @default(0) @map("display_order")
   isActive        Boolean  @default(true) @map("is_active")
+  /// Spec §5.4 (D-64): holders' licences are checked with SCFHS (needs a SCFHS_REG field).
+  scfhsEnabled     Boolean  @default(false) @map("scfhs_enabled")
+  /// SCFHS reporting SUSPENDED or REVOKED suspends the credential at once (otherwise HR is told).
+  scfhsAutoSuspend Boolean  @default(false) @map("scfhs_auto_suspend")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   category     CredentialCategory        @relation(fields: [categoryCode], references: [code])
@@ -548,6 +553,7 @@ model Credential {
   template        CredentialTemplate    @relation(fields: [templateId], references: [id])
   documents       DocumentVersion[]
   identifierIndex PdplIdentifierIndex[]
+  scfhsChecks     ScfhsCheck[]
   latestEvidence  DocumentVersion?      @relation("latestEvidence", fields: [latestEvidenceId], references: [id])
 
   @@index([employeeId, status])
@@ -1233,4 +1239,48 @@ model ApiClient {
   revokedBy User? @relation("apiClientRevoker", fields: [revokedById], references: [id], onDelete: Restrict)
 
   @@map("api_clients")
+}
+
+/// Spec §5.4 (D-64): every SCFHS licence check — what SCFHS answered and what
+/// the system did. The registration number is kept only as its last four
+/// characters (D-54); the response only as its SHA-256.
+model ScfhsCheck {
+  id                BigInt    @id @default(autoincrement())
+  credentialId      Int       @map("credential_id")
+  employeeId        Int       @map("employee_id")
+  regNumberHint     String    @map("reg_number_hint")
+  requestType       String    @map("request_type")
+  driver            String
+  requestedAt       DateTime  @default(now()) @map("requested_at") @db.Timestamptz
+  respondedAt       DateTime? @map("responded_at") @db.Timestamptz
+  responseStatus    String    @map("response_status")
+  scfhsExpiryDate   String?   @map("scfhs_expiry_date")
+  scfhsSpecialty    String?   @map("scfhs_specialty")
+  scfhsLicenseStatus String?  @map("scfhs_license_status")
+  responseHash      String?   @map("response_hash")
+  errorMessage      String?   @map("error_message")
+  matched           Boolean?
+  discrepancies     String[]
+  action            String
+  actorUserId       Int?      @map("actor_user_id")
+
+  credential Credential @relation(fields: [credentialId], references: [id])
+  employee   Employee   @relation(fields: [employeeId], references: [id])
+
+  @@index([credentialId, requestedAt(sort: Desc)])
+  @@index([responseStatus, requestedAt(sort: Desc)])
+  @@map("scfhs_verification_log")
+}
+
+/// D-64: the simulated SCFHS registry the mock gateway answers from (Dev
+/// Console). Synthetic demonstration entries only — never a copy of real data.
+model MockScfhsRegistry {
+  registrationNumber String   @id @map("registration_number")
+  status             String
+  expiryDate         String?  @map("expiry_date")
+  specialty          String?
+  note               String?
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("mock_scfhs_registry")
 }

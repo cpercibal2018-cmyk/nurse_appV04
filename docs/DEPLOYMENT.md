@@ -54,6 +54,8 @@ Every backend setting is in [`.env.example`](../.env.example) and is validated a
 | `BREAK_GLASS_ALERT_EMAILS` | — | Comma-separated: the CEO and IT Director (spec §3.6) |
 | `SMS_DRIVER` | mock | `mock` keeps texts in the Dev Console SMS inbox and sends nothing (§2.3, D-59); `unifonic` is the live gateway (not built yet) |
 | `UNIFONIC_APP_SID` / `UNIFONIC_SENDER_ID` | — | Required with `SMS_DRIVER=unifonic`: the Unifonic app and the CST-registered Sender ID |
+| `SCFHS_DRIVER` | mock | `mock` answers licence checks from the simulated SCFHS registry in the Dev Console (§2.4, D-64); `live` is the SCFHS verification API (not built yet) |
+| `SCFHS_API_URL` / `SCFHS_API_KEY` | — | Required with `SCFHS_DRIVER=live`: the SCFHS endpoint and key from the SCFHS agreement (U3) |
 | `BREAK_GLASS_ALERT_PHONES` | — | Comma-separated, international format (`+9665…`): texted when the break-glass account signs in (spec §3.6) |
 | `TRUST_PROXY` | false | `true` behind the proxy, so login limits and session history see the client address |
 | `JOBS_MODE` | in-process | `worker` on the API in production (§3) |
@@ -119,6 +121,19 @@ What texts today: the break-glass sign-in, to each `BREAK_GLASS_ALERT_PHONES` nu
 
 Going live: once the Sender ID is registered, build the Unifonic call in `UnifonicSmsGateway.send`, set `SMS_DRIVER=unifonic`, `UNIFONIC_APP_SID` and `UNIFONIC_SENDER_ID`, and send a test text from the inbox.
 
+### 2.4 SCFHS licence checks (simulated until the SCFHS agreement)
+
+Licences of a credential type with **Check with SCFHS** on (Credentials → Catalog; the type needs a field of data category `SCFHS_REG`) are checked with the Saudi Commission for Health Specialties (spec §5.4, D-64): when the credential is recorded, when HR presses **SCFHS → Check with SCFHS now**, and nightly (`scfhs-sync`, 05:00 Riyadh). Every check is kept in `scfhs_verification_log` with the registration number reduced to its last four characters. The service needs the SCFHS agreement (decision gate U3), so production runs with **`SCFHS_DRIVER=mock`**: answers come from **Nursing Administration → SCFHS registry** (System Admin, elevated), where each registration number is given a status — valid, expired, suspended, revoked, or *ERROR* to simulate an outage; an unlisted number answers *not found*. Use synthetic numbers only.
+
+| SCFHS answer | What happens |
+| :--- | :--- |
+| Valid, same expiry date as recorded | Nothing |
+| Valid or expired with a different expiry date, or not found | The scoped HR admins get a HIGH notice (once per answer); the record is never overwritten |
+| Suspended or revoked | With **Suspend on adverse SCFHS status** on the type: the credential is suspended at once (eligibility re-evaluated, audited HIGH `CREDENTIAL_SCFHS_SUSPENDED`) and HR told — revoking stays HR's decision. Otherwise HR is told |
+| Unreachable | Logged as `ERROR`; the nightly run stops after 5 failures in a row and System health shows `SCFHS_UNREACHABLE` |
+
+Going live: implement `LiveScfhsGateway.lookup` (`backend/src/lib/scfhs.ts`) against the SCFHS API contract, set `SCFHS_DRIVER=live`, `SCFHS_API_URL` and `SCFHS_API_KEY`, and check one known licence from the credential's SCFHS drawer.
+
 ## 3. Processes and background jobs
 
 | Process | Command | Notes |
@@ -133,7 +148,7 @@ Going live: once the Sender ID is registered, build the Unifonic call in `Unifon
 | `worker` | Production: the separate worker runs the jobs (spec §10.2) |
 | `off` | Maintenance; nothing runs. Missed periods run when jobs are next enabled |
 
-**Job schedule (Asia/Riyadh, independent of the server time zone):** `daily-transition` 00:05, `expiry-scan` 06:00, `consistency-audit` 03:00 (re-evaluates a random sample of nurses' eligibility — 1%, at least 50 — and corrects any drift, spec §10.8), `request-log-purge` 02:30 (deletes request-log rows older than 365 days, D-52), `mock-sms-purge` 02:40 (deletes texts the mock SMS gateway kept more than 30 days ago, D-59), `vault-reconcile` 04:30 (document vault: removes orphaned objects older than a day, reports missing objects, re-verifies a random 50, counts unencrypted objects, deletes old download links — D-53), `attendance-alerts` every 15 minutes. Running two workers by mistake is safe (leases and unique run keys), but wasteful. A System Admin sees run history and can start a job from **Nursing Administration → Jobs**.
+**Job schedule (Asia/Riyadh, independent of the server time zone):** `daily-transition` 00:05, `expiry-scan` 06:00, `consistency-audit` 03:00 (re-evaluates a random sample of nurses' eligibility — 1%, at least 50 — and corrects any drift, spec §10.8), `request-log-purge` 02:30 (deletes request-log rows older than 365 days, D-52), `mock-sms-purge` 02:40 (deletes texts the mock SMS gateway kept more than 30 days ago, D-59), `scfhs-sync` 05:00 (checks every current licence of an SCFHS-checked type with SCFHS, D-64), `vault-reconcile` 04:30 (document vault: removes orphaned objects older than a day, reports missing objects, re-verifies a random 50, counts unencrypted objects, deletes old download links — D-53), `attendance-alerts` every 15 minutes. Running two workers by mistake is safe (leases and unique run keys), but wasteful. A System Admin sees run history and can start a job from **Nursing Administration → Jobs**.
 
 ## 4. Release procedure
 
@@ -229,6 +244,7 @@ To move the workforce history to another provider: `node dist/cli/exit-package.j
 | **Prisma CLI advisories** | `npm audit`: 4 high-severity advisories in the Prisma CLI's bundled dependencies (`mysql2`, `deepmerge-ts`). The CLI is a development/migration tool; the running API uses `@prisma/client` with the PostgreSQL adapter and does not load the MySQL driver. npm's suggested "fix" downgrades to Prisma 6 (breaking) and was **not** applied | Run migrations from the CI/release host rather than installing dev tools on the runtime host; upgrade Prisma when a patched release exists; re-run `npm audit` at every release |
 | **`pg` 9 not yet usable** | Inside an interactive transaction Prisma 7.10's query interpreter reads the relations of a multi-relation `include` concurrently on the transaction's single `pg` client ([prisma/prisma#29407](https://github.com/prisma/prisma/issues/29407)). `pg` 8 queues the queries (results are correct) but prints its "client is already executing a query" deprecation, which `pg` 9 turns into a failure. The application's own code issues transaction queries one at a time | Stay on `pg` 8 until a Prisma release with the fix; then upgrade both together and run the full test suite |
 | **SMS simulated** (D-59) | Texts (the break-glass alert, D-48) go through the SMS gateway, but with `SMS_DRIVER=mock` they are kept in the Dev Console SMS inbox and not sent (§2.3) | The hospital's Commercial Registration and a CST-registered Sender ID; then the Unifonic call in `UnifonicSmsGateway` |
+| **SCFHS simulated** (D-64) | Licence checks answer from the simulated registry (§2.4), not from SCFHS | The SCFHS agreement (U3) and its API contract; then `LiveScfhsGateway` |
 | **No badge feed** (D-33) | Attendance gaps and alerts only work once events are loaded into `attendance_events` | The PACS interface contract |
 | **Production server not yet provisioned** (spec §8.3.6, §10.4; D-57) | The single-VPS layout — blue/green releases, backups with an off-site copy, alerts, the exit package — is built and passes its end-to-end harness ([ops/vps](../ops/vps/README.md)); no server in the Kingdom exists yet. A Hostinger VPS may hold synthetic data only (no data centre in the Kingdom) | A VPS in a data centre in the Kingdom, with a contract that says so, and an S3-compatible off-site bucket in the Kingdom; then ops/vps/README.md §2–§9, including the restore drill |
 
@@ -243,6 +259,7 @@ To move the workforce history to another provider: `node dist/cli/exit-package.j
 | Malware scanner | Error log lines `malware detected in upload`, `upload scan failed; upload refused` and `clamav signatures are stale`; HIGH audit `DOCUMENT_REJECTED_INFECTED` |
 | Break-glass use | CRITICAL in-app notification and e-mail to every System Admin; e-mail to `BREAK_GLASS_ALERT_EMAILS`; a text to `BREAK_GLASS_ALERT_PHONES` (HIGH audit `BREAK_GLASS_SMS_FAILED` if the gateway refused it); `break_glass_events` |
 | Other systems (FHIR API clients, D-63) | Nursing Administration → **API clients**: last token time per client. Audit `API_CLIENT_AUTH_FAILED` (a wrong secret or a revoked client still trying); the client's reads in Audit → Requests as `API client: <name>` |
+| SCFHS licence checks | System health `SCFHS_UNREACHABLE` / `SCFHS_ERRORS` and the last nightly run (`scfhs-sync` summary); HR notices for differences; audit `CREDENTIAL_SCFHS_SUSPENDED` |
 | Request log | **Audit → Requests** (`GET /api/v1/audit/requests`, System Admin): every API request with its actor, outcome and error code — filter by user, path, `4xx`/`5xx`, error code or request id (the `X-Request-Id` a user reports). Growth: roughly 1 row per request; kept 365 days |
 | Business health | Nursing Administration → Jobs → **System health** (`GET /api/v1/system/health/business`): eligibility drift found and corrected by the daily consistency audit, jobs that are late or failed, e-mail backlog and failures. System Admins also get an in-app notice on any day drift is corrected |
 | E-mail delivery | Error log `e-mail delivery failed; giving up`. Backlog: `SELECT email_status, count(*), min(created_at) FROM notifications WHERE created_at > now() - interval '1 day' GROUP BY 1` — a growing `PENDING` count or old `min` means the relay or the worker is down; the same for `email_outbox.status` |

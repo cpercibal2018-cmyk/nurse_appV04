@@ -69,6 +69,9 @@ export const PERMISSIONS = {
   // Dev Console (D-59): the texts the mock SMS gateway intercepted, and a test text for demonstrations.
   'devconsole.sms.read': ['SYSTEM_ADMIN'],
   'devconsole.sms.send': ['SYSTEM_ADMIN'],
+  // Dev Console (D-64): the simulated SCFHS registry the mock SCFHS gateway answers from.
+  'devconsole.scfhs.read': ['SYSTEM_ADMIN'],
+  'devconsole.scfhs.manage': ['SYSTEM_ADMIN'],
   'jobs.run': ['SYSTEM_ADMIN'],
 
   // Credentials and eligibility — spec §8.1 Credentials row, §5.1.4, §6.1.

@@ -8,6 +8,8 @@ export type FieldRowValue = { key: string; label: string; type: FieldDef['type']
 export type TemplateFormValues = {
   code?: string; name: string; categoryCode: string; description?: string | null; hasExpiry: boolean; requiresUpload: boolean;
   gracePeriodDays: number; displayOrder: number; isActive: boolean; fields?: FieldRowValue[]; reason: string;
+  /** Spec §5.4 (D-64): checked with SCFHS; suspended on an adverse answer. */
+  scfhsEnabled?: boolean; scfhsAutoSuspend?: boolean;
 };
 
 export const isDateType = (type?: string) => type === 'date' || type === 'date_hijri';
@@ -37,12 +39,14 @@ export function fieldProblems(rows: readonly (Partial<FieldRowValue> | undefined
 export const toFormValues = (x: Template): TemplateFormValues => ({
   name: x.name, categoryCode: x.categoryCode, description: x.description, hasExpiry: x.hasExpiry, requiresUpload: x.requiresUpload,
   gracePeriodDays: x.gracePeriodDays, displayOrder: x.displayOrder, isActive: x.isActive, reason: '',
+  scfhsEnabled: x.scfhsEnabled, scfhsAutoSuspend: x.scfhsAutoSuspend,
   fields: x.fieldDefs.map((f) => ({ key: f.key, label: f.label, type: f.type, required: f.required, isIssueDate: f.isIssueDate === true, isExpiryDate: f.isExpiryDate === true, pdplCategory: f.pdplCategory ?? null })),
 });
 
 const comparable = (v: Omit<TemplateFormValues, 'code' | 'reason'>) => ({
   name: v.name.trim(), categoryCode: v.categoryCode, description: v.description?.trim() ?? '', hasExpiry: v.hasExpiry, requiresUpload: v.requiresUpload,
   gracePeriodDays: v.gracePeriodDays, displayOrder: v.displayOrder, fieldDefs: toFieldDefs(v.fields),
+  scfhsEnabled: v.scfhsEnabled === true, scfhsAutoSuspend: v.scfhsEnabled === true && v.scfhsAutoSuspend === true,
 });
 
 /** Body for POST /credential-templates. */

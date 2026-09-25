@@ -72,6 +72,8 @@ Generated from `backend/src/modules/users/permissions.ts`. **`backend/test/docs.
 | `jobs.run` | SYSTEM_ADMIN | Run a job now |
 | `devconsole.sms.read` | SYSTEM_ADMIN | Dev Console SMS inbox: the texts the mock SMS gateway intercepted (D-59) |
 | `devconsole.sms.send` | SYSTEM_ADMIN | Send a test text through the SMS gateway, audited (D-59) |
+| `devconsole.scfhs.read` | SYSTEM_ADMIN | The simulated SCFHS registry the mock SCFHS gateway answers from (D-64) |
+| `devconsole.scfhs.manage` | SYSTEM_ADMIN | Set or remove simulated SCFHS registry entries, audited (number masked) (D-64) |
 | `credentials.catalog.read` | EMPLOYEE | Credential types and categories |
 | `credentials.catalog.write` | HR_ADMIN, SYSTEM_ADMIN | Credential type changes (system-wide, four-eyes — D-24, D-25) |
 | `requirements.read` | HR_ADMIN, SYSTEM_ADMIN, SUPERVISOR | Unit credential requirements |

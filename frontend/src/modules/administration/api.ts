@@ -305,3 +305,19 @@ function useApiClientMutation<V>(fn: (v: V) => Promise<{ client: ApiClient; clie
 export const useCreateApiClient = () => useApiClientMutation((body: { name: string; scopes: FhirScope[] }) => http.post<{ client: ApiClient; clientSecret: string }>('/api-clients', body));
 export const useReplaceApiClientSecret = () => useApiClientMutation((id: number) => http.post<{ client: ApiClient; clientSecret: string }>(`/api-clients/${id}/secret`, {}));
 export const useRevokeApiClient = () => useApiClientMutation((id: number) => http.post<{ client: ApiClient }>(`/api-clients/${id}/revoke`, {}));
+
+// ── Simulated SCFHS registry (D-64) ──
+export type RegistryStatus = 'VERIFIED' | 'EXPIRED' | 'SUSPENDED' | 'REVOKED' | 'ERROR';
+export interface RegistryEntry { registrationNumber: string; status: RegistryStatus; expiryDate: string | null; specialty: string | null; note: string | null; updatedAt: string }
+export const useScfhsRegistry = () => useQuery({
+  queryKey: ['scfhsRegistry'],
+  queryFn: () => http.get<{ driver: 'mock' | 'live'; items: RegistryEntry[] }>('/dev-console/scfhs-registry'),
+});
+export function useScfhsRegistryChange() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (a: { kind: 'set'; reg: string; body: Omit<RegistryEntry, 'registrationNumber' | 'updatedAt'> } | { kind: 'remove'; reg: string }) =>
+      a.kind === 'set' ? http.put<unknown>(`/dev-console/scfhs-registry/${encodeURIComponent(a.reg)}`, a.body) : http.delete<unknown>(`/dev-console/scfhs-registry/${encodeURIComponent(a.reg)}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['scfhsRegistry'] }),
+  });
+}

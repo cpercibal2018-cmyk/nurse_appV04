@@ -82,6 +82,16 @@ export async function businessHealth(db: Db, now = new Date(), keyStatus?: KeySt
   if (pdpl.unprotectedValues > 0) issues.push({ code: 'PDPL_PLAINTEXT', message: `${pdpl.unprotectedValues} sensitive value(s) are stored unencrypted — run npm run pdpl:protect` });
   if (overdueRequests > 0) issues.push({ code: 'PDPL_REQUESTS_OVERDUE', message: `${overdueRequests} personal-data request(s) are past the 30-day answer deadline (Nursing Administration → Data protection)` });
 
+  // ── SCFHS licence checks (spec §5.4, §10.8 "SCFHS sync freshness", D-64) ──
+  const lastScfhs = await db.jobRun.findFirst({ where: { jobName: 'scfhs-sync', status: 'COMPLETED' }, orderBy: { finishedAt: 'desc' }, select: { finishedAt: true, summary: true } });
+  const ss = (lastScfhs?.summary ?? null) as { due?: number; checked?: number; discrepancies?: number; suspended?: number; errors?: number; stoppedAfterErrors?: boolean; driver?: string } | null;
+  if (ss?.stoppedAfterErrors) issues.push({ code: 'SCFHS_UNREACHABLE', message: `The last SCFHS check stopped after ${ss.errors} failure(s) in a row — SCFHS could not be reached; ${Math.max(0, (ss.due ?? 0) - (ss.checked ?? 0))} licence(s) went unchecked` });
+  else if (ss?.errors) issues.push({ code: 'SCFHS_ERRORS', message: `${ss.errors} licence check(s) with SCFHS failed in the last run` });
+  const scfhs = {
+    lastSyncAt: lastScfhs?.finishedAt ?? null, driver: ss?.driver ?? null, due: ss?.due ?? null, checked: ss?.checked ?? null,
+    discrepancies: ss?.discrepancies ?? null, suspended: ss?.suspended ?? null, errors: ss?.errors ?? null,
+  };
+
   // ── Eligibility logic, shadow mode (spec §10.9, D-60) ───────────────────────
   const logicRows = await db.eligibilityLogicVersion.findMany({ where: { status: { in: ['ACTIVE', 'SHADOW'] } } });
   const activeLogic = logicRows.find((v) => v.status === 'ACTIVE');
@@ -138,6 +148,7 @@ export async function businessHealth(db: Db, now = new Date(), keyStatus?: KeySt
     },
     jobs,
     vault,
+    scfhs,
     pdpl,
     keys,
     email,

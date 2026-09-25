@@ -15,6 +15,8 @@ import { createAuthService } from './modules/auth/service.js';
 import { createMfa } from './modules/auth/mfa.js';
 import { createSecretBox, mfaKey } from './lib/secret-box.js';
 import { createSmsGateway, type SmsGateway } from './lib/sms.js';
+import { createScfhsGateway, type ScfhsGateway } from './lib/scfhs.js';
+import { createScfhsService } from './modules/credentials/scfhs.js';
 import { createAccountService } from './modules/users/accounts.js';
 import { createRoleAssignmentService } from './modules/users/role-assignments.js';
 import { createUsersRouter } from './modules/users/routes.js';
@@ -61,6 +63,8 @@ export interface AppDeps {
   throttleNamespace?: string;
   /** Injectable so tests can simulate a failing gateway; defaults to env.SMS_DRIVER (D-59). */
   sms?: SmsGateway;
+  /** Injectable so tests can simulate an unreachable SCFHS; defaults to env.SCFHS_DRIVER (D-64). */
+  scfhs?: ScfhsGateway;
   /** Shadow-mode hooks for tests (the re-evaluation after a promotion runs in the background). */
   logic?: LogicRouterOptions;
   /** Injectable so tests can flush it; defaults to one writing to this database. */
@@ -70,7 +74,7 @@ export interface AppDeps {
 const HEALTH_DB_TIMEOUT_MS = 2000;
 
 /** Builds the Express application without starting a listener (tests use it directly). */
-export function createApp({ env, db, passwords = createPasswordService(env.BCRYPT_ROUNDS), scanner = createScanner(env), throttleNamespace = '', sms = createSmsGateway(env, db), logic = {}, requestLog = createRequestLog(db, requestLogKey(env.JWT_SECRET)) }: AppDeps) {
+export function createApp({ env, db, passwords = createPasswordService(env.BCRYPT_ROUNDS), scanner = createScanner(env), throttleNamespace = '', sms = createSmsGateway(env, db), scfhs = createScfhsGateway(env, db), logic = {}, requestLog = createRequestLog(db, requestLogKey(env.JWT_SECRET)) }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   if (env.TRUST_PROXY) app.set('trust proxy', 1); // one hop: the hospital reverse proxy
@@ -144,7 +148,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   api.use(createNotificationsRouter(db));
   api.use(createAuditRouter(db, keyStatus));
   api.use(createPdplRouter(db));
-  api.use(createDevConsoleRouter(db, sms));
+  api.use(createDevConsoleRouter(db, sms, scfhs.driver));
   api.use(createEligibilityLogicRouter(db, logic));
   api.use(createFhirRouter(db, protection, env.APP_BASE_URL ?? env.CORS_ORIGIN));
   api.use(createApiClientRouter(db));
@@ -155,6 +159,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
     createRecordService(db, documents, scanner, env.UPLOAD_MAX_SIZE_BYTES, protection),
     createEligibilityService(db),
     env.UPLOAD_MAX_SIZE_BYTES,
+    createScfhsService(db, scfhs, protection),
   ));
   app.use('/api/v1', api);
 

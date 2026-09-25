@@ -44,7 +44,7 @@ The V03 remediation tracker (`AIGH_v2_8_7_remediation_tracker.md` in the V03 rep
 | B-07 | V35 PDPL encryption, processing register, data-subject requests | **Done** — encryption, blind index, processing register and log redaction (D-54); data-subject requests: access and portability packages, rectification, erasure by destroying the employee's key with four eyes and backup-expiry evidence (D-55) |
 | B-08 | Idempotency with minimal replay payloads | **Done** — `[I]` endpoints store identifier-only responses; expired keys purged daily |
 | B-09 | Eligibility refresh in the caller's transaction; publish-time re-validation | **Done** |
-| B-10 | Worker leases for every job | **Done** — every scheduled job (daily transition, expiry scan, attendance alerts, consistency audit, request-log purge, vault check) runs under the scheduler's lease, and the e-mail dispatcher under its own 10-minute lease. SCFHS sync, backup monitor and quarantine scan do not exist in V04 |
+| B-10 | Worker leases for every job | **Done** — every scheduled job (daily transition, expiry scan, attendance alerts, consistency audit, request-log purge, vault check, SCFHS check) runs under the scheduler's lease, and the e-mail dispatcher under its own 10-minute lease. SCFHS sync, backup monitor and quarantine scan do not exist in V04 |
 | B-11 | Hardened onboarding SQL function | **Superseded** by D-17 (one Prisma transaction) |
 | B-12 | Four-eyes (row lock, PENDING precondition, transactional execution, partial unique index) | **Done** |
 | B-13 | Consistency auditor | **Done** — daily `consistency-audit` job and business health view (spec §10.8) |
@@ -62,4 +62,4 @@ The V03 remediation tracker (`AIGH_v2_8_7_remediation_tracker.md` in the V03 rep
 | B-25 | Fail-closed KSA residency check | **Done** |
 | B-26 | KSA sandbox and hosting decision sprint | **Open** (organisational) — the owner is moving to a self-managed VPS (D-57, [ops/vps](../ops/vps/README.md) built); the provider must have a data centre in the Kingdom |
 
-**Decision gates** from the tracker (Part D), still open: **U1 hosting** (the layout is decided — a single VPS, D-57; open until a provider with a data centre in the Kingdom is contracted; unblocks B-05, B-20, the key store for B-18, and production), **U2 credential policy and position rules** (Director of Nursing — the real credential requirements and grace windows), **U3 SCFHS agreement**.
+**Decision gates** from the tracker (Part D), still open: **U1 hosting** (the layout is decided — a single VPS, D-57; open until a provider with a data centre in the Kingdom is contracted; unblocks B-05, B-20, the key store for B-18, and production), **U2 credential policy and position rules** (Director of Nursing — the real credential requirements and grace windows), **U3 SCFHS agreement** (the checks are built behind a gateway and run against a simulated registry until then, D-64).
