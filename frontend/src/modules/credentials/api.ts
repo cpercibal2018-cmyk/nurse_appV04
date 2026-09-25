@@ -6,7 +6,10 @@ export type CredentialStatus = 'PendingVerification' | 'Valid' | 'ExpiringSoon' 
 export type Lifecycle = 'Active' | 'SubjectToRenew' | 'OnProcess' | 'Expired';
 export type EligibilityStatus = 'ELIGIBLE' | 'ELIGIBLE_WITH_GRACE' | 'ELIGIBLE_WITH_POLICY_WARNING' | 'INELIGIBLE';
 
-export interface FieldDef { key: string; label: string; type: (typeof FIELD_TYPES)[number]; required: boolean; displayOrder: number; isIssueDate?: boolean; isExpiryDate?: boolean }
+/** D-54: sensitive personal data (spec §8.3.1) — encrypted per employee and searchable only by exact number. */
+export const PDPL_CATEGORIES = ['IQAMA', 'PASSPORT', 'SCFHS_REG'] as const;
+export type PdplCategory = (typeof PDPL_CATEGORIES)[number];
+export interface FieldDef { key: string; label: string; type: (typeof FIELD_TYPES)[number]; required: boolean; displayOrder: number; isIssueDate?: boolean; isExpiryDate?: boolean; pdplCategory?: PdplCategory }
 export interface Template { id: number; code: string; name: string; categoryCode: string; description: string | null; hasExpiry: boolean; requiresUpload: boolean; gracePeriodDays: number; displayOrder: number; isActive: boolean; fieldDefs: FieldDef[] }
 /** The field types the server accepts (catalog.ts `FieldType`). */
 export const FIELD_TYPES = ['text', 'date', 'date_hijri', 'select', 'number', 'country', 'reference'] as const;
@@ -22,6 +25,8 @@ export interface CredentialRow {
   // Present for the owner and HR only (supervisors get the compliance view).
   trackingData?: Record<string, string | number>; pendingData?: { issueDate: string | null; expiryDate: string | null } | null;
   statusReason?: string | null; documentsPendingReview?: number;
+  /** D-54: the employee's sensitive values were erased (§8.3.3); they read as null. */
+  personalDataErased?: boolean;
 }
 export interface DocumentRow { id: number; version: number; fileName: string; mimeType: string; sizeBytes: number; scanStatus: string; reviewStatus: string; uploadedAt: string; isCurrentEvidence: boolean }
 export interface Reason { code: string; severity: 'BLOCK' | 'WARN' | 'INFO'; message: string; templateCode?: string; until?: string }
@@ -41,7 +46,15 @@ export interface Category { code: string; name: string; description: string | nu
 export const useCategories = () => useQuery({ queryKey: ['categories'], queryFn: () => http.get<{ items: Category[] }>('/credential-categories') });
 export const useTemplates = () => useQuery({ queryKey: ['templates'], queryFn: () => http.get<{ items: Template[] }>('/credential-templates?includeInactive=true') });
 export const useRequirements = () => useQuery({ queryKey: ['requirements'], queryFn: () => http.get<Paged<Requirement>>('/credential-requirements') });
-export const useCredentials = (queue?: 'review') => useQuery({ queryKey: ['credentials', queue ?? 'all'], queryFn: () => http.get<Paged<CredentialRow>>(`/credentials${queue ? `?queue=${queue}` : ''}`) });
+export const useCredentials = (queue?: 'review', identifier?: string) => useQuery({
+  queryKey: ['credentials', queue ?? 'all', identifier ?? ''],
+  queryFn: () => {
+    const p = new URLSearchParams();
+    if (queue) p.set('queue', queue);
+    if (identifier) p.set('identifier', identifier); // D-54: exact match through the blind index
+    return http.get<Paged<CredentialRow>>(`/credentials${p.size ? `?${p}` : ''}`);
+  },
+});
 export const useMyCredentials = () => useQuery({ queryKey: ['my-credentials'], queryFn: () => http.get<Paged<CredentialRow>>('/credentials/me') });
 export const useMyRequirements = () => useQuery({ queryKey: ['my-credentials', 'requirements'], queryFn: () => http.get<Paged<Requirement & { template: Template }>>('/credentials/me/requirements') });
 export const useDocuments = (credentialId: number | null) => useQuery({

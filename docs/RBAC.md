@@ -61,6 +61,8 @@ Generated from `backend/src/modules/users/permissions.ts`. **`backend/test/docs.
 | `roster.write` | SUPERVISOR | Draft, generate, publish (D-14) |
 | `attendance.read` | HR_ADMIN, SYSTEM_ADMIN, SUPERVISOR | Clock events and the gap view |
 | `audit.read` | SYSTEM_ADMIN | Audit search and chain verification (D-20) |
+| `pdpl.read` | HR_ADMIN, SYSTEM_ADMIN | Processing register (spec §8.3.2, D-54) |
+| `pdpl.manage` | SYSTEM_ADMIN | Add or change processing-register entries; audited HIGH (D-54) |
 | `jobs.read` | SYSTEM_ADMIN | Background job runs |
 | `jobs.run` | SYSTEM_ADMIN | Run a job now |
 | `credentials.catalog.read` | EMPLOYEE | Credential types and categories |

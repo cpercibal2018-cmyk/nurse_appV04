@@ -53,6 +53,9 @@ export const PERMISSIONS = {
 
   // Audit (D-20: System Admin only until decided) and background jobs.
   'audit.read': ['SYSTEM_ADMIN'],
+  // PDPL (spec §8.3.2, D-54): the processing register — HR and System Admins read, System Admins maintain.
+  'pdpl.read': ['HR_ADMIN', 'SYSTEM_ADMIN'],
+  'pdpl.manage': ['SYSTEM_ADMIN'],
   'jobs.read': ['SYSTEM_ADMIN'],
   'jobs.run': ['SYSTEM_ADMIN'],
 

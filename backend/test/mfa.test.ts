@@ -210,7 +210,7 @@ describeDb('MFA (spec §3.5)', () => {
   });
 
   it('production requires an encryption key and MFA for HR and System Admin', () => {
-    const base = { NODE_ENV: 'production', DATABASE_URL: 'postgresql://x/y', JWT_SECRET: 'x'.repeat(40), DOCUMENT_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString('base64') };
+    const base = { NODE_ENV: 'production', DATABASE_URL: 'postgresql://x/y', JWT_SECRET: 'x'.repeat(40), DOCUMENT_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString('base64'), PDPL_FIELD_ENCRYPTION_KEY: Buffer.alloc(32, 10).toString('base64'), PDPL_BLIND_INDEX_PEPPER: Buffer.alloc(32, 11).toString('base64') };
     expect(() => loadEnv(base)).toThrow(/MFA_ENCRYPTION_KEY: required in production/);
     const key = Buffer.alloc(32, 7).toString('base64');
     expect(loadEnv({ ...base, MFA_ENCRYPTION_KEY: key }).MFA_REQUIRED_ROLES).toEqual(['SYSTEM_ADMIN', 'HR_ADMIN', 'SUPERVISOR']);

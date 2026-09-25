@@ -32,6 +32,7 @@ Every backend setting is in [`.env.example`](../.env.example) and is validated a
 | `MFA_ENCRYPTION_KEY` | — (development derives one) | **Required in production:** 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts the authenticator secrets; keep it in the deployment secrets **and** with the backup keys — a restore without it means every authenticator is set up again (HR resets each) |
 | `LOGIN_THROTTLE_WINDOW_SECONDS` / `_MAX_PER_ACCOUNT` / `_MAX_PER_CLIENT` | 900 / 5 / 20 | D-23. Counted in the database (`login_throttle`, D-46), so they hold across any number of API instances and restarts |
 | `STORAGE_DIR` | ./storage | Persistent, backed-up volume; never served directly. Holds the document vault's **encrypted** objects (D-53) — back it up with the database, and restore both from the same night |
+| `PDPL_FIELD_ENCRYPTION_KEY` / `PDPL_BLIND_INDEX_PEPPER` | — (development derives them) | **Required in production** (D-54): two more `openssl rand -base64 32` values, different from each other and from the MFA and document keys. The first wraps each employee's key for Iqama, passport and SCFHS numbers — without it those values cannot be read; the second keys the number search. Keep both with the backup keys |
 | `DOCUMENT_ENCRYPTION_KEY` | — (development derives one) | **Required in production:** 32 random bytes, base64 (`openssl rand -base64 32`), different from `MFA_ENCRYPTION_KEY`. Wraps every document's own key; without it no stored document can be read — keep it in the deployment secrets **and** with the backup keys |
 | `UPLOAD_MAX_SIZE_BYTES` | 10485760 | Spec §5.1.5 |
 | `UPLOAD_SCANNER` | dev-magic-bytes | `clamav` — production refuses anything else (D-10, §2.1) |
@@ -128,6 +129,8 @@ curl -fsS https://<host>/api/v1/health   # 200 {"status":"ok","database":"up"}; 
 CI has already run the HTTPS browser test of the session cookies against the release images ([ops/e2e](../ops/e2e/README.md)).
 
 After a release, a System Admin should open **Audit → Verify chain** (expected: intact) and **Administration → Jobs** (expected: recent runs completed).
+
+**First release with PDPL field protection (D-54):** set `PDPL_FIELD_ENCRYPTION_KEY` and `PDPL_BLIND_INDEX_PEPPER` before starting it. New Iqama, passport and SCFHS numbers are stored encrypted at once; numbers recorded earlier stay readable and are encrypted — and made searchable — by `npm run pdpl:protect -w backend` (container: `docker compose run --rm api node dist/cli/pdpl-protect.js`), safe to rerun. System health shows `PDPL_PLAINTEXT` until then. A System Admin and the DPO should review **Administration → Data protection** (the lawful basis per category, spec §8.3.2).
 
 **First release with the document vault (D-53):** set `DOCUMENT_ENCRYPTION_KEY` before starting it (it refuses to start without it). New uploads are stored encrypted at once; files uploaded earlier are still served and are then encrypted by `npm run vault:encrypt -w backend` (in a container: `docker compose run --rm api node dist/cli/vault-encrypt.js`) — safe to interrupt and rerun. Administration → Jobs → System health reports `VAULT_PLAINTEXT` until it has run.
 

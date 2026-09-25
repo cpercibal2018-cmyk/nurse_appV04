@@ -2,9 +2,9 @@
 // "send only what changed" rule is testable: the approver of a catalog change
 // (D-24) sees exactly what the requester changed, nothing else.
 
-import type { FieldDef, Template } from './api';
+import type { FieldDef, PdplCategory, Template } from './api';
 
-export type FieldRowValue = { key: string; label: string; type: FieldDef['type']; required: boolean; isIssueDate?: boolean; isExpiryDate?: boolean };
+export type FieldRowValue = { key: string; label: string; type: FieldDef['type']; required: boolean; isIssueDate?: boolean; isExpiryDate?: boolean; pdplCategory?: PdplCategory | null };
 export type TemplateFormValues = {
   code?: string; name: string; categoryCode: string; description?: string | null; hasExpiry: boolean; requiresUpload: boolean;
   gracePeriodDays: number; displayOrder: number; isActive: boolean; fields?: FieldRowValue[]; reason: string;
@@ -17,6 +17,7 @@ export const toFieldDefs = (rows: readonly FieldRowValue[] = []): FieldDef[] => 
   key: f.key, label: f.label.trim(), type: f.type, required: f.required === true, displayOrder: i + 1,
   ...(isDateType(f.type) && f.isIssueDate ? { isIssueDate: true } : {}),
   ...(isDateType(f.type) && f.isExpiryDate ? { isExpiryDate: true } : {}),
+  ...(f.type === 'text' && f.pdplCategory ? { pdplCategory: f.pdplCategory } : {}),
 }));
 
 /** The catalog field rules the form can check before sending: i18n keys of the problems found. */
@@ -27,6 +28,8 @@ export function fieldProblems(rows: readonly (Partial<FieldRowValue> | undefined
   const dated = (flag: 'isIssueDate' | 'isExpiryDate') => rows.filter((f) => f?.[flag] && isDateType(f.type)).length;
   if (dated('isIssueDate') > 1 || dated('isExpiryDate') > 1) out.push('fieldDatesOnce');
   if (rows.some((f) => f?.isIssueDate && f.isExpiryDate && isDateType(f.type))) out.push('fieldDatesSame');
+  const categories = rows.flatMap((f) => (f?.type === 'text' && f.pdplCategory ? [f.pdplCategory] : []));
+  if (new Set(categories).size !== categories.length) out.push('fieldPdplOnce');
   return out;
 }
 
@@ -34,7 +37,7 @@ export function fieldProblems(rows: readonly (Partial<FieldRowValue> | undefined
 export const toFormValues = (x: Template): TemplateFormValues => ({
   name: x.name, categoryCode: x.categoryCode, description: x.description, hasExpiry: x.hasExpiry, requiresUpload: x.requiresUpload,
   gracePeriodDays: x.gracePeriodDays, displayOrder: x.displayOrder, isActive: x.isActive, reason: '',
-  fields: x.fieldDefs.map((f) => ({ key: f.key, label: f.label, type: f.type, required: f.required, isIssueDate: f.isIssueDate === true, isExpiryDate: f.isExpiryDate === true })),
+  fields: x.fieldDefs.map((f) => ({ key: f.key, label: f.label, type: f.type, required: f.required, isIssueDate: f.isIssueDate === true, isExpiryDate: f.isExpiryDate === true, pdplCategory: f.pdplCategory ?? null })),
 });
 
 const comparable = (v: Omit<TemplateFormValues, 'code' | 'reason'>) => ({

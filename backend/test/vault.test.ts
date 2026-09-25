@@ -75,7 +75,7 @@ describe('vault library', () => {
   });
 
   it('production requires its own document key', () => {
-    const base = { NODE_ENV: 'production', DATABASE_URL: 'postgresql://x/y', JWT_SECRET: 'x'.repeat(40), MFA_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64') };
+    const base = { NODE_ENV: 'production', DATABASE_URL: 'postgresql://x/y', JWT_SECRET: 'x'.repeat(40), MFA_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'), PDPL_FIELD_ENCRYPTION_KEY: Buffer.alloc(32, 3).toString('base64'), PDPL_BLIND_INDEX_PEPPER: Buffer.alloc(32, 4).toString('base64') };
     expect(() => loadEnv(base)).toThrow(/DOCUMENT_ENCRYPTION_KEY: required in production/);
     expect(() => loadEnv({ ...base, DOCUMENT_ENCRYPTION_KEY: base.MFA_ENCRYPTION_KEY })).toThrow(/must differ from MFA_ENCRYPTION_KEY/);
     expect(loadEnv({ ...base, DOCUMENT_ENCRYPTION_KEY: Buffer.alloc(32, 2).toString('base64') }).DOCUMENT_ENCRYPTION_KEY).toHaveLength(44);

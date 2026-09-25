@@ -55,6 +55,16 @@ const EnvSchema = z.object({
   // ── Uploads (spec §5.1.5, §5.3.2; decision D-10) ─────────────────────────
   /** Local document storage root (never served directly). */
   STORAGE_DIR: z.string().min(1).default('./storage'),
+  /** D-54 (spec §8.3.4): wraps each employee's data key for sensitive fields. 32 random bytes, base64. Required in production. */
+  PDPL_FIELD_ENCRYPTION_KEY: z
+    .string()
+    .default('')
+    .refine((k) => k === '' || Buffer.from(k, 'base64').length === 32, 'must be 32 random bytes, base64-encoded (openssl rand -base64 32)'),
+  /** D-54: keys the blind index (HMAC) for identifier search. 32 random bytes, base64. Required in production. */
+  PDPL_BLIND_INDEX_PEPPER: z
+    .string()
+    .default('')
+    .refine((k) => k === '' || Buffer.from(k, 'base64').length === 32, 'must be 32 random bytes, base64-encoded (openssl rand -base64 32)'),
   /** D-53: 32 random bytes, base64 — wraps each document's own encryption key. Required in production. */
   DOCUMENT_ENCRYPTION_KEY: z
     .string()
@@ -111,8 +121,16 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     if (e.NODE_ENV === 'production' && !e.DOCUMENT_ENCRYPTION_KEY) {
       ctx.addIssue({ code: 'custom', path: ['DOCUMENT_ENCRYPTION_KEY'], message: 'required in production (openssl rand -base64 32)' });
     }
-    if (e.NODE_ENV === 'production' && e.DOCUMENT_ENCRYPTION_KEY && e.DOCUMENT_ENCRYPTION_KEY === e.MFA_ENCRYPTION_KEY) {
-      ctx.addIssue({ code: 'custom', path: ['DOCUMENT_ENCRYPTION_KEY'], message: 'must differ from MFA_ENCRYPTION_KEY' });
+    for (const k of ['PDPL_FIELD_ENCRYPTION_KEY', 'PDPL_BLIND_INDEX_PEPPER'] as const) {
+      if (e.NODE_ENV === 'production' && !e[k]) ctx.addIssue({ code: 'custom', path: [k], message: 'required in production (openssl rand -base64 32)' });
+    }
+    // Each key protects something different: one leaked key must not open the others.
+    const keys = (['MFA_ENCRYPTION_KEY', 'DOCUMENT_ENCRYPTION_KEY', 'PDPL_FIELD_ENCRYPTION_KEY', 'PDPL_BLIND_INDEX_PEPPER'] as const).filter((k) => e[k]);
+    const seen = new Map<string, string>();
+    for (const k of keys) {
+      const other = seen.get(e[k]);
+      if (e.NODE_ENV === 'production' && other) ctx.addIssue({ code: 'custom', path: [k], message: `must differ from ${other}` });
+      seen.set(e[k], k);
     }
     if (e.NODE_ENV === 'production' && !e.MFA_ENCRYPTION_KEY) {
       ctx.addIssue({ code: 'custom', path: ['MFA_ENCRYPTION_KEY'], message: 'required in production (openssl rand -base64 32)' });

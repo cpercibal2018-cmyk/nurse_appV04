@@ -8,6 +8,7 @@ import { usePermissions } from '../../hooks/usePermissions';
 import { AccountsTab } from './AccountsTab';
 import { ApprovalsTab } from './ApprovalsTab';
 import { BaselineImportTab } from './BaselineImportTab';
+import { DataProtectionTab } from './DataProtectionTab';
 import { useMatrix } from './api';
 import { PamTab } from './PamTab';
 import { JobsTab } from './JobsTab';
@@ -43,6 +44,7 @@ export default function AdministrationPage() {
       { key: 'roles', label: t('roleAssignments'), children: <RoleAssignmentsTab /> },
       { key: 'approvals', label: t('approvals'), children: <ApprovalsTab /> },
       { key: 'baseline', label: t('baselineImport'), children: <BaselineImportTab /> },
+      { key: 'dataProtection', label: t('dataProtection'), children: <DataProtectionTab /> },
     ] : []),
     ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'pam', label: t('privilegedAccess'), children: <PamTab /> }] : []),
     ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'jobs', label: t('backgroundJobs'), children: <JobsTab /> }] : []),

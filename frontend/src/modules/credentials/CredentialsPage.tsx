@@ -9,7 +9,7 @@ import { usePermissions } from '../../hooks/usePermissions';
 import { describeApiError } from '../../lib/errors';
 import { useUnits } from '../administration/api';
 import { usePositions } from '../workforce/api';
-import { FIELD_TYPES, useCategories, useCredentialAction, useCredentials, useRequirements, useTemplates, type Category, type CredentialRow, type Requirement, type Template } from './api';
+import { FIELD_TYPES, PDPL_CATEGORIES, useCategories, useCredentialAction, useCredentials, useRequirements, useTemplates, type Category, type CredentialRow, type Requirement, type Template } from './api';
 import { CredentialStatusTag, DocumentsDrawer, LifecycleTag } from './components';
 import { changeBody, createBody, fieldProblems, isDateType, toFormValues, type FieldRowValue, type TemplateFormValues } from './catalogForm';
 
@@ -20,7 +20,8 @@ function RecordsTable({ queue }: { queue?: 'review' }) {
   const { message } = App.useApp();
   const { hasRole } = usePermissions();
   const hr = hasRole('HR_ADMIN', 'SYSTEM_ADMIN');
-  const rows = useCredentials(queue);
+  const [identifier, setIdentifier] = useState('');
+  const rows = useCredentials(queue, identifier || undefined);
   const action = useCredentialAction();
   const [docsFor, setDocsFor] = useState<number | null>(null);
   const [decision, setDecision] = useState<Decision | null>(null);
@@ -32,12 +33,16 @@ function RecordsTable({ queue }: { queue?: 'review' }) {
 
   return (
     <>
+      {hr && !queue && (
+        <Input.Search allowClear placeholder={t('searchIdentifier')} style={{ width: 320, marginBottom: 12 }} maxLength={40}
+          onSearch={(v) => setIdentifier(v.trim().length >= 3 ? v.trim() : '')} />
+      )}
       <Table<CredentialRow>
         rowKey="id" size="middle" loading={rows.isLoading} dataSource={rows.data?.items} pagination={{ pageSize: 20 }} scroll={{ x: true }}
         columns={[
           { title: t('employee'), render: (_, r) => `${r.employee.jobNumber} — ${r.employee.fullName}` },
           { title: t('credential'), render: (_, r) => `${r.template.code} — ${r.template.name}` },
-          { title: t('status'), render: (_, r) => <Space size={4} wrap><CredentialStatusTag status={r.status} /><LifecycleTag label={r.lifecycle} />{r.graceExpiryDate && <Tag color="gold">{t('graceUntil', { date: r.graceExpiryDate })}</Tag>}</Space> },
+          { title: t('status'), render: (_, r) => <Space size={4} wrap><CredentialStatusTag status={r.status} /><LifecycleTag label={r.lifecycle} />{r.personalDataErased && <Tag color="purple">{t('personalDataErased')}</Tag>}{r.graceExpiryDate && <Tag color="gold">{t('graceUntil', { date: r.graceExpiryDate })}</Tag>}</Space> },
           { title: t('issueDate'), dataIndex: 'issueDate' },
           { title: t('expiryDate'), render: (_, r) => r.expiryDate ? `${r.expiryDate}${r.expiryDateHijri ? ` (${r.expiryDateHijri} هـ)` : ''}` : '—' },
           ...(hr ? [{
@@ -297,6 +302,9 @@ function CatalogTab() {
                       <Form.Item name={[item.name, 'required']} label={i === 0 ? t('fieldRequired') : undefined} valuePropName="checked"><Switch size="small" /></Form.Item>
                       <Form.Item name={[item.name, 'isIssueDate']} label={i === 0 ? t('fieldIssueDate') : undefined} valuePropName="checked"><Switch size="small" disabled={!dateField} /></Form.Item>
                       <Form.Item name={[item.name, 'isExpiryDate']} label={i === 0 ? t('fieldExpiryDate') : undefined} valuePropName="checked"><Switch size="small" disabled={!dateField} /></Form.Item>
+                      <Form.Item name={[item.name, 'pdplCategory']} label={i === 0 ? t('fieldSensitive') : undefined} tooltip={i === 0 ? t('fieldSensitiveHint') : undefined} style={{ width: 160 }}>
+                        <Select allowClear disabled={rows?.[item.name]?.type !== 'text'} placeholder="—" options={PDPL_CATEGORIES.map((c) => ({ value: c, label: t(`pdpl_${c}`) }))} />
+                      </Form.Item>
                       <Space size={4} style={{ marginTop: i === 0 ? 30 : 0 }}>
                         <Button size="small" disabled={i === 0} onClick={() => move(i, i - 1)} aria-label={t('moveUp')}>↑</Button>
                         <Button size="small" disabled={i === items.length - 1} onClick={() => move(i, i + 1)} aria-label={t('moveDown')}>↓</Button>

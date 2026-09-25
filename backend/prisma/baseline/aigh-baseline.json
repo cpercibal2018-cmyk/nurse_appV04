@@ -568,7 +568,8 @@
           "label": "Passport Number",
           "type": "text",
           "required": true,
-          "displayOrder": 1
+          "displayOrder": 1,
+          "pdplCategory": "PASSPORT"
         },
         {
           "key": "issuing_country",
@@ -611,7 +612,8 @@
           "label": "Iqama Number",
           "type": "text",
           "required": true,
-          "displayOrder": 1
+          "displayOrder": 1,
+          "pdplCategory": "IQAMA"
         },
         {
           "key": "sponsor",
@@ -754,7 +756,8 @@
           "label": "SCFHS Registration Number",
           "type": "text",
           "required": true,
-          "displayOrder": 1
+          "displayOrder": 1,
+          "pdplCategory": "SCFHS_REG"
         },
         {
           "key": "classification",

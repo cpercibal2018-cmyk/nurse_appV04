@@ -2,12 +2,15 @@
 // in logs"). Callers pass identifiers only — never names, emails, national IDs
 // or request bodies.
 
+import { redactIdentifiers } from './field-crypto.js';
+
 type Level = 'info' | 'warn' | 'error';
 
 export type LogFields = Record<string, string | number | boolean | null | undefined>;
 
 function write(level: Level, msg: string, fields: LogFields = {}) {
-  const line = JSON.stringify({ time: new Date().toISOString(), level, msg, ...fields });
+  // Spec §8.3.4: whatever slips through, a national ID / Iqama number never reaches the log.
+  const line = redactIdentifiers(JSON.stringify({ time: new Date().toISOString(), level, msg, ...fields }));
   if (level === 'error') console.error(line);
   else if (level === 'warn') console.warn(line);
   else console.log(line);

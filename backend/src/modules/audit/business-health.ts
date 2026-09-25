@@ -58,6 +58,17 @@ export async function businessHealth(db: Db, now = new Date()) {
     sampled: vs?.sampled ?? null, integrityFailures: vs?.integrityFailures ?? null, legacyPlaintext: vs?.legacyPlaintext ?? null, orphansRemoved: vs?.orphansRemoved ?? null,
   };
 
+  // ── Sensitive personal data (D-54) ─────────────────────────────────────────
+  // Values of fields marked sensitive that are still stored in clear (before
+  // `npm run pdpl:protect`, or a field marked sensitive after data was entered).
+  const [plain] = await db.$queryRaw<Array<{ n: bigint }>>`
+    SELECT count(*) AS n FROM credentials c
+      JOIN credential_template_fields f ON f.template_id = c.template_id AND f.pdpl_category IS NOT NULL
+     WHERE (coalesce(c.tracking_data ->> f.key, '') NOT IN ('') AND c.tracking_data ->> f.key NOT LIKE 'pdpl:v1:%')
+        OR (coalesce(c.pending_data -> 'trackingData' ->> f.key, '') NOT IN ('') AND c.pending_data -> 'trackingData' ->> f.key NOT LIKE 'pdpl:v1:%')`;
+  const pdpl = { unprotectedValues: Number(plain?.n ?? 0) };
+  if (pdpl.unprotectedValues > 0) issues.push({ code: 'PDPL_PLAINTEXT', message: `${pdpl.unprotectedValues} sensitive value(s) are stored unencrypted — run npm run pdpl:protect` });
+
   // ── E-mail delivery ────────────────────────────────────────────────────────
   const stuckBefore = new Date(now.getTime() - 15 * MINUTE);
   const dayAgo = new Date(now.getTime() - 24 * 60 * MINUTE);
@@ -87,6 +98,7 @@ export async function businessHealth(db: Db, now = new Date()) {
     },
     jobs,
     vault,
+    pdpl,
     email,
     generatedAt: now,
   };

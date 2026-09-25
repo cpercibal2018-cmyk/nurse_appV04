@@ -45,6 +45,15 @@ describe('credential type form', () => {
     expect(fieldProblems([{ ...d('t', { isIssueDate: true, isExpiryDate: true }), type: 'text' }])).toEqual([]);
   });
 
+  it('sends a sensitive (PDPL) category only on text fields, once per category (D-54)', () => {
+    const f = (key: string, type: 'text' | 'date', pdplCategory: 'IQAMA' | 'PASSPORT' | null) => ({ key, label: key, type, required: true, pdplCategory });
+    expect(toFieldDefs([f('iqama_number', 'text', 'IQAMA')])[0]).toMatchObject({ pdplCategory: 'IQAMA' });
+    expect(toFieldDefs([f('issued', 'date', 'IQAMA')])[0]).not.toHaveProperty('pdplCategory');
+    expect(toFieldDefs([f('sponsor', 'text', null)])[0]).not.toHaveProperty('pdplCategory');
+    expect(fieldProblems([f('a', 'text', 'IQAMA'), f('b', 'text', 'IQAMA')])).toEqual(['fieldPdplOnce']);
+    expect(fieldProblems([f('a', 'text', 'IQAMA'), f('b', 'text', 'PASSPORT')])).toEqual([]);
+  });
+
   it('builds a create body without an empty description', () => {
     const body = createBody({ ...toFormValues(stored), code: 'ACLS2', description: '', reason: 'new credential type' });
     expect(body).toMatchObject({ code: 'ACLS2', name: 'SCFHS licence', categoryCode: 'LICENSE', reason: 'new credential type' });
