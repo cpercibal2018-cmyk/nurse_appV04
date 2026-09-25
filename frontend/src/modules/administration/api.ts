@@ -230,3 +230,18 @@ export function useDsrAction() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pdpl'] }),
   });
 }
+
+// ── Dev Console: SMS inbox (D-59), System Admin ──
+export interface MockSms { id: number; recipientPhone: string; messageBody: string; status: string; createdAt: string; updatedAt: string }
+export const useSmsInbox = () => useQuery({
+  queryKey: ['smsInbox'],
+  queryFn: () => http.get<{ driver: 'mock' | 'unifonic'; items: MockSms[]; total: number }>('/dev-console/sms-inbox?limit=200'),
+  refetchInterval: 10_000, // a demonstration shows new texts as they arrive
+});
+export function useSendTestSms() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { phone: string; message: string }) => http.post<{ accepted: boolean; driver: string }>('/dev-console/sms-inbox/test', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['smsInbox'] }),
+  });
+}

@@ -1,6 +1,6 @@
-// Administration: accounts, role assignments, four-eyes approvals, PAM and the
-// spec §8.1 access matrix. Tabs follow what /auth/me says the user holds; the
-// server still authorizes every call.
+// Administration: accounts, role assignments, four-eyes approvals, PAM, jobs, the
+// Dev Console SMS inbox (D-59) and the spec §8.1 access matrix. Tabs follow what
+// /auth/me says the user holds; the server still authorizes every call.
 
 import { Card, Table, Tabs, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -13,6 +13,7 @@ import { useMatrix } from './api';
 import { PamTab } from './PamTab';
 import { JobsTab } from './JobsTab';
 import { RoleAssignmentsTab } from './RoleAssignmentsTab';
+import { SmsInboxTab } from './SmsInboxTab';
 
 function MatrixTab() {
   const { t } = useTranslation();
@@ -48,6 +49,7 @@ export default function AdministrationPage() {
     ] : []),
     ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'pam', label: t('privilegedAccess'), children: <PamTab /> }] : []),
     ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'jobs', label: t('backgroundJobs'), children: <JobsTab /> }] : []),
+    ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'smsInbox', label: t('smsInbox'), children: <SmsInboxTab /> }] : []),
     { key: 'matrix', label: t('accessMatrix'), children: <MatrixTab /> },
   ];
 

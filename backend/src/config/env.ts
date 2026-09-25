@@ -120,6 +120,19 @@ const EnvSchema = z.object({
     .default('')
     .transform((s) => s.split(',').map((a) => a.trim()).filter(Boolean))
     .pipe(z.array(z.string().email())),
+  // ── SMS (D-48, D-59) ──────────────────────────────────────────────────────
+  /** mock: texts are saved to mock_sms_outbox (the Dev Console) and never leave the server — until the
+   *  hospital has a Commercial Registration and a CST-registered Sender ID. unifonic: the live gateway (not built yet). */
+  SMS_DRIVER: z.enum(['mock', 'unifonic']).default('mock'),
+  /** Unifonic application SID and the CST-registered Sender ID; required when SMS_DRIVER=unifonic. */
+  UNIFONIC_APP_SID: z.string().default(''),
+  UNIFONIC_SENDER_ID: z.string().default(''),
+  /** Spec §3.6: phones texted when the break-glass account signs in (the CEO and IT Director), comma-separated, international format. */
+  BREAK_GLASS_ALERT_PHONES: z
+    .string()
+    .default('')
+    .transform((s) => s.split(',').map((p) => p.replace(/[\s\-()]/g, '')).filter(Boolean))
+    .pipe(z.array(z.string().regex(/^\+[1-9]\d{7,14}$/, 'international format, e.g. +966501234567'))),
   // ── Background jobs (spec §10.2; plan "Jobs") ─────────────────────────────
   /** in-process: the API runs the scheduler (development). worker: a separate `npm run worker` runs it (production). off: nothing runs. */
   JOBS_MODE: z.enum(['in-process', 'worker', 'off']).default('in-process'),
@@ -132,6 +145,9 @@ export type Env = z.infer<typeof EnvSchema>;
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const parsed = EnvSchema.superRefine((e, ctx) => {
     if (e.SMTP_HOST && !e.SMTP_FROM) ctx.addIssue({ code: 'custom', path: ['SMTP_FROM'], message: 'required when SMTP_HOST is set' });
+    for (const k of ['UNIFONIC_APP_SID', 'UNIFONIC_SENDER_ID'] as const) {
+      if (e.SMS_DRIVER === 'unifonic' && !e[k]) ctx.addIssue({ code: 'custom', path: [k], message: 'required when SMS_DRIVER=unifonic' });
+    }
     if (e.NODE_ENV === 'production' && !e.DOCUMENT_ENCRYPTION_KEY) {
       ctx.addIssue({ code: 'custom', path: ['DOCUMENT_ENCRYPTION_KEY'], message: 'required in production (openssl rand -base64 32)' });
     }

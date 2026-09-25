@@ -14,6 +14,7 @@ import { createAuthRouter } from './modules/auth/routes.js';
 import { createAuthService } from './modules/auth/service.js';
 import { createMfa } from './modules/auth/mfa.js';
 import { createSecretBox, mfaKey } from './lib/secret-box.js';
+import { createSmsGateway, type SmsGateway } from './lib/sms.js';
 import { createAccountService } from './modules/users/accounts.js';
 import { createRoleAssignmentService } from './modules/users/role-assignments.js';
 import { createUsersRouter } from './modules/users/routes.js';
@@ -43,6 +44,7 @@ import { createSchedulingRouter } from './modules/scheduling/routes.js';
 import { createAttendanceService } from './modules/attendance/service.js';
 import { createNotificationsRouter } from './modules/notifications/routes.js';
 import { createAuditRouter } from './modules/audit/routes.js';
+import { createDevConsoleRouter } from './modules/dev-console/routes.js';
 
 export interface AppDeps {
   env: Env;
@@ -53,6 +55,8 @@ export interface AppDeps {
   scanner?: UploadScanner;
   /** Prefix for sign-in throttle keys, so test apps sharing one database do not share counters. */
   throttleNamespace?: string;
+  /** Injectable so tests can simulate a failing gateway; defaults to env.SMS_DRIVER (D-59). */
+  sms?: SmsGateway;
   /** Injectable so tests can flush it; defaults to one writing to this database. */
   requestLog?: RequestLog;
 }
@@ -60,7 +64,7 @@ export interface AppDeps {
 const HEALTH_DB_TIMEOUT_MS = 2000;
 
 /** Builds the Express application without starting a listener (tests use it directly). */
-export function createApp({ env, db, passwords = createPasswordService(env.BCRYPT_ROUNDS), scanner = createScanner(env), throttleNamespace = '', requestLog = createRequestLog(db, requestLogKey(env.JWT_SECRET)) }: AppDeps) {
+export function createApp({ env, db, passwords = createPasswordService(env.BCRYPT_ROUNDS), scanner = createScanner(env), throttleNamespace = '', sms = createSmsGateway(env, db), requestLog = createRequestLog(db, requestLogKey(env.JWT_SECRET)) }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   if (env.TRUST_PROXY) app.set('trust proxy', 1); // one hop: the hospital reverse proxy
@@ -85,7 +89,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   const accountThrottle = createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_ACCOUNT, throttleNamespace);
   const mfa = createMfa(db, env, createSecretBox(mfaKey(env), previousKey(env.MFA_ENCRYPTION_KEY_PREVIOUS)));
   const auth = createAuthService({
-    db, env, tokens, passwords, mfa,
+    db, env, tokens, passwords, mfa, sms,
     accountThrottle,
     clientThrottle: createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_CLIENT, throttleNamespace),
   });
@@ -126,6 +130,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   api.use(createNotificationsRouter(db));
   api.use(createAuditRouter(db, keyStatus));
   api.use(createPdplRouter(db));
+  api.use(createDevConsoleRouter(db, sms));
   api.use(createDataSubjectRouter(createDataSubjectService({ db, protection, vault: documents.vault, backupRetentionDays: env.BACKUP_RETENTION_DAYS })));
   api.use(createContractsRouter(db, createContractService(db, documents, scanner, env.UPLOAD_MAX_SIZE_BYTES), env.UPLOAD_MAX_SIZE_BYTES));
   api.use(createCredentialsRouter(
