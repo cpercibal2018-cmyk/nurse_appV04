@@ -67,6 +67,7 @@ const SELF_OR_SCOPED = [
   'GET /api/v1/contracts/me', 'GET /api/v1/contracts/:id', 'GET /api/v1/contracts/:id/documents', 'GET /api/v1/contracts/:id/documents/:docId', 'POST /api/v1/contracts/:id/documents/:docId/link',
   'GET /api/v1/roster/me', 'GET /api/v1/attendance/me',
   'GET /api/v1/notifications', 'POST /api/v1/notifications/:id/read', 'POST /api/v1/notifications/read-all',
+  'GET /api/v1/pdpl/requests/me', 'POST /api/v1/pdpl/requests/me', 'GET /api/v1/pdpl/requests/me/:id/export', // own data-subject requests (D-55)
 ].sort();
 
 const concrete = (path: string) => path.replace(/:id|:docId/g, '999999').replace(/:code/g, 'ZZ').replace(/:name/g, 'zz').replace(/:employeeId/g, '999999');

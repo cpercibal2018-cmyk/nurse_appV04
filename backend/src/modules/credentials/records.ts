@@ -388,7 +388,7 @@ export function createRecordService(db: Db, documents: DocumentAccess, scanner: 
       await viewerOf(db, auth, c.employeeId, ['OWN', 'HR']); // supervisors never (D5)
       const docs = await db.documentVersion.findMany({
         where: { credentialId: id },
-        select: { id: true, version: true, fileName: true, mimeType: true, sizeBytes: true, scanStatus: true, reviewStatus: true, uploadedAt: true, reviewedAt: true },
+        select: { id: true, version: true, fileName: true, mimeType: true, sizeBytes: true, scanStatus: true, reviewStatus: true, uploadedAt: true, reviewedAt: true, erasedAt: true },
         orderBy: { version: 'desc' },
       });
       return { items: docs.map((d) => ({ ...d, isCurrentEvidence: d.id === c.latestEvidenceId })), total: docs.length };
@@ -418,7 +418,7 @@ export function createRecordService(db: Db, documents: DocumentAccess, scanner: 
   /** The evidence to approve: the chosen or newest CLEAN pending version; required when the template requires upload. */
   async function pickEvidence(tx: DbClient, c: WithRelations, documentId: number | undefined): Promise<number | null> {
     const candidates = await tx.documentVersion.findMany({
-      where: { credentialId: c.id, reviewStatus: 'PENDING_REVIEW', scanStatus: 'CLEAN', ...(documentId ? { id: documentId } : {}) },
+      where: { credentialId: c.id, reviewStatus: 'PENDING_REVIEW', scanStatus: 'CLEAN', erasedAt: null, ...(documentId ? { id: documentId } : {}) },
       orderBy: { version: 'desc' }, take: 1, select: { id: true },
     });
     if (documentId && candidates.length === 0) throw new HttpError(422, 'DOCUMENT_NOT_REVIEWABLE', 'The selected document is not a clean version awaiting review');

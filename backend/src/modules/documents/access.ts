@@ -27,15 +27,20 @@ export const LinkBody = z.strictObject({ inline: z.boolean().default(true) });
 export interface StoredDocument {
   id: number; version: number; storageKey: string; sha256: string; mimeType: string; fileName: string;
   contractId: number | null; credentialId: number | null;
+  /** Set when the file was erased with the employee's personal data (spec §8.3.3, D-55). */
+  erasedAt?: Date | null;
 }
 
 const resourceOf = (d: Pick<StoredDocument, 'contractId' | 'credentialId'>) =>
   d.contractId !== null ? { resource: 'contract', resourceId: d.contractId } : { resource: 'credential', resourceId: d.credentialId! };
 
+const erased = () => new HttpError(410, 'PERSONAL_DATA_ERASED', 'This file was erased with the employee\'s personal data (data-subject request).');
+
 export function createDocumentAccess(db: Db, vault: Vault) {
   /** Reads a document for `actorUserId` (already authorised) and audits the download. */
   async function read(doc: StoredDocument, actorUserId: number, requestId?: string, via: 'api' | 'link' = 'api') {
     const { resource, resourceId } = resourceOf(doc);
+    if (doc.erasedAt) throw erased();
     let bytes: Buffer;
     try {
       bytes = await vault.get(doc.storageKey, doc.sha256);
@@ -57,6 +62,7 @@ export function createDocumentAccess(db: Db, vault: Vault) {
 
   /** A single-use link for an already authorised user. */
   async function issueLink(doc: StoredDocument, userId: number, inline: boolean, requestId?: string) {
+    if (doc.erasedAt) throw erased();
     const token = randomToken(32);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + LINK_SECONDS * 1000);

@@ -40,11 +40,14 @@ export function createProtection(crypto: FieldCrypto) {
   }
 
   return {
-    /** Seals the sensitive values of validated tracking data. Throws if the employee's key was erased. */
-    async seal(tx: DbClient, employeeId: number, fields: SensitiveField[], data: TrackingValues): Promise<TrackingValues> {
+    /**
+     * Seals the sensitive values of validated tracking data. Throws if the employee's key was erased.
+     * `checkRegister: false` only for erasure, which seals leftover plaintext just before destroying the key.
+     */
+    async seal(tx: DbClient, employeeId: number, fields: SensitiveField[], data: TrackingValues, { checkRegister = true } = {}): Promise<TrackingValues> {
       const sensitive = fields.filter((f) => f.pdplCategory && data[f.key] !== undefined && data[f.key] !== '' && !isSealed(data[f.key]));
       if (sensitive.length === 0) return data;
-      await assertRegistered(tx, new Set(sensitive.map((f) => f.pdplCategory!)));
+      if (checkRegister) await assertRegistered(tx, new Set(sensitive.map((f) => f.pdplCategory!)));
       const key = await dataKey(tx, employeeId, true);
       if (!key) throw new HttpError(409, 'PERSONAL_DATA_ERASED', 'This employee\'s sensitive data was erased; it cannot be recorded again');
       const out = { ...data };
@@ -80,6 +83,18 @@ export function createProtection(crypto: FieldCrypto) {
       const digests = (['IQAMA', 'PASSPORT', 'SCFHS_REG'] as const).map((c) => crypto.blindIndex(c, value));
       const rows = await tx.pdplIdentifierIndex.findMany({ where: { digest: { in: digests } }, select: { credentialId: true } });
       return [...new Set(rows.map((r) => r.credentialId))];
+    },
+    /**
+     * Erasure by crypto-shredding (spec §8.3.3, D-55): destroys the employee's data key, so every
+     * value sealed with it is unreadable for good, and drops their search-index rows. The caller
+     * seals any leftover plaintext first. Throws 409 ALREADY_ERASED when the key is already gone.
+     */
+    async destroyKey(tx: DbClient, employeeId: number, now: Date) {
+      const row = await tx.employeeKey.findUnique({ where: { employeeId } });
+      if (row?.destroyedAt) throw new HttpError(409, 'ALREADY_ERASED', `This employee's sensitive data was already erased on ${row.destroyedAt.toISOString()}`);
+      if (row) await tx.employeeKey.update({ where: { employeeId }, data: { wrappedKey: null, destroyedAt: now } });
+      else await tx.employeeKey.create({ data: { employeeId, wrappedKey: null, destroyedAt: now } }); // no key yet: nothing may be sealed later either
+      await tx.pdplIdentifierIndex.deleteMany({ where: { credential: { employeeId } } });
     },
     dataKey,
   };

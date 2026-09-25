@@ -29,6 +29,7 @@ import { createDocumentAccess, fileHeaders } from './modules/documents/access.js
 import { fieldCryptoFromEnv } from './lib/field-crypto.js';
 import { createProtection } from './modules/pdpl/protection.js';
 import { createPdplRouter } from './modules/pdpl/register.js';
+import { createDataSubjectRouter, createDataSubjectService } from './modules/pdpl/requests.js';
 import { createScanner, type UploadScanner } from './lib/scanner.js';
 import { createWorkforceRouter } from './modules/workforce/routes.js';
 import { createOrgService } from './modules/workforce/org.js';
@@ -112,6 +113,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   const api = Router();
   api.use(authenticate);
   const catalog = createCatalogService(db);
+  const protection = createProtection(fieldCryptoFromEnv(env));
   api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db), catalog, createBaselineImportService(db), invitations, passwordResets, mfa));
   api.use(createWorkforceRouter(db, createOrgService(db)));
   api.use(createNursesRouter(db, createNurseService(db)));
@@ -119,10 +121,11 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   api.use(createNotificationsRouter(db));
   api.use(createAuditRouter(db));
   api.use(createPdplRouter(db));
+  api.use(createDataSubjectRouter(createDataSubjectService({ db, protection, vault: documents.vault, backupRetentionDays: env.BACKUP_RETENTION_DAYS })));
   api.use(createContractsRouter(db, createContractService(db, documents, scanner, env.UPLOAD_MAX_SIZE_BYTES), env.UPLOAD_MAX_SIZE_BYTES));
   api.use(createCredentialsRouter(
     catalog,
-    createRecordService(db, documents, scanner, env.UPLOAD_MAX_SIZE_BYTES, createProtection(fieldCryptoFromEnv(env))),
+    createRecordService(db, documents, scanner, env.UPLOAD_MAX_SIZE_BYTES, protection),
     createEligibilityService(db),
     env.UPLOAD_MAX_SIZE_BYTES,
   ));

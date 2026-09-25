@@ -28,7 +28,7 @@ export interface CredentialRow {
   /** D-54: the employee's sensitive values were erased (§8.3.3); they read as null. */
   personalDataErased?: boolean;
 }
-export interface DocumentRow { id: number; version: number; fileName: string; mimeType: string; sizeBytes: number; scanStatus: string; reviewStatus: string; uploadedAt: string; isCurrentEvidence: boolean }
+export interface DocumentRow { id: number; version: number; fileName: string; mimeType: string; sizeBytes: number; scanStatus: string; reviewStatus: string; uploadedAt: string; isCurrentEvidence: boolean; erasedAt?: string | null }
 export interface Reason { code: string; severity: 'BLOCK' | 'WARN' | 'INFO'; message: string; templateCode?: string; until?: string }
 export interface StateRow {
   employeeId: number; status: EligibilityStatus; reasons: Reason[]; calculatedAt: string; updatedByEvent: string | null;

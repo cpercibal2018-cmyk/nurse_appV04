@@ -9,6 +9,7 @@
 // The spec's SCFHS sync freshness and weekly evidence checksum signals belong to
 // modules that are not built (§5.4, §5.3 vault) and are not reported.
 
+import { RESPONSE_DAYS } from '../pdpl/requests.js';
 import { JOBS } from '../../jobs/scheduler.js';
 import type { Db } from '../../lib/prisma.js';
 
@@ -66,8 +67,11 @@ export async function businessHealth(db: Db, now = new Date()) {
       JOIN credential_template_fields f ON f.template_id = c.template_id AND f.pdpl_category IS NOT NULL
      WHERE (coalesce(c.tracking_data ->> f.key, '') NOT IN ('') AND c.tracking_data ->> f.key NOT LIKE 'pdpl:v1:%')
         OR (coalesce(c.pending_data -> 'trackingData' ->> f.key, '') NOT IN ('') AND c.pending_data -> 'trackingData' ->> f.key NOT LIKE 'pdpl:v1:%')`;
-  const pdpl = { unprotectedValues: Number(plain?.n ?? 0) };
+  // D-55: data-subject requests still open past the 30-day answer deadline.
+  const overdueRequests = await db.dataSubjectRequest.count({ where: { status: { in: ['RECEIVED', 'IN_REVIEW', 'APPROVED'] }, requestedAt: { lt: new Date(now.getTime() - RESPONSE_DAYS * 86_400_000) } } });
+  const pdpl = { unprotectedValues: Number(plain?.n ?? 0), overdueRequests };
   if (pdpl.unprotectedValues > 0) issues.push({ code: 'PDPL_PLAINTEXT', message: `${pdpl.unprotectedValues} sensitive value(s) are stored unencrypted — run npm run pdpl:protect` });
+  if (overdueRequests > 0) issues.push({ code: 'PDPL_REQUESTS_OVERDUE', message: `${overdueRequests} personal-data request(s) are past the 30-day answer deadline (Administration → Data protection)` });
 
   // ── E-mail delivery ────────────────────────────────────────────────────────
   const stuckBefore = new Date(now.getTime() - 15 * MINUTE);

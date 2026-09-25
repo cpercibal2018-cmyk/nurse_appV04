@@ -103,10 +103,10 @@ export function DocumentsDrawer({ credentialId, onClose, canUpload }: { credenti
         columns={[
           { title: 'v', dataIndex: 'version', width: 48 },
           { title: t('fileName'), dataIndex: 'fileName', ellipsis: true },
-          { title: t('status'), render: (_, d) => <>{d.isCurrentEvidence && <Tag color="green">{t('currentEvidence')}</Tag>}<Tag>{d.reviewStatus}</Tag><Tag color={d.scanStatus === 'CLEAN' ? 'default' : 'red'}>{d.scanStatus}</Tag></> },
+          { title: t('status'), render: (_, d) => <>{d.erasedAt && <Tag color="red">{t('personalDataErased')}</Tag>}{d.isCurrentEvidence && <Tag color="green">{t('currentEvidence')}</Tag>}<Tag>{d.reviewStatus}</Tag><Tag color={d.scanStatus === 'CLEAN' ? 'default' : 'red'}>{d.scanStatus}</Tag></> },
           { title: t('uploaded'), render: (_, d) => new Date(d.uploadedAt).toLocaleString() },
           {
-            title: '', render: (_, d) => d.scanStatus === 'CLEAN' && credentialId !== null
+            title: '', render: (_, d) => d.scanStatus === 'CLEAN' && !d.erasedAt && credentialId !== null
               ? <Space size={4}><Button size="small" onClick={() => http.openDocument(`/credentials/${credentialId}/documents/${d.id}`).catch((e) => message.error(describeApiError(e)))}>{t('view')}</Button><Button size="small" onClick={() => http.download(`/credentials/${credentialId}/documents/${d.id}`, d.fileName).catch((e) => message.error(describeApiError(e)))}>{t('download')}</Button></Space>
               : null,
           },

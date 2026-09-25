@@ -1,4 +1,5 @@
-// Data protection (spec §8.3.2, D-54): the processing register — the lawful
+// Data protection (spec §8.3, D-54/D-55): personal data requests (DataSubjectRequests),
+// and the processing register — the lawful
 // basis, purpose and retention for each category of sensitive personal data.
 // HR and System Admins read it; a System Admin changes it (with a reason,
 // audited HIGH). A category without an active entry cannot be stored.
@@ -9,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { usePermissions } from '../../hooks/usePermissions';
 import { describeApiError } from '../../lib/errors';
 import { useProcessingRegister, useUpdateRegister, type RegisterEntry } from './api';
+import { DataSubjectRequests } from './DataSubjectRequests';
 
 export function DataProtectionTab() {
   const { t } = useTranslation();
@@ -33,6 +35,7 @@ export function DataProtectionTab() {
 
   return (
     <>
+      <DataSubjectRequests />
       <Alert type="info" showIcon title={t('dataProtectionHint')} style={{ marginBottom: 12 }} />
       <Table<RegisterEntry>
         rowKey="id" size="small" loading={register.isLoading} dataSource={register.data?.items} pagination={false} scroll={{ x: true }}
