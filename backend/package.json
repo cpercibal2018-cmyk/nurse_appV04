@@ -16,6 +16,7 @@
     "pdpl:protect": "node dist/cli/pdpl-protect.js",
     "pdpl:reerase": "node dist/cli/pdpl-reerase.js",
     "keys:rotate": "node dist/cli/keys-rotate.js",
+    "mfa": "node dist/cli/mfa-dev.js",
     "exit:package": "node dist/cli/exit-package.js",
     "fixtures:demo": "tsx test/fixtures/demo/cli.ts",
     "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
