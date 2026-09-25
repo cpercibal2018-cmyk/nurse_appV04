@@ -21,7 +21,7 @@ Needs Docker with Compose, Node 22 and `openssl`. The first run installs Playwri
 | `web` | `nurseapp/web` | Yes — the release nginx configuration |
 | `tls` | `nginx:1.28-alpine` | Stands in for the load balancer: TLS with a throwaway self-signed certificate for `nurse.e2e.test`, client address in `X-Client-Ip`. It also opens a **test-only** plain-HTTP port so the test can show the cookies are never sent without TLS |
 
-Passwords, the JWT key, the MFA encryption key and the certificate are generated for each run and deleted afterwards.
+Passwords, the JWT key, the MFA and document encryption keys and the certificate are generated for each run and deleted afterwards.
 
 ## What it checks ([`https-session.test.mjs`](https-session.test.mjs))
 

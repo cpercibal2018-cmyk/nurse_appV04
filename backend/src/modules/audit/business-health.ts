@@ -47,6 +47,17 @@ export async function businessHealth(db: Db, now = new Date()) {
     jobs.push({ name: job.name, schedule: job.schedule, lastCompletedAt: lastDone?.finishedAt ?? null, ageMinutes, maxAgeMinutes: job.maxAgeMinutes, stale, lastAttemptFailed: failed });
   }
 
+  // ── Document vault (D-53) ──────────────────────────────────────────────────
+  const lastVault = await db.jobRun.findFirst({ where: { jobName: 'vault-reconcile', status: 'COMPLETED' }, orderBy: { finishedAt: 'desc' }, select: { finishedAt: true, summary: true } });
+  const vs = (lastVault?.summary ?? null) as { objects?: number; documents?: number; missing?: number; integrityFailures?: number; sampled?: number; legacyPlaintext?: number; orphansRemoved?: number } | null;
+  if (vs?.missing) issues.push({ code: 'VAULT_MISSING', message: `${vs.missing} stored document(s) are missing — restore them from backup` });
+  if (vs?.integrityFailures) issues.push({ code: 'VAULT_INTEGRITY', message: `${vs.integrityFailures} stored document(s) failed the integrity check` });
+  if (vs?.legacyPlaintext) issues.push({ code: 'VAULT_PLAINTEXT', message: `${vs.legacyPlaintext} document(s) are stored unencrypted — run npm run vault:encrypt` });
+  const vault = {
+    lastCheckAt: lastVault?.finishedAt ?? null, documents: vs?.documents ?? null, missing: vs?.missing ?? null,
+    sampled: vs?.sampled ?? null, integrityFailures: vs?.integrityFailures ?? null, legacyPlaintext: vs?.legacyPlaintext ?? null, orphansRemoved: vs?.orphansRemoved ?? null,
+  };
+
   // ── E-mail delivery ────────────────────────────────────────────────────────
   const stuckBefore = new Date(now.getTime() - 15 * MINUTE);
   const dayAgo = new Date(now.getTime() - 24 * 60 * MINUTE);
@@ -75,6 +86,7 @@ export async function businessHealth(db: Db, now = new Date()) {
       recentDrifts: recentDrifts.map((d) => ({ employeeId: d.employeeId, jobNumber: d.employee.jobNumber, expected: d.expectedStatus, stored: d.actualStatus, detectedAt: d.detectedAt })),
     },
     jobs,
+    vault,
     email,
     generatedAt: now,
   };

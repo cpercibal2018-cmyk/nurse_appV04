@@ -144,6 +144,21 @@ export const http = {
   delete: <T = void>(path: string, body?: unknown) => request<T>('DELETE', path, body),
   /** Uploads a file as the raw request body. */
   upload: <T>(path: string, file: File) => request<T>('POST', path, undefined, { file }),
+  /**
+   * Opens a stored document in a new tab through a single-use, 60-second link
+   * (D-53): the tab is opened first, inside the click, so no pop-up blocker
+   * intervenes; the link is issued after the server's usual checks.
+   */
+  async openDocument(path: string) {
+    const tab = window.open('', '_blank');
+    try {
+      const { url } = await request<{ url: string }>('POST', `${path}/link`, { inline: true });
+      if (tab) { tab.opener = null; tab.location.href = url; } else window.location.assign(url);
+    } catch (e) {
+      tab?.close();
+      throw e;
+    }
+  },
   /** Downloads a protected file and hands it to the browser as a save. */
   async download(path: string, fallbackName = 'document') {
     const res = await exchange('GET', path);

@@ -162,7 +162,7 @@ export default function ContractsPage() {
             { title: t('uploaded'), render: (_, d) => new Date(d.uploadedAt).toLocaleString() },
             {
               title: '', render: (_, d) => d.scanStatus === 'CLEAN' && docsFor
-                ? <Button size="small" onClick={() => http.download(`/contracts/${docsFor.id}/documents/${d.id}`, d.fileName).catch((e) => message.error(describeApiError(e)))}>{t('download')}</Button>
+                ? <Space size={4}><Button size="small" onClick={() => http.openDocument(`/contracts/${docsFor.id}/documents/${d.id}`).catch((e) => message.error(describeApiError(e)))}>{t('view')}</Button><Button size="small" onClick={() => http.download(`/contracts/${docsFor.id}/documents/${d.id}`, d.fileName).catch((e) => message.error(describeApiError(e)))}>{t('download')}</Button></Space>
                 : null,
             },
           ]} />

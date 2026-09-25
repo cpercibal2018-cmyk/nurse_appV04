@@ -12,6 +12,7 @@
     "start": "node dist/server.js",
     "worker": "node dist/jobs/worker.js",
     "bootstrap": "node dist/cli/bootstrap.js",
+    "vault:encrypt": "node dist/cli/vault-encrypt.js",
     "fixtures:demo": "tsx test/fixtures/demo/cli.ts",
     "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
     "test": "prisma generate && vitest run",

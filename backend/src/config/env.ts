@@ -55,6 +55,11 @@ const EnvSchema = z.object({
   // ── Uploads (spec §5.1.5, §5.3.2; decision D-10) ─────────────────────────
   /** Local document storage root (never served directly). */
   STORAGE_DIR: z.string().min(1).default('./storage'),
+  /** D-53: 32 random bytes, base64 — wraps each document's own encryption key. Required in production. */
+  DOCUMENT_ENCRYPTION_KEY: z
+    .string()
+    .default('')
+    .refine((k) => k === '' || Buffer.from(k, 'base64').length === 32, 'must be 32 random bytes, base64-encoded (openssl rand -base64 32)'),
   /** Spec §5.1.5: 10 MB per upload, configurable. */
   UPLOAD_MAX_SIZE_BYTES: int(10 * 1024 * 1024),
   /** D-10: dev marks files CLEAN after magic-byte checks; production requires clamav. */
@@ -103,6 +108,12 @@ export type Env = z.infer<typeof EnvSchema>;
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const parsed = EnvSchema.superRefine((e, ctx) => {
     if (e.SMTP_HOST && !e.SMTP_FROM) ctx.addIssue({ code: 'custom', path: ['SMTP_FROM'], message: 'required when SMTP_HOST is set' });
+    if (e.NODE_ENV === 'production' && !e.DOCUMENT_ENCRYPTION_KEY) {
+      ctx.addIssue({ code: 'custom', path: ['DOCUMENT_ENCRYPTION_KEY'], message: 'required in production (openssl rand -base64 32)' });
+    }
+    if (e.NODE_ENV === 'production' && e.DOCUMENT_ENCRYPTION_KEY && e.DOCUMENT_ENCRYPTION_KEY === e.MFA_ENCRYPTION_KEY) {
+      ctx.addIssue({ code: 'custom', path: ['DOCUMENT_ENCRYPTION_KEY'], message: 'must differ from MFA_ENCRYPTION_KEY' });
+    }
     if (e.NODE_ENV === 'production' && !e.MFA_ENCRYPTION_KEY) {
       ctx.addIssue({ code: 'custom', path: ['MFA_ENCRYPTION_KEY'], message: 'required in production (openssl rand -base64 32)' });
     }

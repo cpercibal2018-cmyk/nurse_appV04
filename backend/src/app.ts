@@ -24,7 +24,8 @@ import { createCatalogService } from './modules/credentials/catalog.js';
 import { createRecordService } from './modules/credentials/records.js';
 import { createCredentialsRouter } from './modules/credentials/routes.js';
 import { createEligibilityService } from './modules/eligibility/service.js';
-import { createStorage } from './lib/uploads.js';
+import { createLocalDiskAdapter, createVault, documentKey } from './lib/vault.js';
+import { createDocumentAccess, fileHeaders } from './modules/documents/access.js';
 import { createScanner, type UploadScanner } from './lib/scanner.js';
 import { createWorkforceRouter } from './modules/workforce/routes.js';
 import { createOrgService } from './modules/workforce/org.js';
@@ -94,6 +95,14 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   });
   app.use('/api/v1/auth', createAuthRouter(env, auth, authenticate, invitations, passwordResets, mfa));
 
+  // D-53: the document vault, and its single-use links. The link itself is the
+  // credential (issued after the usual authorisation), so this route is public.
+  const documents = createDocumentAccess(db, createVault(createLocalDiskAdapter(env.STORAGE_DIR), documentKey(env)));
+  app.get('/api/v1/files/:token{/:name}', async (req, res) => {
+    const file = await documents.redeem(String(req.params.token), res.locals.requestId);
+    res.set(fileHeaders(file, file.inline)).send(file.bytes);
+  });
+
   // Everything else under /api/v1 requires a signed-in caller. One protected
   // router, so authentication runs once per request; each domain module adds
   // its router here. Anonymous callers get 401 for any path, known or not.
@@ -106,10 +115,10 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   api.use(createSchedulingRouter(db, createSchedulingService(db), createAttendanceService(db)));
   api.use(createNotificationsRouter(db));
   api.use(createAuditRouter(db));
-  api.use(createContractsRouter(db, createContractService(db, createStorage(env.STORAGE_DIR), scanner, env.UPLOAD_MAX_SIZE_BYTES), env.UPLOAD_MAX_SIZE_BYTES));
+  api.use(createContractsRouter(db, createContractService(db, documents, scanner, env.UPLOAD_MAX_SIZE_BYTES), env.UPLOAD_MAX_SIZE_BYTES));
   api.use(createCredentialsRouter(
     catalog,
-    createRecordService(db, createStorage(env.STORAGE_DIR), scanner, env.UPLOAD_MAX_SIZE_BYTES),
+    createRecordService(db, documents, scanner, env.UPLOAD_MAX_SIZE_BYTES),
     createEligibilityService(db),
     env.UPLOAD_MAX_SIZE_BYTES,
   ));

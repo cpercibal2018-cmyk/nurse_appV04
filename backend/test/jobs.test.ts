@@ -197,7 +197,7 @@ describeDb('jobs, notifications, audit and sessions', () => {
       expect(res.body.items.every((e: { action: string; id: string }) => e.action === 'LOGIN_SUCCEEDED' && typeof e.id === 'string')).toBe(true);
       expect((await sa.get('/audit/verify')).body.intact).toBe(true);
       const jobs = await sa.get('/admin/jobs');
-      expect(jobs.body.items.map((j: { name: string }) => j.name)).toEqual(['daily-transition', 'expiry-scan', 'attendance-alerts', 'consistency-audit', 'request-log-purge']);
+      expect(jobs.body.items.map((j: { name: string }) => j.name)).toEqual(['daily-transition', 'expiry-scan', 'attendance-alerts', 'consistency-audit', 'request-log-purge', 'vault-reconcile']);
       expect((await hr.post('/admin/jobs/expiry-scan/run')).status).toBe(403);
     });
   });

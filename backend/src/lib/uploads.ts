@@ -7,12 +7,10 @@
 //   WebP; contract copies: PDF only (C-17).
 // - Scanning (D-10): lib/scanner.ts, after these checks and before storage —
 //   ClamAV in production, a pass-through in development.
-// - Storage: local disk under STORAGE_DIR, content-addressed by a random key;
-//   bytes are never overwritten (D3) and never served unless CLEAN (D4).
+// - Storage: the document vault (lib/vault.ts) — encrypted, integrity-checked,
+//   never overwritten (D3) and never served unless CLEAN (D4).
 
 import crypto from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 import { HttpError } from './http-errors.js';
 
 export type UploadPurpose = 'CREDENTIAL_EVIDENCE' | 'CONTRACT_COPY';
@@ -51,23 +49,3 @@ export function checkUpload(purpose: UploadPurpose, bytes: Buffer, declaredType:
   }
   return { mimeType: declared, sizeBytes: bytes.length, sha256: crypto.createHash('sha256').update(bytes).digest('hex'), fileName };
 }
-
-export function createStorage(root: string) {
-  const resolve = (key: string) => {
-    if (!/^[a-f0-9]{64}$/.test(key)) throw new Error('invalid storage key');
-    return path.join(root, key.slice(0, 2), key);
-  };
-  return {
-    /** Writes bytes under a fresh random key; never overwrites. */
-    async put(bytes: Buffer): Promise<string> {
-      const key = crypto.randomBytes(32).toString('hex');
-      const file = resolve(key);
-      await mkdir(path.dirname(file), { recursive: true });
-      await writeFile(file, bytes, { flag: 'wx' });
-      return key;
-    },
-    get: (key: string) => readFile(resolve(key)),
-  };
-}
-
-export type Storage = ReturnType<typeof createStorage>;

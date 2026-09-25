@@ -20,6 +20,7 @@ import { withLease } from '../lib/worker-lease.js';
 import { attendanceAlerts } from './attendance-alerts.js';
 import { consistencyAudit } from './consistency-audit.js';
 import { requestLogPurge } from './request-log-purge.js';
+import { vaultReconcile } from './vault-reconcile.js';
 import { dailyTransition } from './daily-transition.js';
 import { expiryScan } from './expiry-scan.js';
 
@@ -51,6 +52,7 @@ export const JOBS: JobDefinition[] = [
   },
   { name: 'consistency-audit', schedule: 'daily 03:00 Asia/Riyadh', periodKey: dailyAt('consistency-audit', '03:00'), run: consistencyAudit, maxAgeMinutes: 26 * 60 },
   { name: 'request-log-purge', schedule: 'daily 02:30 Asia/Riyadh', periodKey: dailyAt('request-log-purge', '02:30'), run: requestLogPurge, maxAgeMinutes: 26 * 60 },
+  { name: 'vault-reconcile', schedule: 'daily 04:30 Asia/Riyadh', periodKey: dailyAt('vault-reconcile', '04:30'), run: vaultReconcile, maxAgeMinutes: 26 * 60 },
 ];
 
 export type RunOutcome = { job: string; runKey: string; status: 'COMPLETED' | 'FAILED' | 'SKIPPED'; summary?: Record<string, unknown>; error?: string };

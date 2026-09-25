@@ -106,7 +106,8 @@ export function createRequestLog(db: Pick<Db, 'requestLogEntry'>, hmacKey: Buffe
         actorRoles: auth ? ([...new Set(auth.effective.map((g) => g.role))].join(',') || 'EMPLOYEE').slice(0, 100) : null,
         sessionFamily: auth?.sessionFamily?.slice(0, 64) ?? null,
         method: req.method.slice(0, 10),
-        path: req.originalUrl.split('?')[0]!.slice(0, 500),
+        // A download-link token is a credential until used, and the file name may be personal: never logged (D-53).
+        path: req.originalUrl.split('?')[0]!.replace(/^(\/api\/v1\/files\/).+/, '$1:token').slice(0, 500),
         statusCode: res.statusCode,
         durationMs: Number((process.hrtime.bigint() - started) / 1_000_000n),
         ipAddress: req.ip?.slice(0, 45) ?? null,

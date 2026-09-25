@@ -86,7 +86,7 @@ describeDb('consistency auditor (spec §10.8)', () => {
     expect(res.body.status).toBe('ATTENTION');
     expect(res.body.eligibility.drifts7d).toBeGreaterThanOrEqual(1);
     expect(res.body.eligibility.recentDrifts.map((d: { employeeId: number }) => d.employeeId)).toContain(emp.id);
-    expect(res.body.jobs.map((j: { name: string }) => j.name)).toEqual(['daily-transition', 'expiry-scan', 'attendance-alerts', 'consistency-audit', 'request-log-purge']);
+    expect(res.body.jobs.map((j: { name: string }) => j.name)).toEqual(['daily-transition', 'expiry-scan', 'attendance-alerts', 'consistency-audit', 'request-log-purge', 'vault-reconcile']);
     expect(res.body.email.pendingOver15Minutes).toBeGreaterThanOrEqual(1);
     expect(res.body.issues.map((i: { code: string }) => i.code)).toContain('EMAIL_BACKLOG');
 

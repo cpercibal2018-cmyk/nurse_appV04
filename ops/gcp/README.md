@@ -168,7 +168,7 @@ gcloud compute disks add-resource-policies nurseapp-app-data --zone=$ZONE --reso
 | :--- | :--- |
 | `/etc/nurseapp/deploy.env` | `REGISTRY=me-central2-docker.pkg.dev/<project>/nurseapp` and `LB_PROXY_SUBNET=10.20.8.0/23` |
 | `/etc/nurseapp/migrate.env` | `MIGRATION_DATABASE_URL=postgresql://nurseapp_migration:<pw>@<db-ip>:5432/nurseapp_v04?sslmode=require` and `DATABASE_URL=` the same (only the release step reads this file) |
-| `/etc/nurseapp/app.env` | Everything in [`.env.example`](../../.env.example) for production: `DATABASE_URL` = `nurseapp_runtime` (with `?sslmode=require`), `JWT_SECRET`, `MFA_ENCRYPTION_KEY` (`openssl rand -base64 32`; also stored with the backup keys), `CORS_ORIGIN` = the public URL, `DATA_RESIDENCY_REGION=me-central-2`, `PDPL_ALLOWED_REGIONS=me-central-2`, the SMTP settings (D-47) and `BREAK_GLASS_ALERT_EMAILS`. `NODE_ENV`, `JOBS_MODE`, `TRUST_PROXY`, `UPLOAD_SCANNER` and `CLAMAV_HOST` are set by the Compose file |
+| `/etc/nurseapp/app.env` | Everything in [`.env.example`](../../.env.example) for production: `DATABASE_URL` = `nurseapp_runtime` (with `?sslmode=require`), `JWT_SECRET`, `MFA_ENCRYPTION_KEY` and `DOCUMENT_ENCRYPTION_KEY` (two different `openssl rand -base64 32` values; both also stored with the backup keys), `CORS_ORIGIN` = the public URL, `DATA_RESIDENCY_REGION=me-central-2`, `PDPL_ALLOWED_REGIONS=me-central-2`, the SMTP settings (D-47) and `BREAK_GLASS_ALERT_EMAILS`. `NODE_ENV`, `JOBS_MODE`, `TRUST_PROXY`, `UPLOAD_SCANNER` and `CLAMAV_HOST` are set by the Compose file |
 
 Passwords are URL-encoded if they contain `@ : / ? # %`. The API and worker refuse to start in production if `DATABASE_URL` can change the schema, if the scanner is not ClamAV, or if the region is not in the Kingdom.
 

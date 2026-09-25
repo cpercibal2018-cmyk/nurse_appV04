@@ -70,7 +70,7 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | POST | `/api/v1/admin/baseline-import` | `{file, reason ≥ 10}` → **202** `{status: PENDING_APPROVAL, requestId, report}`; refused with any conflict or rejection (`BASELINE_NOT_IMPORTABLE`) or nothing new (`NOTHING_TO_IMPORT`). A second hospital-wide admin approves via `/approvals/:id/approve`; the file is re-checked (`BASELINE_CHANGED_SINCE_REQUEST`) and applied in one transaction. Break-glass → 201 applied | `baseline.import` — hospital-wide scope | **D-42** (P7) |
 
 **Implemented in commit 5 (notes):**
-- Every route under `/api/v1` except health, `/auth/login|refresh|logout` and `/auth/invitations/preview|claim` and `/auth/password-reset/request|complete` and `/auth/mfa/verify|enroll/start|enroll/confirm` passes one `authenticate` step; an anonymous caller gets 401 for any path, known or not.
+- Every route under `/api/v1` except health, `/auth/login|refresh|logout` and `/auth/invitations/preview|claim` and `/auth/password-reset/request|complete` and `/auth/mfa/verify|enroll/start|enroll/confirm` and `/files/:token` passes one `authenticate` step; an anonymous caller gets 401 for any path, known or not.
 - State-changing requests need `X-CSRF-Token` equal to the session's token (bound into the access token as a hash) and `Origin` equal to the app origin (spec §3.4 CsrfGuard).
 - `[I]` responses carry identifiers only (`POST /users` → `{id}`; `POST /role-assignments` → `{status:'GRANTED', id}` or 202 `{status:'PENDING_APPROVAL', requestId}`), so stored idempotent responses hold no personal data.
 - Four-eyes approval executes the stored action **as the approver**: every grant rule (R2–R6) is re-checked for them, inside the approval's transaction.
@@ -119,7 +119,8 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | POST | `/api/v1/contracts/:id/renew` **[I]** | From the employee's latest contract; dates default to the C8 prefill → Draft | HR, SA scoped; not own | C8 |
 | POST | `/api/v1/contracts/:id/transition` | `{action, reason?}` per the D-29 map: `submit` (needs a CLEAN copy, C11), `return`\*, `approve` (Active if it covers today, else Approved; overlap checked, C4), `suspend`\*, `reinstate`\*, `terminate`\*. \* reason required. Expired only by the daily job; Superseded never by hand. Returns `{status, eligibility}` | HR, SA scoped; not own; **approver ≠ creator and ≠ submitter (D-30)** | spec §4.2, D-29, D-30 |
 | POST | `/api/v1/contracts/:id/documents` | Contract copy: raw PDF body, `X-File-Name`; ≤ 10 MB; magic bytes; malware scan — 422 `UPLOAD_INFECTED`, 503 `SCANNER_UNAVAILABLE` (D1–D3) | HR, SA scoped; not own | D1–D3 |
-| GET | `/api/v1/contracts/:id/documents` · `/:docId` | Versions · download (CLEAN only, audited, `nosniff`) | HR scoped; EMP own; **never SUP** (D5) | D4, D5 |
+| GET | `/api/v1/contracts/:id/documents` · `/:docId` | Versions · download (CLEAN only, audited, `nosniff`). A vault failure is never a partial file: 500 `DOCUMENT_INTEGRITY_FAILED` · `DOCUMENT_MISSING`, audited HIGH (D-53) | HR scoped; EMP own; **never SUP** (D5) | D4, D5 |
+| POST | `/api/v1/contracts/:id/documents/:docId/link` | `{inline?: boolean = true}` → 201 `{url, expiresAt}`: a single-use link valid 60 s (D-53), after the same checks as a download; opened by a plain browser request | as download | D-53 |
 
 ### 2.7 Credentials (`modules/credentials`) — implemented in commit 6
 
@@ -140,7 +141,9 @@ Role shorthand: **SA** SYSTEM_ADMIN (requires active PAM elevation, R13) · **HR
 | POST | `/api/v1/credentials/:id/renewal` | Stage replacement data | EMP own, HR (scoped) | spec §5.2 |
 | POST | `/api/v1/credentials/:id/renewal/approve` `{documentId?}` · `/renewal/reject` `{reason}` | Promote or discard; approval completes grace, rejection closes it | HR (scoped), not own | spec §5.2, §6.1.1 |
 | POST | `/api/v1/credentials/:id/documents` | Raw body = file, `Content-Type` = its type, `X-File-Name`; PDF/JPEG/PNG/WebP, ≤ 10 MB, magic bytes must match; malware scan — 422 `UPLOAD_INFECTED`, 503 `SCANNER_UNAVAILABLE` | EMP own, HR (scoped) | spec §5.1.5 |
-| GET | `/api/v1/credentials/:id/documents` · `/:docId` | Versions · download (CLEAN only, audited, `nosniff`) | EMP own, HR (scoped); **never SUP** (D5) | spec §5.2, §5.3.2 |
+| GET | `/api/v1/credentials/:id/documents` · `/:docId` | Versions · download (CLEAN only, audited, `nosniff`); vault failures as for contracts (D-53) | EMP own, HR (scoped); **never SUP** (D5) | spec §5.2, §5.3.2 |
+| POST | `/api/v1/credentials/:id/documents/:docId/link` | `{inline?: boolean = true}` → 201 `{url, expiresAt}`: a single-use link valid 60 s (D-53), after the same checks as a download; opened by a plain browser request | as download | D-53 |
+| GET | `/api/v1/files/:token/:fileName` | Redeems a link once: the file, `inline` or `attachment` as issued, with `Content-Security-Policy: default-src 'none'`, `nosniff`; audited as a download (`via: link`) by the user it was issued to. Used, expired, unknown, or the user deactivated → 404 `LINK_INVALID`. The token and file name never reach the logs | public (the token is the credential) | D-53 |
 
 ### 2.8 Eligibility (`modules/eligibility`) — implemented in commit 6
 

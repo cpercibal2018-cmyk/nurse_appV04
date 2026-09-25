@@ -87,7 +87,7 @@ Every capability found in the repository, where it lives, how real it is, and wh
 | Renewal staging (pending data, approve/reject) | SPEC | §5.2 | |
 | Suspension / revocation | SPEC | §5.2 | Statuses exist in the type; no action. |
 | Evidence versioning (append-only), PDF magic bytes, 10 MB cap, scan gate | CLIENT | `contracts.ts:170-228`, `store.tsx:73-89, 887-933` | BR-D1…D4. Bytes are held in memory only and lost on reload; "scan" is simulated as CLEAN. |
-| Secure vault, signed URLs 30 s, ClamAV quarantine | SPEC | §5.3 | |
+| Secure vault, signed URLs 30 s, ClamAV quarantine | **BUILT** (D-53, D-43) | §5.3 | Encrypted vault on local disk; single-use links valid 60 s (not 30 — time to open on a slow hospital network); synchronous ClamAV instead of a quarantine queue (D-43). Object storage waits for hosting |
 | SCFHS nightly sync, circuit breaker, STALE 48 h | SPEC | §5.4 | Gated on U3 agreement. `syncStatus` is a stored label only. |
 
 ## 5. Clinical eligibility

@@ -28,8 +28,9 @@ export const requestId: RequestHandler = (req, res, next) => {
     logger.info('request', {
       requestId: id,
       method: req.method,
-      // Path only: query strings can carry search terms with personal data.
-      path: req.path,
+      // Path only: query strings can carry search terms with personal data;
+      // a download-link token is a credential until used (D-53).
+      path: req.originalUrl.split('?')[0]!.replace(/^(\/api\/v1\/files\/).+/, '$1:token'),
       status: res.statusCode,
       ms: Number((process.hrtime.bigint() - started) / 1_000_000n),
     });

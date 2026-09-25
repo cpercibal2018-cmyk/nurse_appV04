@@ -50,6 +50,8 @@ const PUBLIC = new Set([
   'POST /api/v1/auth/password-reset/request', 'POST /api/v1/auth/password-reset/complete',
   // The second sign-in step (spec §3.5): the single-use challenge from a correct password, Origin check and throttles guard them.
   'POST /api/v1/auth/mfa/verify', 'POST /api/v1/auth/mfa/enroll/start', 'POST /api/v1/auth/mfa/enroll/confirm',
+  // D-53: a single-use, 60-second link issued after the usual document authorisation; the token is the credential.
+  'GET /api/v1/files/:token{/:name}',
 ]);
 
 /** Signed-in routes without a route gate: the service checks own-or-scoped access. Reviewed list. */
@@ -60,9 +62,9 @@ const SELF_OR_SCOPED = [
   'GET /api/v1/eligibility/me', 'GET /api/v1/eligibility/:id', // viewerOf: own, scoped HR or scoped supervisor
   'GET /api/v1/pam/status', 'POST /api/v1/pam/elevate', 'POST /api/v1/pam/end', // own elevation only; elevate needs a System Admin assignment
   'GET /api/v1/credentials/:id', 'POST /api/v1/credentials/:id/renewal', 'POST /api/v1/credentials/:id/documents',
-  'GET /api/v1/credentials/:id/documents', 'GET /api/v1/credentials/:id/documents/:docId',
+  'GET /api/v1/credentials/:id/documents', 'GET /api/v1/credentials/:id/documents/:docId', 'POST /api/v1/credentials/:id/documents/:docId/link',
   'GET /api/v1/employees/me', 'PATCH /api/v1/employees/me/contact', 'GET /api/v1/employees/:id', // contact: own phones only (D-35)
-  'GET /api/v1/contracts/me', 'GET /api/v1/contracts/:id', 'GET /api/v1/contracts/:id/documents', 'GET /api/v1/contracts/:id/documents/:docId',
+  'GET /api/v1/contracts/me', 'GET /api/v1/contracts/:id', 'GET /api/v1/contracts/:id/documents', 'GET /api/v1/contracts/:id/documents/:docId', 'POST /api/v1/contracts/:id/documents/:docId/link',
   'GET /api/v1/roster/me', 'GET /api/v1/attendance/me',
   'GET /api/v1/notifications', 'POST /api/v1/notifications/:id/read', 'POST /api/v1/notifications/read-all',
 ].sort();

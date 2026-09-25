@@ -94,6 +94,7 @@ services:
       NODE_ENV: production
       JWT_SECRET: ${E2E_JWT_SECRET}
       MFA_ENCRYPTION_KEY: ${E2E_MFA_KEY}
+      DOCUMENT_ENCRYPTION_KEY: ${E2E_DOC_KEY}
       CORS_ORIGIN: https://nurse.e2e.test:8443
       DATA_RESIDENCY_REGION: me-central-2
       PDPL_ALLOWED_REGIONS: me-central-2

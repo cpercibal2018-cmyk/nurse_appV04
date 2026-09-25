@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { App, Button, DatePicker, Drawer, Form, Input, InputNumber, Table, Tag, Tooltip, Upload } from 'antd';
+import { App, Button, DatePicker, Drawer, Form, Input, InputNumber, Space, Table, Tag, Tooltip, Upload } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useTranslation } from 'react-i18next';
@@ -107,7 +107,7 @@ export function DocumentsDrawer({ credentialId, onClose, canUpload }: { credenti
           { title: t('uploaded'), render: (_, d) => new Date(d.uploadedAt).toLocaleString() },
           {
             title: '', render: (_, d) => d.scanStatus === 'CLEAN' && credentialId !== null
-              ? <Button size="small" onClick={() => http.download(`/credentials/${credentialId}/documents/${d.id}`, d.fileName).catch((e) => message.error(describeApiError(e)))}>{t('download')}</Button>
+              ? <Space size={4}><Button size="small" onClick={() => http.openDocument(`/credentials/${credentialId}/documents/${d.id}`).catch((e) => message.error(describeApiError(e)))}>{t('view')}</Button><Button size="small" onClick={() => http.download(`/credentials/${credentialId}/documents/${d.id}`, d.fileName).catch((e) => message.error(describeApiError(e)))}>{t('download')}</Button></Space>
               : null,
           },
         ]}
