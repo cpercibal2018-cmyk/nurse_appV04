@@ -1,0 +1,24 @@
+# HTTPS for the VPS (decision D-57). Caddy obtains and renews the certificate
+# for SITE_HOST from Let's Encrypt (the DNS A record must point at the VPS and
+# ports 80 and 443 must be open), redirects HTTP to HTTPS, and forwards to the
+# live colour named in site/upstream.caddy (written by deploy.sh). Security headers
+# (HSTS, CSP, …) come from the web container's nginx, as in every deployment.
+{
+	email {$ACME_EMAIL}
+	{$CADDY_GLOBAL_EXTRA}
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+{$SITE_HOST} {
+	# The client's address, for sign-in limits and session history: overwritten here, so a
+	# client cannot supply its own. nginx believes it only from Caddy's fixed address.
+	request_header X-Client-Ip {remote_host}
+	request_body {
+		max_size 11MB
+	}
+	import /etc/caddy/site/upstream.caddy
+	# No access log: download links carry a single-use token in the path (D-53).
+	# The API keeps its own request log with tokens redacted (D-52).
+}

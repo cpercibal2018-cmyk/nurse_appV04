@@ -1,0 +1,64 @@
+# One release colour (blue or green) of the application (decision D-57).
+# deploy.sh runs it as project nurseapp-<colour> with COLOR and TAG set; the
+# idle colour starts beside the live one, is checked, then Caddy is switched.
+# Every name other services use carries the colour (api-blue, web-green), so
+# the two colours never answer for each other.
+#
+# Settings: /etc/nurseapp/app.env (DATABASE_URL = nurseapp_runtime@db.host,
+# secrets, SMTP, …), root-only 0600. The database runs on the VPS itself and
+# is reached as db.host (the Docker host), never over the internet.
+
+name: nurseapp-${COLOR:?COLOR is blue or green}
+
+x-app: &app
+  image: nurseapp/api:${TAG:?TAG is the release}
+  env_file: ${NURSEAPP_CONF:-/etc/nurseapp}/app.env
+  restart: unless-stopped
+  read_only: true
+  tmpfs: ["/tmp:mode=1777"]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  extra_hosts: ["db.host:${DB_HOST_IP:-host-gateway}"]
+  networks: [nurseapp]
+
+services:
+  api:
+    <<: *app
+    environment:
+      NODE_ENV: production
+      JOBS_MODE: worker          # the worker service runs the jobs and the e-mail dispatcher
+      TRUST_PROXY: "true"        # one hop: this colour's web container (nginx)
+      UPLOAD_SCANNER: clamav
+      CLAMAV_HOST: clamav
+    volumes:
+      - ${NURSEAPP_STATE:-/srv/nurseapp}/storage:/data/storage   # shared by both colours
+    networks:
+      nurseapp: { aliases: ["api-${COLOR}"] }
+
+  worker:
+    <<: *app
+    command: ["node", "dist/jobs/worker.js"]
+    environment:
+      NODE_ENV: production
+    volumes:
+      - ${NURSEAPP_STATE:-/srv/nurseapp}/storage:/data/storage   # the vault check reads the documents
+    healthcheck: { disable: true }   # no HTTP listener; liveness = the process and job_runs
+
+  web:
+    image: nurseapp/web:${TAG}
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp:uid=101,gid=101", "/var/cache/nginx:uid=101,gid=101", "/etc/nginx/conf.d:uid=101,gid=101"]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    environment:
+      API_UPSTREAM: api-${COLOR}:3001
+      LB_PROXY_SUBNET: 172.30.0.2/32   # Caddy: the only source whose X-Client-Ip is believed
+    networks:
+      nurseapp: { aliases: ["web-${COLOR}"] }
+    depends_on:
+      api: { condition: service_healthy }
+
+networks:
+  nurseapp:
+    external: true

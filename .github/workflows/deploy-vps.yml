@@ -1,0 +1,63 @@
+name: Deploy (VPS)
+
+# Production release to the single VPS (decision D-57; ops/vps/README.md).
+# Runs after CI has passed on main, then waits for a reviewer to approve the
+# `production` environment. Builds the images here — never on the server —
+# and sends them with the release scripts over SSH to the one command the
+# deploy key may run there (nurseapp-release): migrations, role check,
+# blue/green switch. Does nothing until the VPS_HOST variable is set.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  deploy:
+    if: vars.VPS_HOST != '' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-24.04
+    environment: production   # required reviewers are set on this environment in GitHub
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the release images (the same Dockerfiles CI tested)
+        run: |
+          set -euo pipefail
+          docker buildx build --load -f backend/Dockerfile --target runtime -t "nurseapp/api:$SHA" .
+          docker buildx build --load -f backend/Dockerfile --target migrate -t "nurseapp/migrate:$SHA" .
+          docker buildx build --load -f frontend/Dockerfile -t "nurseapp/web:$SHA" .
+      - name: Bundle images and release scripts
+        run: |
+          set -euo pipefail
+          mkdir -p bundle/ops
+          cp -r ops/vps ops/db ops/backup bundle/ops/
+          docker save "nurseapp/api:$SHA" "nurseapp/migrate:$SHA" "nurseapp/web:$SHA" | gzip -1 > bundle/images.tar.gz
+          tar -cf bundle.tar -C bundle ops images.tar.gz
+          ls -lh bundle.tar
+      - name: Release on the VPS (blue/green; waits until the new colour is live)
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_HOST: ${{ vars.VPS_HOST }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts   # pinned host key: no trust-on-first-use
+          ssh -i ~/.ssh/deploy -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 "deploy@$VPS_HOST" release "$SHA" < bundle.tar
+      - name: Public health check
+        run: curl -fsS --retry 10 --retry-delay 6 --retry-all-errors "${{ vars.APP_URL }}/api/v1/health"

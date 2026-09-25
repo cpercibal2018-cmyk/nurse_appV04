@@ -1,0 +1,41 @@
+#!/bin/bash
+# /usr/local/sbin/nurseapp-release — the only thing the GitHub Actions deploy
+# key can run on the VPS (installed by setup-host.sh; see its authorized_keys
+# line). Runs as root through a one-line sudoers rule.
+#
+#   ssh deploy@vps release <commit> < bundle.tar   ops/ + images.tar.gz of that commit
+#   ssh deploy@vps rollback | status
+#
+# The bundle's ops/ replaces /opt/nurseapp (the release scripts travel with
+# the release they belong to); its images are loaded, then deploy.sh release.
+
+set -euo pipefail
+umask 077
+OPT="${NURSEAPP_OPS:-/opt/nurseapp}"   # sudo resets the environment, so only a root caller can change it (the local test)
+DEPLOY="$OPT/vps/deploy.sh"
+
+case "${1:-}" in
+  status) exec "$DEPLOY" status ;;
+  rollback) exec "$DEPLOY" rollback ;;
+  release)
+    SHA="${2:-}"
+    [[ "$SHA" =~ ^[0-9a-f]{7,40}$ ]] || { echo "release needs a commit id" >&2; exit 2; }
+    WORK="$(mktemp -d /var/tmp/nurseapp-release.XXXXXX)"
+    trap 'rm -rf "$WORK"' EXIT
+    head -c 4G > "$WORK/bundle.tar"   # from the SSH session's stdin
+    # Only ops/… and images.tar.gz, no absolute paths, no "..", no links.
+    tar -tvf "$WORK/bundle.tar" | awk '{print substr($1,1,1), $NF}' | while read -r type name; do
+      [[ "$type" == - || "$type" == d ]] || { echo "bundle: unexpected entry type for $name" >&2; exit 1; }
+      if [[ "$name" == *..* ]] || ! [[ "$name" == images.tar.gz || "$name" =~ ^ops/[A-Za-z0-9._/-]*$ ]]; then
+        echo "bundle: unexpected path $name" >&2; exit 1
+      fi
+    done
+    tar -xf "$WORK/bundle.tar" -C "$WORK" --no-same-owner --no-same-permissions
+    [[ -x "$WORK/ops/vps/deploy.sh" && -f "$WORK/images.tar.gz" ]] || { echo "bundle is incomplete" >&2; exit 1; }
+    chmod 755 "$WORK"/ops/vps/*.sh "$WORK"/ops/backup/scripts/*.sh 2>/dev/null || true
+    rsync -a --delete "$WORK/ops/" "$OPT/"
+    "$DEPLOY" load "$WORK/images.tar.gz"
+    exec "$DEPLOY" release "$SHA"
+    ;;
+  *) echo "allowed: release <commit> | rollback | status" >&2; exit 2 ;;
+esac
