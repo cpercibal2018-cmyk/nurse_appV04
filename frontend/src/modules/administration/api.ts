@@ -286,3 +286,22 @@ export function useLogicLifecycle() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['eligibilityLogic'] }),
   });
 }
+
+// ── FHIR API clients (D-63) ──
+export type FhirScope = 'system/Practitioner.read' | 'system/PractitionerRole.read';
+export interface ApiClient {
+  id: number; clientId: string; name: string; scopes: FhirScope[]; secretVersion: number;
+  createdAt: string; secretRotatedAt: string | null; lastTokenAt: string | null; revokedAt: string | null;
+  createdBy: { id: number; displayName: string }; revokedBy: { id: number; displayName: string } | null;
+}
+export const useApiClients = () => useQuery({
+  queryKey: ['apiClients'],
+  queryFn: () => http.get<{ items: ApiClient[]; scopes: FhirScope[] }>('/api-clients'),
+});
+function useApiClientMutation<V>(fn: (v: V) => Promise<{ client: ApiClient; clientSecret?: string }>) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: fn, onSuccess: () => qc.invalidateQueries({ queryKey: ['apiClients'] }) });
+}
+export const useCreateApiClient = () => useApiClientMutation((body: { name: string; scopes: FhirScope[] }) => http.post<{ client: ApiClient; clientSecret: string }>('/api-clients', body));
+export const useReplaceApiClientSecret = () => useApiClientMutation((id: number) => http.post<{ client: ApiClient; clientSecret: string }>(`/api-clients/${id}/secret`, {}));
+export const useRevokeApiClient = () => useApiClientMutation((id: number) => http.post<{ client: ApiClient }>(`/api-clients/${id}/revoke`, {}));

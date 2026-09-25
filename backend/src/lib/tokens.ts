@@ -30,35 +30,50 @@ export function constantTimeEqual(a: string, b: string): boolean {
   return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
 }
 
-export function createTokenService(secret: string, ttlSeconds: number) {
+/**
+ * HS256 JWT signing and verification with a pinned algorithm (never chosen by
+ * the token's header: no "alg: none" or algorithm confusion) and a UTC expiry.
+ * Returns the raw claims; each caller checks its own claim shapes.
+ */
+export function createJwt(secret: string | Buffer) {
   const hmac = (data: string) => crypto.createHmac('sha256', secret).update(data).digest('base64url');
 
-  function sign(payload: Pick<AccessClaims, 'sub' | 'sid' | 'csrf'>, now = Date.now()): string {
+  function sign(payload: Record<string, unknown>, ttlSeconds: number, now = Date.now()): string {
     const iat = Math.floor(now / 1000);
     const data = `${b64urlJson({ alg: 'HS256', typ: 'JWT' })}.${b64urlJson({ ...payload, iat, exp: iat + ttlSeconds })}`;
     return `${data}.${hmac(data)}`;
   }
 
-  function verify(token: string, now = Date.now()): AccessClaims {
+  function verify(token: string, now = Date.now()): Record<string, unknown> & { exp: number } {
     const parts = token.split('.');
     if (parts.length !== 3) throw new TokenError('malformed');
     const [h, p, sig] = parts as [string, string, string];
 
-    // Pin the algorithm; never let the token's header choose the verifier
-    // ("alg: none" and algorithm-confusion attacks).
     let header: { alg?: unknown; typ?: unknown };
     try { header = JSON.parse(Buffer.from(h, 'base64url').toString()) as typeof header; } catch { throw new TokenError('bad header'); }
     if (header.alg !== 'HS256' || header.typ !== 'JWT') throw new TokenError('unsupported alg');
 
     if (!constantTimeEqual(hmac(`${h}.${p}`), sig)) throw new TokenError('bad signature');
 
-    let claims: Partial<AccessClaims>;
-    try { claims = JSON.parse(Buffer.from(p, 'base64url').toString()) as Partial<AccessClaims>; } catch { throw new TokenError('bad payload'); }
-    if (!Number.isInteger(claims.sub) || typeof claims.sid !== 'string' || typeof claims.csrf !== 'string' || typeof claims.exp !== 'number') {
-      throw new TokenError('bad claims');
-    }
+    let claims: Record<string, unknown>;
+    try { claims = JSON.parse(Buffer.from(p, 'base64url').toString()) as Record<string, unknown>; } catch { throw new TokenError('bad payload'); }
+    if (!claims || typeof claims !== 'object' || typeof claims.exp !== 'number') throw new TokenError('bad claims');
     // UTC epoch comparison (spec §3.3: session expiry comparisons use UTC).
     if (claims.exp <= Math.floor(now / 1000)) throw new TokenError('expired');
+    return claims as Record<string, unknown> & { exp: number };
+  }
+
+  return { sign, verify };
+}
+
+export function createTokenService(secret: string, ttlSeconds: number) {
+  const jwt = createJwt(secret);
+
+  const sign = (payload: Pick<AccessClaims, 'sub' | 'sid' | 'csrf'>, now = Date.now()): string => jwt.sign(payload, ttlSeconds, now);
+
+  function verify(token: string, now = Date.now()): AccessClaims {
+    const claims = jwt.verify(token, now) as Partial<AccessClaims>;
+    if (!Number.isInteger(claims.sub) || typeof claims.sid !== 'string' || typeof claims.csrf !== 'string') throw new TokenError('bad claims');
     return claims as AccessClaims;
   }
 

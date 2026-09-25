@@ -47,6 +47,8 @@ import { createNotificationsRouter } from './modules/notifications/routes.js';
 import { createAuditRouter } from './modules/audit/routes.js';
 import { createDevConsoleRouter } from './modules/dev-console/routes.js';
 import { createFhirRouter } from './modules/interop/fhir-routes.js';
+import { createClientAuth } from './modules/interop/api-clients.js';
+import { createApiClientRouter } from './modules/interop/api-client-routes.js';
 
 export interface AppDeps {
   env: Env;
@@ -89,7 +91,12 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   });
 
   const tokens = createTokenService(env.JWT_SECRET, env.ACCESS_TOKEN_TTL_SECONDS);
-  const authenticate = createAuthenticate(db, tokens, env.CORS_ORIGIN);
+  // D-63: other systems' client tokens for the FHIR API; failed attempts throttled like sign-ins.
+  const clientAuth = createClientAuth(db, env.JWT_SECRET, {
+    address: createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_CLIENT, throttleNamespace),
+    client: createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_ACCOUNT, throttleNamespace),
+  });
+  const authenticate = createAuthenticate(db, tokens, env.CORS_ORIGIN, clientAuth);
   const accountThrottle = createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_ACCOUNT, throttleNamespace);
   const mfa = createMfa(db, env, createSecretBox(mfaKey(env), previousKey(env.MFA_ENCRYPTION_KEY_PREVIOUS)));
   const auth = createAuthService({
@@ -116,6 +123,9 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
     res.set(fileHeaders(file, file.inline)).send(file.bytes);
   });
 
+  // The OAuth 2.0 token endpoint for other systems (D-63): public, the client credentials are the check.
+  app.post('/api/v1/fhir/token', express.urlencoded({ extended: false, limit: '4kb' }), clientAuth.tokenEndpoint);
+
   // Everything else under /api/v1 requires a signed-in caller. One protected
   // router, so authentication runs once per request; each domain module adds
   // its router here. Anonymous callers get 401 for any path, known or not.
@@ -137,6 +147,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   api.use(createDevConsoleRouter(db, sms));
   api.use(createEligibilityLogicRouter(db, logic));
   api.use(createFhirRouter(db, protection, env.APP_BASE_URL ?? env.CORS_ORIGIN));
+  api.use(createApiClientRouter(db));
   api.use(createDataSubjectRouter(createDataSubjectService({ db, protection, vault: documents.vault, backupRetentionDays: env.BACKUP_RETENTION_DAYS })));
   api.use(createContractsRouter(db, createContractService(db, documents, scanner, env.UPLOAD_MAX_SIZE_BYTES), env.UPLOAD_MAX_SIZE_BYTES));
   api.use(createCredentialsRouter(

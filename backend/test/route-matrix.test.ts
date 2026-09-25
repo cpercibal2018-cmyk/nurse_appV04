@@ -52,6 +52,8 @@ const PUBLIC = new Set([
   'POST /api/v1/auth/mfa/verify', 'POST /api/v1/auth/mfa/enroll/start', 'POST /api/v1/auth/mfa/enroll/confirm',
   // D-53: a single-use, 60-second link issued after the usual document authorisation; the token is the credential.
   'GET /api/v1/files/:token{/:name}',
+  // D-63: the OAuth 2.0 token endpoint for other systems; the client id and secret are the credentials, failures throttled.
+  'POST /api/v1/fhir/token',
 ]);
 
 /** Signed-in routes without a route gate: the service checks own-or-scoped access. Reviewed list. */

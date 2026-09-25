@@ -81,6 +81,8 @@ model User {
   logicPromoted      EligibilityLogicVersion[]   @relation("logicPromoter")
   logicRetired       EligibilityLogicVersion[]   @relation("logicRetirer")
   shadowDecisions    EligibilityShadowLog[]
+  apiClientsCreated  ApiClient[]                 @relation("apiClientCreator")
+  apiClientsRevoked  ApiClient[]                 @relation("apiClientRevoker")
 
   @@map("users")
 }
@@ -1206,4 +1208,29 @@ model JobRun {
 
   @@index([jobName, startedAt])
   @@map("job_runs")
+}
+
+/// D-63: another system (the HIS, payroll) calling the FHIR API without a
+/// person signed in — OAuth 2.0 client credentials. The secret is shown once
+/// and stored only as its SHA-256 (it is 256 random bits, so a slow hash adds
+/// nothing). A new secret raises secretVersion, which ends every token issued
+/// under the old one; a revoked client stays for the record.
+model ApiClient {
+  id              Int       @id @default(autoincrement())
+  clientId        String    @unique @map("client_id")
+  name            String
+  scopes          String[]
+  secretHash      String    @map("secret_hash")
+  secretVersion   Int       @default(1) @map("secret_version")
+  createdById     Int       @map("created_by_id")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  secretRotatedAt DateTime? @map("secret_rotated_at") @db.Timestamptz
+  lastTokenAt     DateTime? @map("last_token_at") @db.Timestamptz
+  revokedAt       DateTime? @map("revoked_at") @db.Timestamptz
+  revokedById     Int?      @map("revoked_by_id")
+
+  createdBy User  @relation("apiClientCreator", fields: [createdById], references: [id])
+  revokedBy User? @relation("apiClientRevoker", fields: [revokedById], references: [id], onDelete: Restrict)
+
+  @@map("api_clients")
 }

@@ -229,7 +229,7 @@ Spec order of checks (§6.1) and what the live engine does:
 
 | Capability | Status | Recommendation |
 | :--- | :--- | :--- |
-| FHIR R4 Practitioner / PractitionerRole | SPEC + DISPLAY | Defer (tracker B-14, needs HIS agreement) |
+| FHIR R4 Practitioner / PractitionerRole | SPEC + DISPLAY | **BUILT** in V04 (D-61): read API; other systems sign in with OAuth 2.0 client credentials (D-63) |
 | Data portability / exit package | SPEC + DISPLAY | **Built** (D-62): server-side command, encrypted on the VPS — ops/vps/README.md §8 |
 | Legacy migration bridge (staging, BLOCK/WARN) | SPEC + REF model | Defer until a legacy data source is identified |
 | Idempotency keys | REF | Include for onboarding / bulk / publish |
