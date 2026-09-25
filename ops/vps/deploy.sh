@@ -12,6 +12,8 @@
 #   deploy.sh edge                   (re)start Caddy and ClamAV
 #   deploy.sh bootstrap              first administrators, interactively (empty database only)
 #   deploy.sh psql                   a superuser psql on the VPS (no network exposure)
+#   deploy.sh exit-package "<reason>" the hospital exit package (spec §14.3), encrypted to the
+#                                    backup public key → /srv/nurseapp/exit/ (README.md §8)
 #
 # Blue/green: the release starts beside the live colour and receives traffic
 # only after its API and web answer healthy; Caddy's reload is graceful, so
@@ -169,6 +171,24 @@ case "$CMD" in
     ;;
   psql)
     exec "${PSQL[@]}" -d "$DB_NAME"
+    ;;
+  exit-package)
+    # Personal data in clear: the ZIP streams from the API container straight into
+    # gpg (the backup PUBLIC key); no plaintext copy is ever written on the VPS.
+    (( ${#ARG} >= 10 )) || die 'usage: deploy.sh exit-package "<reason, at least 10 characters>"'
+    pub="$CONF/backup.pub"
+    [[ -f "$pub" ]] || die "$pub is missing — run setup-backup.sh first (README.md §5)"
+    read -r live_color live_tag <<< "$(read_state ACTIVE)"
+    [[ -n "${live_color:-}" ]] || die "no release is live yet"
+    install -d -m 700 "$STATE/exit"
+    out="$STATE/exit/aigh-exit-package-$(date -u +%Y%m%dT%H%M%SZ).zip.gpg"
+    gnupg="$(mktemp -d)"   # a throw-away keyring: nothing is added to root's
+    trap 'rm -rf "$gnupg"; rm -f "$out.part"' EXIT
+    log "writing the exit package, encrypted to $(gpg --homedir "$gnupg" --show-keys --with-colons "$pub" | awk -F: '/^fpr/ {print $10; exit}')"
+    app "$live_color" "$live_tag" exec -T api node dist/cli/exit-package.js --reason "$ARG" --out - \
+      | gpg --batch --quiet --homedir "$gnupg" --trust-model always --recipient-file "$pub" --encrypt --output "$out.part"
+    mv "$out.part" "$out" && chmod 600 "$out"
+    log "done: $out ($(du -h "$out" | cut -f1)); only the holder of the backup PRIVATE key can open it"
     ;;
   *)
     sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;

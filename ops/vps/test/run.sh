@@ -14,6 +14,8 @@
 #   4. restart (after a settings change) → green
 #   5. monitoring: monitor.sh alerts by e-mail when the site goes down and
 #      when it recovers; verify-install.sh passes the checks that apply here
+#   6. the exit package: encrypted to a test key, opened with its private key,
+#      manifest checked
 # and fails if any request failed, a colour was left running, or the roles
 # check did not pass. Leaves nothing running.
 
@@ -146,6 +148,22 @@ echo "alert e-mails: $(mails | tr '\n' ';')"
 OUT="$("$HERE/verify-install.sh" --only settings,roles,https,containers,site,admins)" || { echo "$OUT" >&2; echo "verify-install.sh failed" >&2; exit 1; }
 echo "$OUT"
 grep -q "WARN  admins" <<< "$OUT" || { echo "verify-install.sh did not flag the missing administrators" >&2; exit 1; }
+
+echo "== 6. exit package (spec §14.3): streamed from the API into gpg; opens only with the private key"
+PRIV="$WORK/gpg-private"; install -d -m 700 "$PRIV"
+gpg --batch --quiet --homedir "$PRIV" --passphrase '' --pinentry-mode loopback --quick-gen-key 'Exit Test <exit@vps.test>' default default never
+gpg --batch --quiet --homedir "$PRIV" --armor --export exit@vps.test > "$CONF/backup.pub"
+"$DEPLOY" exit-package "Harness: the hospital moves to another provider"
+pkg="$(ls "$STATE"/exit/*.zip.gpg)"
+[[ "$(stat -c %a "$pkg")" == 600 ]] || { echo "the exit package is not 0600" >&2; exit 1; }
+if ls "$STATE"/exit/*.part >/dev/null 2>&1 || ls "$STATE"/exit/*.zip >/dev/null 2>&1; then echo "a plaintext or partial package was left behind" >&2; exit 1; fi
+gpg --batch --quiet --homedir "$PRIV" --decrypt "$pkg" > "$WORK/exit.zip"
+[[ "$(head -c 4 "$WORK/exit.zip" | od -An -c | tr -d ' ')" == 'PK003004' ]] || { echo "the decrypted package is not a ZIP from its first byte" >&2; exit 1; }
+unzip -q "$WORK/exit.zip" -d "$WORK/exit"
+(cd "$WORK/exit" && sha256sum --quiet -c MANIFEST.sha256) || { echo "the exit package manifest does not check" >&2; exit 1; }
+grep -q "PERSONAL DATA IN CLEAR" "$WORK/exit/README.txt" || { echo "the exit package README is missing its warning" >&2; exit 1; }
+if "$DEPLOY" exit-package "short" 2>/dev/null; then echo "exit-package accepted a reason under 10 characters" >&2; exit 1; fi
+echo "exit package: $(du -h "$pkg" | cut -f1), $(unzip -Z1 "$WORK/exit.zip" | wc -l) entries"
 
 "$DEPLOY" status
 echo "ALL PASSED"

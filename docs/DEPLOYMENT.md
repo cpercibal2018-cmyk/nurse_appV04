@@ -217,6 +217,10 @@ Rotate one key at a time or several together; `JWT_SECRET` is replaced by simply
 
 **Schedule (D-40):** nightly at **01:00 Asia/Riyadh (22:00 UTC)**, as spec §10.6 says. `aigh-backup.timer` names the `Asia/Riyadh` time zone, so it is right whatever the host clock; `crontab.example` has one line for a UTC host and one for a Riyadh host — use exactly one. It does not collide with the application jobs (00:05 and 06:00 Riyadh).
 
+### Exit package (spec §14.3, D-62)
+
+To move the workforce history to another provider: `node dist/cli/exit-package.js --reason "<why>" --out <file.zip | ->` in the API container writes one ZIP with the workforce master, contract history, credentials (sensitive values opened), every evidence file decrypted under the standard `EMP_<id>_<TEMPLATE>_<date>` names, the hash-chained audit log with the inputs of each hash, and a SHA-256 manifest; audited HIGH. It holds personal data in clear: on the VPS use `deploy.sh exit-package "<reason>"`, which encrypts it to the backup public key without a plaintext copy on disk ([ops/vps/README.md §8](../ops/vps/README.md#exit-package-moving-to-another-provider)).
+
 ## 6. Known gaps before production
 
 | Gap | Effect | What is needed |
