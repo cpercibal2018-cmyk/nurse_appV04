@@ -35,7 +35,7 @@ export function createProtection(crypto: FieldCrypto) {
     const active = await tx.processingRegister.findMany({ where: { dataCategory: { in: [...categories] }, isActive: true }, select: { dataCategory: true } });
     const missing = [...categories].filter((c) => !active.some((a) => a.dataCategory === c));
     if (missing.length > 0) {
-      throw new HttpError(409, 'PROCESSING_NOT_REGISTERED', `No active lawful basis is recorded for ${missing.join(', ')} (Administration → Data protection). The value was not stored.`, { categories: missing });
+      throw new HttpError(409, 'PROCESSING_NOT_REGISTERED', `No active lawful basis is recorded for ${missing.join(', ')} (Nursing Administration → Data protection). The value was not stored.`, { categories: missing });
     }
   }
 

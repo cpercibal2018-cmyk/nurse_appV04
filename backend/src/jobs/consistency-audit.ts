@@ -82,7 +82,7 @@ export async function consistencyAudit(db: Db, now = new Date(), onlyIds?: numbe
       data: admins.map((a) => ({
         recipientId: a.userId, type: 'SYSTEM' as const, priority: 'HIGH' as const,
         title: 'Eligibility drift corrected',
-        message: `The daily consistency check found ${out.drifted} of ${out.checked} sampled nurses with a stored eligibility that no longer matched a fresh evaluation. Each was corrected; details are in Administration → Jobs.`,
+        message: `The daily consistency check found ${out.drifted} of ${out.checked} sampled nurses with a stored eligibility that no longer matched a fresh evaluation. Each was corrected; details are in Nursing Administration → Jobs.`,
         titleAr: 'تصحيح اختلاف في الأهلية',
         messageAr: `وجد الفحص اليومي ${out.drifted} من ${out.checked} ممرضاً بحالة أهلية مخزنة لا تطابق التقييم الحالي، وتم تصحيحها.`,
         eventKey: `consistency-audit:${riyadhDate(now)}`,

@@ -116,8 +116,8 @@ export function createDataSubjectService({ db, protection, vault, backupRetentio
     await tx.notification.createMany({
       data: recipients.map((userId) => ({
         recipientId: userId, type: 'SYSTEM' as const, priority: r.requestType === 'ERASURE' ? ('HIGH' as const) : ('MEDIUM' as const),
-        title: 'Personal data request', message: `${r.employee.fullName} asked for ${kind[0]}. Answer within ${RESPONSE_DAYS} days (Administration → Data protection).`,
-        titleAr: 'طلب بيانات شخصية', messageAr: `طلب ${r.employee.fullName} ${kind[1]}. يجب الرد خلال ${RESPONSE_DAYS} يومًا (الإدارة ← حماية البيانات).`,
+        title: 'Personal data request', message: `${r.employee.fullName} asked for ${kind[0]}. Answer within ${RESPONSE_DAYS} days (Nursing Administration → Data protection).`,
+        titleAr: 'طلب بيانات شخصية', messageAr: `طلب ${r.employee.fullName} ${kind[1]}. يجب الرد خلال ${RESPONSE_DAYS} يومًا (إدارة التمريض ← حماية البيانات).`,
         eventKey: `dsr:${r.id}:received`,
       })),
       skipDuplicates: true,
