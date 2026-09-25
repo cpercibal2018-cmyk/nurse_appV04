@@ -57,23 +57,26 @@ model User {
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
-  employee           Employee?          @relation(fields: [employeeId], references: [id])
+  employee           Employee?            @relation(fields: [employeeId], references: [id])
   sessions           RefreshSession[]
-  roleAssignments    RoleAssignment[]   @relation("assignee")
-  grantedAssignments RoleAssignment[]   @relation("granter")
-  revokedAssignments RoleAssignment[]   @relation("revoker")
-  approvalsInitiated ApprovalRequest[]  @relation("initiator")
-  approvalsDecided   ApprovalRequest[]  @relation("approver")
+  roleAssignments    RoleAssignment[]     @relation("assignee")
+  grantedAssignments RoleAssignment[]     @relation("granter")
+  revokedAssignments RoleAssignment[]     @relation("revoker")
+  approvalsInitiated ApprovalRequest[]    @relation("initiator")
+  approvalsDecided   ApprovalRequest[]    @relation("approver")
   privilegedSession  PrivilegedSession?
-  invitationsIssued  Invitation[]       @relation("issuer")
-  invitationClaimed  Invitation?        @relation("claimant")
-  passwordResets     PasswordReset[]    @relation("resetFor")
-  resetsIssued       PasswordReset[]    @relation("resetIssuer")
+  invitationsIssued  Invitation[]         @relation("issuer")
+  invitationClaimed  Invitation?          @relation("claimant")
+  passwordResets     PasswordReset[]      @relation("resetFor")
+  resetsIssued       PasswordReset[]      @relation("resetIssuer")
   notifications      Notification[]
   mfaFactor          MfaFactor?
   mfaRecoveryCodes   MfaRecoveryCode[]
   mfaChallenges      MfaChallenge[]
   downloadLinks      DownloadLink[]
+  dsrRequested       DataSubjectRequest[] @relation("dsrRequester")
+  dsrReviewed        DataSubjectRequest[] @relation("dsrReviewer")
+  dsrDecided         DataSubjectRequest[] @relation("dsrDecider")
 
   @@map("users")
 }
@@ -344,6 +347,7 @@ model Employee {
   shiftAssignments ShiftAssignment[]
   attendanceEvents AttendanceEvent[]
   dataKey          EmployeeKey?
+  subjectRequests  DataSubjectRequest[]
 
   @@index([unitId])
   @@index([positionCode])
@@ -568,6 +572,8 @@ model DocumentVersion {
   reviewedAt   DateTime?            @map("reviewed_at") @db.Timestamptz
   uploadedById Int?                 @map("uploaded_by_id")
   uploadedAt   DateTime             @default(now()) @map("uploaded_at") @db.Timestamptz
+  /// Identity scan erased with the employee's data (spec §8.3.3, D-55): the stored object is removed; the row stays as the record.
+  erasedAt     DateTime?            @map("erased_at") @db.Timestamptz
 
   contract      Contract?      @relation(fields: [contractId], references: [id])
   credential    Credential?    @relation(fields: [credentialId], references: [id])
@@ -1021,6 +1027,37 @@ model PdplIdentifierIndex {
   @@id([credentialId, category])
   @@index([digest])
   @@map("pdpl_identifier_index")
+}
+
+/// Data-subject rights requests (spec §8.3.3, D-55): access, portability,
+/// rectification and erasure. Rows are never deleted — they are the record.
+model DataSubjectRequest {
+  id              Int       @id @default(autoincrement())
+  employeeId      Int       @map("employee_id")
+  requestType     String    @map("request_type") // ACCESS | PORTABILITY | RECTIFICATION | ERASURE
+  status          String    @default("RECEIVED") // RECEIVED | IN_REVIEW | APPROVED | REJECTED | COMPLETED
+  details         String?
+  requestedById   Int       @map("requested_by_id")
+  requestedAt     DateTime  @default(now()) @map("requested_at") @db.Timestamptz
+  reviewedById    Int?      @map("reviewed_by_id")
+  reviewedAt      DateTime? @map("reviewed_at") @db.Timestamptz
+  decidedById     Int?      @map("decided_by_id")
+  decidedAt       DateTime? @map("decided_at") @db.Timestamptz
+  decisionNote    String?   @map("decision_note")
+  completedAt     DateTime? @map("completed_at") @db.Timestamptz
+  /// Erasure evidence: when the employee's key was destroyed, and when the last backup holding the old ciphertext expires.
+  keyDestroyedAt  DateTime? @map("key_destroyed_at") @db.Timestamptz
+  backupsExpireAt DateTime? @map("backups_expire_at") @db.Timestamptz
+  documentsErased Int?      @map("documents_erased")
+
+  employee    Employee @relation(fields: [employeeId], references: [id])
+  requestedBy User     @relation("dsrRequester", fields: [requestedById], references: [id])
+  reviewedBy  User?    @relation("dsrReviewer", fields: [reviewedById], references: [id])
+  decidedBy   User?    @relation("dsrDecider", fields: [decidedById], references: [id])
+
+  @@index([status, requestedAt(sort: Desc)])
+  @@index([employeeId, requestedAt(sort: Desc)])
+  @@map("data_subject_requests")
 }
 
 model IdempotencyKey {

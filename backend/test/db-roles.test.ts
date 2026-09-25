@@ -129,10 +129,13 @@ describeRoles(`database roles (spec §10.7)${allowed ? '' : ' — skipped: the t
         has_table_privilege('${roleName('runtime')}', 'break_glass_events', 'UPDATE') AS bg_update,
         has_table_privilege('${roleName('runtime')}', 'request_audit_log', 'UPDATE') AS rl_update,
         has_table_privilege('${roleName('runtime')}', 'request_audit_log', 'INSERT') AS rl_insert,
-        has_table_privilege('${roleName('runtime')}', 'request_audit_log', 'DELETE') AS rl_delete`);
+        has_table_privilege('${roleName('runtime')}', 'request_audit_log', 'DELETE') AS rl_delete,
+        has_table_privilege('${roleName('runtime')}', 'data_subject_requests', 'DELETE') AS dsr_delete,
+        has_table_privilege('${roleName('runtime')}', 'data_subject_requests', 'UPDATE') AS dsr_update`);
       expect(priv.rows[0]).toEqual({
         audit_update: false, audit_delete: false, audit_insert: true, bg_delete: false, bg_update: true,
         rl_update: false, rl_insert: true, rl_delete: true, // D-52: append-only; DELETE for the retention purge
+        dsr_delete: false, dsr_update: true, // D-55: requests are a record; their status moves on
       });
     });
 

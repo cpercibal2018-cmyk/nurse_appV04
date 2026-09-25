@@ -35,6 +35,10 @@ const code = files(SRC).map((f) => readFileSync(f, 'utf8')).join('\n');
 const FAMILIES: Record<string, string[]> = {
   health_: ['HEALTHY', 'ATTENTION'], // GET /system/health/business (spec §10.8)
   pdpl_: ['IQAMA', 'PASSPORT', 'SCFHS_REG', 'IDENTITY_SCAN'], // D-54 sensitive data categories
+  dsr_: ['ACCESS', 'PORTABILITY', 'RECTIFICATION', 'ERASURE'], // D-55 data-subject requests
+  dsrHint_: ['ACCESS', 'PORTABILITY', 'RECTIFICATION', 'ERASURE'],
+  dsrStatus_: ['RECEIVED', 'IN_REVIEW', 'APPROVED', 'REJECTED', 'COMPLETED'],
+  dsrApproveConfirm_: ['EXPORT', 'RECTIFICATION'],
   basis_: ['EMPLOYMENT_CONTRACT', 'LEGAL_OBLIGATION', 'CONSENT', 'VITAL_INTEREST', 'PUBLIC_INTEREST'], // processing register
   invitationStatus_: ['OPEN', 'CLAIMED', 'REVOKED', 'EXPIRED'], // GET /employees/:id/invitations (spec §3.2)
   shift_: ['Morning', 'Evening', 'Night'],

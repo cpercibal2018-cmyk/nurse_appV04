@@ -78,3 +78,17 @@ export interface Health {
   status: 'ok' | 'degraded';
   database: 'up' | 'down';
 }
+
+/** Data-subject rights (spec §8.3.3, D-55). */
+export type DsrType = 'ACCESS' | 'PORTABILITY' | 'RECTIFICATION' | 'ERASURE';
+export type DsrStatus = 'RECEIVED' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED' | 'COMPLETED';
+export interface DataSubjectRequest {
+  id: number; type: DsrType; status: DsrStatus; details: string | null;
+  employee: { id: number; fullName: string; jobNumber: string; unitId: number | null };
+  requestedBy: { id: number; displayName: string }; requestedAt: string;
+  reviewedBy: { id: number; displayName: string } | null; reviewedAt: string | null;
+  decidedBy: { id: number; displayName: string } | null; decidedAt: string | null; decisionNote: string | null; completedAt: string | null;
+  dueAt: string; overdue: boolean;
+  exportAvailable: boolean; exportExpiresAt: string | null;
+  erasure: { keyDestroyedAt: string; backupsExpireAt: string; documentsErased: number } | null;
+}

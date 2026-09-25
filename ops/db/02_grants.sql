@@ -87,6 +87,11 @@ BEGIN
   IF to_regclass('public.request_audit_log') IS NOT NULL THEN
     REVOKE UPDATE ON public.request_audit_log FROM nurseapp_runtime;
   END IF;
+  -- Data-subject requests (spec §8.3.3, D-55) are the record of how PDPL rights
+  -- were answered: never deleted (the trigger refuses it too).
+  IF to_regclass('public.data_subject_requests') IS NOT NULL THEN
+    REVOKE DELETE ON public.data_subject_requests FROM nurseapp_runtime;
+  END IF;
 END $$;
 
 -- ── audit reader: the audit tables only ─────────────────────────────────────

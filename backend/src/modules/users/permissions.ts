@@ -56,6 +56,9 @@ export const PERMISSIONS = {
   // PDPL (spec §8.3.2, D-54): the processing register — HR and System Admins read, System Admins maintain.
   'pdpl.read': ['HR_ADMIN', 'SYSTEM_ADMIN'],
   'pdpl.manage': ['SYSTEM_ADMIN'],
+  // Data-subject requests (spec §8.3.3, D-55): HR works the queue within scope; only a System Admin approves an erasure.
+  'pdpl.requests': ['HR_ADMIN', 'SYSTEM_ADMIN'],
+  'pdpl.erase': ['SYSTEM_ADMIN'],
   'jobs.read': ['SYSTEM_ADMIN'],
   'jobs.run': ['SYSTEM_ADMIN'],
 

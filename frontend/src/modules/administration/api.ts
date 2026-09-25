@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { http } from '../../services/http';
-import type { AppRole, Paged, ScopeType } from '../../types/api';
+import type { AppRole, DataSubjectRequest, DsrType, Paged, ScopeType } from '../../types/api';
 
 export interface Account {
   id: number;
@@ -184,6 +184,37 @@ export function useUpdateRegister() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: { purpose?: string; retentionRule?: string; isActive?: boolean; reason: string } }) => http.patch<RegisterEntry>(`/pdpl/register/${id}`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pdpl'] }),
+  });
+}
+
+// Data-subject requests (spec §8.3.3, D-55).
+export interface DsrFilter { open?: boolean; type?: DsrType }
+export const useDataSubjectRequests = (f: DsrFilter) => useQuery({
+  queryKey: ['pdpl', 'requests', f],
+  queryFn: () => {
+    const p = new URLSearchParams();
+    if (f.open) p.set('open', 'true');
+    if (f.type) p.set('type', f.type);
+    return http.get<{ items: DataSubjectRequest[] }>(`/pdpl/requests?${p}`);
+  },
+});
+export type DsrAction =
+  | { kind: 'log'; body: { employeeId: number; type: DsrType; details?: string } }
+  | { kind: 'review' | 'approve'; id: number; note?: string }
+  | { kind: 'reject' | 'complete'; id: number; note: string }
+  | { kind: 'erase'; id: number; note: string; confirmJobNumber: string };
+export function useDsrAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (a: DsrAction) => {
+      switch (a.kind) {
+        case 'log': return http.post<DataSubjectRequest>('/pdpl/requests', a.body);
+        case 'review': return http.post<DataSubjectRequest>(`/pdpl/requests/${a.id}/review`);
+        case 'erase': return http.post<DataSubjectRequest>(`/pdpl/requests/${a.id}/erase`, { note: a.note, confirmJobNumber: a.confirmJobNumber });
+        default: return http.post<DataSubjectRequest>(`/pdpl/requests/${a.id}/${a.kind}`, a.note ? { note: a.note } : {});
+      }
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pdpl'] }),
   });
 }

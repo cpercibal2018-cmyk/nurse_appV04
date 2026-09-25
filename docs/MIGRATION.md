@@ -41,10 +41,10 @@ The V03 remediation tracker (`AIGH_v2_8_7_remediation_tracker.md` in the V03 rep
 | B-04 | CSRF on every mutating endpoint | **Done** — enforced centrally in `authenticate` for every state-changing request (header bound to the token + `Origin`); tested |
 | B-05 | Database privilege separation; contract lifecycle as the runtime role | **Written, to be applied** — roles and grants in [`ops/db`](../ops/db/README.md), tested in CI; not yet applied on a server ([DEPLOYMENT.md §6](DEPLOYMENT.md#6-known-gaps-before-production)). Contract transitions are enforced by the service's transition map, not a database guard function |
 | B-06 | Canonical audit DDL in the migration chain; single write path | **Done** — `fn_append_audit_entry` in `init`; append-only trigger. Post-restore check not re-run on V04 |
-| B-07 | V35 PDPL encryption, processing register, data-subject requests | Encryption, blind index, processing register and log redaction **done** (D-54). Data-subject requests (access, export, erasure by destroying the employee's key) **open** — next |
+| B-07 | V35 PDPL encryption, processing register, data-subject requests | **Done** — encryption, blind index, processing register and log redaction (D-54); data-subject requests: access and portability packages, rectification, erasure by destroying the employee's key with four eyes and backup-expiry evidence (D-55) |
 | B-08 | Idempotency with minimal replay payloads | **Done** — `[I]` endpoints store identifier-only responses; expired keys purged daily |
 | B-09 | Eligibility refresh in the caller's transaction; publish-time re-validation | **Done** |
-| B-10 | Worker leases for every job | **Done** for the three V04 jobs. The other V03 jobs (SMTP queue, SCFHS sync, backup monitor, quarantine scan) do not exist in V04 |
+| B-10 | Worker leases for every job | **Done** — every scheduled job (daily transition, expiry scan, attendance alerts, consistency audit, request-log purge, vault check) runs under the scheduler's lease, and the e-mail dispatcher under its own 10-minute lease. SCFHS sync, backup monitor and quarantine scan do not exist in V04 |
 | B-11 | Hardened onboarding SQL function | **Superseded** by D-17 (one Prisma transaction) |
 | B-12 | Four-eyes (row lock, PENDING precondition, transactional execution, partial unique index) | **Done** |
 | B-13 | Consistency auditor | **Done** — daily `consistency-audit` job and business health view (spec §10.8) |
@@ -54,7 +54,7 @@ The V03 remediation tracker (`AIGH_v2_8_7_remediation_tracker.md` in the V03 rep
 | B-17 | 72-hour waiver limit at the database; expiry reverts eligibility | **Done** (`chk_waiver_max_window`; engine judges waivers at the evaluation instant) |
 | B-18 | Key management, pepper rotation, DPO sign-off | **Open** |
 | B-19 | Bundle gate in CI; entry < 200 KB gz | **Done** — about 173 KB gz |
-| B-20 | Reverse proxy configuration, TLS, HTTPS-only exposure | **Open** (not in the repository) |
+| B-20 | Reverse proxy configuration, TLS, HTTPS-only exposure | **Done in the repository** — the web image's nginx (security headers, HSTS), the TLS proxy used by the HTTPS browser test ([ops/e2e](../ops/e2e/README.md)), and the Google Cloud design's regional HTTPS load balancer ([ops/gcp](../ops/gcp/README.md)). Applying it waits on the hosting decision (U1) |
 | B-21 | Backup scripts on real PostgreSQL 15 with a timed restore drill | Verified by the backup kit ([ops/backup/README.md](../ops/backup/README.md) §5); the schedule is 01:00 Riyadh (D-40, [DEPLOYMENT.md §5](DEPLOYMENT.md#5-backups-and-restore)) |
 | B-22 | Decide `archive_timeout` (RPO) | **Open** — owner decision; the kit uses 300 s |
 | B-23 | Positions route `/api/v1/positions` | **Done** |

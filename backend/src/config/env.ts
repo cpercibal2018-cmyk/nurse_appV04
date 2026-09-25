@@ -65,6 +65,11 @@ const EnvSchema = z.object({
     .string()
     .default('')
     .refine((k) => k === '' || Buffer.from(k, 'base64').length === 32, 'must be 32 random bytes, base64-encoded (openssl rand -base64 32)'),
+  /**
+   * Spec §8.3.3 / §10.6: days a database backup is kept (ops/backup BACKUP_RETENTION_DAYS —
+   * keep the two equal). An erasure record states when the last backup holding the old ciphertext expires.
+   */
+  BACKUP_RETENTION_DAYS: int(30),
   /** D-53: 32 random bytes, base64 — wraps each document's own encryption key. Required in production. */
   DOCUMENT_ENCRYPTION_KEY: z
     .string()

@@ -63,6 +63,8 @@ Generated from `backend/src/modules/users/permissions.ts`. **`backend/test/docs.
 | `audit.read` | SYSTEM_ADMIN | Audit search and chain verification (D-20) |
 | `pdpl.read` | HR_ADMIN, SYSTEM_ADMIN | Processing register (spec §8.3.2, D-54) |
 | `pdpl.manage` | SYSTEM_ADMIN | Add or change processing-register entries; audited HIGH (D-54) |
+| `pdpl.requests` | HR_ADMIN, SYSTEM_ADMIN | Work data-subject requests within scope: log, review, approve, decline, complete, download the package (spec §8.3.3, D-55). Employees make and follow their own under `/pdpl/requests/me` without a permission |
+| `pdpl.erase` | SYSTEM_ADMIN | Approve an erasure (crypto-shredding); never the person who logged it (D-55) |
 | `jobs.read` | SYSTEM_ADMIN | Background job runs |
 | `jobs.run` | SYSTEM_ADMIN | Run a job now |
 | `credentials.catalog.read` | EMPLOYEE | Credential types and categories |
