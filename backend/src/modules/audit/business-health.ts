@@ -76,11 +76,11 @@ export async function businessHealth(db: Db, now = new Date(), keyStatus?: KeySt
   const signOff = await signOffState(db, now);
   const pdpl = { unprotectedValues: Number(plain?.n ?? 0), overdueRequests, signOff: { lastAt: signOff.last?.reviewedAt ?? null, changedSince: signOff.changedSince, due: signOff.due } };
   if (signOff.due) {
-    issues.push({ code: 'PDPL_REGISTER_SIGN_OFF_DUE', message: !signOff.last ? 'The processing register has never been signed off by the Data Protection Officer (Administration → Data protection)'
+    issues.push({ code: 'PDPL_REGISTER_SIGN_OFF_DUE', message: !signOff.last ? 'The processing register has never been signed off by the Data Protection Officer (Nursing Administration → Data protection)'
       : signOff.changedSince ? 'The processing register changed since the Data Protection Officer last signed it off' : 'The yearly Data Protection Officer sign-off of the processing register is due' });
   }
   if (pdpl.unprotectedValues > 0) issues.push({ code: 'PDPL_PLAINTEXT', message: `${pdpl.unprotectedValues} sensitive value(s) are stored unencrypted — run npm run pdpl:protect` });
-  if (overdueRequests > 0) issues.push({ code: 'PDPL_REQUESTS_OVERDUE', message: `${overdueRequests} personal-data request(s) are past the 30-day answer deadline (Administration → Data protection)` });
+  if (overdueRequests > 0) issues.push({ code: 'PDPL_REQUESTS_OVERDUE', message: `${overdueRequests} personal-data request(s) are past the 30-day answer deadline (Nursing Administration → Data protection)` });
 
   // ── E-mail delivery ────────────────────────────────────────────────────────
   const stuckBefore = new Date(now.getTime() - 15 * MINUTE);

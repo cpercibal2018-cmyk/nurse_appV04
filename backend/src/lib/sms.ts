@@ -3,7 +3,8 @@
 // A live Saudi SMS gateway needs a Sender ID registered with the CST, and that
 // needs the hospital's Commercial Registration, which is not available yet. Until
 // then SMS_DRIVER=mock: every outgoing text is saved to mock_sms_outbox and shown
-// in the Dev Console (Administration → SMS inbox), and nothing leaves the server.
+// in the Dev Console (Nursing Administration → SMS inbox); nothing leaves the
+// server.
 // Callers depend only on SmsGateway; createSmsGateway picks the driver.
 //
 // send() never throws: it answers true when the text was accepted (saved, for the

@@ -72,7 +72,7 @@ export async function reconcileVault(db: Db, vault: Vault, now = new Date()) {
       data: admins.map((a) => ({
         recipientId: a.userId, type: 'SYSTEM' as const, priority: 'HIGH' as const,
         title: 'Document storage problem',
-        message: `The daily document vault check found stored files that cannot be served: ${detail}. Details are in Administration → Jobs; restore the files from backup.`,
+        message: `The daily document vault check found stored files that cannot be served: ${detail}. Details are in Nursing Administration → Jobs; restore the files from backup.`,
         titleAr: 'مشكلة في تخزين المستندات',
         messageAr: `وجد الفحص اليومي لمخزن المستندات ملفات لا يمكن تقديمها: ${missingDocumentIds.length} مفقود، ${failedDocumentIds.length} فشل في فحص السلامة.`,
         eventKey: `vault-reconcile:${riyadhDate(now)}`,

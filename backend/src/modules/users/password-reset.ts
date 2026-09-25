@@ -4,7 +4,7 @@
 //   active HR / Supervisor / System Admin assignment, not break-glass). The
 //   answer is identical whether or not the address has an account, may self-
 //   serve, or e-mail is off, so the endpoint reveals nothing. Link: 30 minutes.
-// - ASSISTED — HR or a System Admin sends the link from Administration →
+// - ASSISTED — HR or a System Admin sends the link from Nursing Administration →
 //   Accounts, within their account scope, after confirming who is asking. Any
 //   active account except break-glass and the caller's own. Link: 24 hours.
 //
