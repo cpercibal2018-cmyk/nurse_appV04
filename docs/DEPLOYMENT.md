@@ -181,6 +181,8 @@ After a release, a System Admin should open **Audit → Verify chain** (expected
 
 **First release with MFA (D-51):** set `MFA_ENCRYPTION_KEY` before starting the new version (it refuses to start without it). Every HR, supervisor and System Admin account is asked to set up an authenticator app at its next sign-in; sessions already open continue until they end (at most 24 hours). Tell those users beforehand to install an authenticator app (Microsoft Authenticator, Google Authenticator or similar). A lost phone: the person signs in with a recovery code, or HR / a System Admin resets it in **Nursing Administration → Accounts → Reset two-factor** after confirming who is asking.
 
+**Development only — two-factor sign-in off for testing:** after `npm run build -w backend`, `npm run mfa -w backend -- off` takes `SYSTEM_ADMIN` out of `MFA_REQUIRED_ROLES` in `backend/.env` and removes the System Admin accounts' authenticators (audited `MFA_RESET`); `-- on` puts the role back (a new authenticator is set up at the next sign-in); `-- status` shows the list and who has one. Other roles: `-- off HR_ADMIN SUPERVISOR`. Restart the backend after each. The command refuses to run with `NODE_ENV=production`, where the roles are mandatory (spec §3.5).
+
 **First release after commit 10b:** the reminder job sends each record's current milestone once under the new milestone keys (D-39); contracts that already ended without a renewal get one "Contract ended" notice.
 
 ### Go-live preparation (before creating the production database)
