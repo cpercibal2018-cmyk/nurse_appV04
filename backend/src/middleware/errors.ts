@@ -73,6 +73,7 @@ export const errorHandler: ErrorRequestHandler = (err: unknown, _req, res, next)
     httpError = new HttpError(500, 'INTERNAL_ERROR', 'Internal server error');
   }
 
+  res.locals.errorCode = httpError.code; // for the request log (spec §9.2)
   res.status(httpError.status).json(httpError.toBody());
 };
 

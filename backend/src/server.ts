@@ -42,7 +42,8 @@ function shutdown(signal: string) {
   stopJobs();
   stopMail();
   server.close(() => {
-    db.$disconnect().finally(() => process.exit(0));
+    // Write the last buffered request-log rows (spec §9.2) before disconnecting.
+    void (app.locals.requestLog as { flush: () => Promise<void> }).flush().finally(() => db.$disconnect().finally(() => process.exit(0)));
   });
   // Do not hang forever on a stuck connection.
   setTimeout(() => process.exit(1), 10_000).unref();

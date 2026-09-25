@@ -209,7 +209,7 @@ Spec order of checks (§6.1) and what the live engine does:
 | AuditService (SHA-256 prev+JSON, no lock) | REF | `backend/.../audit.service.ts` | Concurrent writers can fork the chain. |
 | Chain verification | CLIENT + SQL view | `AuditModule.tsx:19-25`; `audit_chain_breaks` view | |
 | Append-only (runtime cannot UPDATE/DELETE) | RUN (API refuses writes) / SPEC (DB grants) | `index.ts:62`; §10.7 | |
-| Request-level audit (X-Request-Id, PII redaction) | SPEC + REF model | §9.2; `RequestLog` | |
+| Request-level audit (X-Request-Id, PII redaction) | **BUILT** (D-52) | §9.2; `request_audit_log` | Audit → Requests (SA); purge after 365 days |
 | Security events (login success/failure, refresh reuse) | **Missing** | Login audit only in client store; reuse detection not audited | |
 | PDPL encryption of PII in audit, crypto-shredding | SPEC + REF model | §8.3; `UserEncryptionKey` | |
 

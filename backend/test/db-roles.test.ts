@@ -126,8 +126,14 @@ describeRoles(`database roles (spec §10.7)${allowed ? '' : ' — skipped: the t
         has_table_privilege('${roleName('runtime')}', 'audit_entries', 'DELETE') AS audit_delete,
         has_table_privilege('${roleName('runtime')}', 'audit_entries', 'INSERT') AS audit_insert,
         has_table_privilege('${roleName('runtime')}', 'break_glass_events', 'DELETE') AS bg_delete,
-        has_table_privilege('${roleName('runtime')}', 'break_glass_events', 'UPDATE') AS bg_update`);
-      expect(priv.rows[0]).toEqual({ audit_update: false, audit_delete: false, audit_insert: true, bg_delete: false, bg_update: true });
+        has_table_privilege('${roleName('runtime')}', 'break_glass_events', 'UPDATE') AS bg_update,
+        has_table_privilege('${roleName('runtime')}', 'request_audit_log', 'UPDATE') AS rl_update,
+        has_table_privilege('${roleName('runtime')}', 'request_audit_log', 'INSERT') AS rl_insert,
+        has_table_privilege('${roleName('runtime')}', 'request_audit_log', 'DELETE') AS rl_delete`);
+      expect(priv.rows[0]).toEqual({
+        audit_update: false, audit_delete: false, audit_insert: true, bg_delete: false, bg_update: true,
+        rl_update: false, rl_insert: true, rl_delete: true, // D-52: append-only; DELETE for the retention purge
+      });
     });
 
     it('the audit reader reads only audit; the backup role reads everything and writes nothing', async () => {
@@ -137,6 +143,8 @@ describeRoles(`database roles (spec §10.7)${allowed ? '' : ' — skipped: the t
       // D-45: the security-event tables, read-only.
       expect(await attempt(ar, `SELECT count(*) FROM break_glass_events`)).toBe('ok');
       expect(await attempt(ar, `SELECT count(*) FROM privileged_sessions`)).toBe('ok');
+      expect(await attempt(ar, `SELECT count(*) FROM request_audit_log`)).toBe('ok'); // D-52
+      expect(await attempt(ar, `DELETE FROM request_audit_log`)).toBe(DENIED);
       expect(await attempt(ar, `DELETE FROM privileged_sessions`)).toBe(DENIED);
       expect(await attempt(ar, `UPDATE break_glass_events SET ended_at = now()`)).toBe(DENIED);
       expect(await attempt(ar, `SELECT count(*) FROM employees`)).toBe(DENIED);

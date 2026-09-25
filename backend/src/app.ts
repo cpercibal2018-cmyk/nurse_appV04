@@ -9,6 +9,7 @@ import { createTokenService } from './lib/tokens.js';
 import { createAuthenticate } from './middleware/authenticate.js';
 import { errorHandler, unknownRoute } from './middleware/errors.js';
 import { requestId } from './middleware/request-id.js';
+import { createRequestLog, requestLogKey, type RequestLog } from './lib/request-log.js';
 import { createAuthRouter } from './modules/auth/routes.js';
 import { createAuthService } from './modules/auth/service.js';
 import { createMfa } from './modules/auth/mfa.js';
@@ -46,16 +47,20 @@ export interface AppDeps {
   scanner?: UploadScanner;
   /** Prefix for sign-in throttle keys, so test apps sharing one database do not share counters. */
   throttleNamespace?: string;
+  /** Injectable so tests can flush it; defaults to one writing to this database. */
+  requestLog?: RequestLog;
 }
 
 const HEALTH_DB_TIMEOUT_MS = 2000;
 
 /** Builds the Express application without starting a listener (tests use it directly). */
-export function createApp({ env, db, passwords = createPasswordService(env.BCRYPT_ROUNDS), scanner = createScanner(env), throttleNamespace = '' }: AppDeps) {
+export function createApp({ env, db, passwords = createPasswordService(env.BCRYPT_ROUNDS), scanner = createScanner(env), throttleNamespace = '', requestLog = createRequestLog(db, requestLogKey(env.JWT_SECRET)) }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   if (env.TRUST_PROXY) app.set('trust proxy', 1); // one hop: the hospital reverse proxy
+  app.locals.requestLog = requestLog;
   app.use(requestId);
+  app.use('/api', requestLog.middleware); // spec §9.2: every API request, after its response
   // One exact origin; credentials allowed because the refresh token travels in a cookie.
   app.use(cors({ origin: env.CORS_ORIGIN, credentials: true, exposedHeaders: ['X-Request-Id'] }));
   app.use(express.json({ limit: '1mb' }));
