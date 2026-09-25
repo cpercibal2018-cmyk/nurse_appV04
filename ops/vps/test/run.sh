@@ -12,6 +12,8 @@
 #      nurseapp-release (the deploy key's only command) — blue/green switch
 #   3. rollback       → blue
 #   4. restart (after a settings change) → green
+#   5. monitoring: monitor.sh alerts by e-mail when the site goes down and
+#      when it recovers; verify-install.sh passes the checks that apply here
 # and fails if any request failed, a colour was left running, or the roles
 # check did not pass. Leaves nothing running.
 
@@ -32,7 +34,7 @@ cleanup() {
   fi
   for c in blue green; do COLOR=$c TAG=$TAG NURSEAPP_CONF="$CONF" NURSEAPP_STATE="$STATE" docker compose -f "$HERE/docker-compose.app.yml" down -v >/dev/null 2>&1 || true; done
   SITE_HOST=$HOST ACME_EMAIL=x@x.test NURSEAPP_STATE="$STATE" docker compose -f "$HERE/docker-compose.edge.yml" down -v >/dev/null 2>&1 || true
-  docker rm -f "$DB" >/dev/null 2>&1 || true
+  docker rm -f "$DB" nurseapp-vpstest-mail >/dev/null 2>&1 || true
   docker network rm nurseapp >/dev/null 2>&1 || true
   docker run --rm -v "$WORK:/w" alpine:3.20 rm -rf /w/state >/dev/null 2>&1 || true   # files written by containers as root
   rm -rf "$WORK"
@@ -115,5 +117,35 @@ touch "$WORK/stop"; wait "$POLL_PID"; POLL_PID=""
 read -r ok fails < "$WORK/poll"
 echo "requests during three switches: $ok ok, $fails failed"
 (( fails == 0 && ok > 20 )) || { echo "requests failed during a switch" >&2; exit 1; }
+echo "== 5. monitoring: alerts on failure and recovery; installation check"
+docker run -d --name nurseapp-vpstest-mail --network nurseapp --ip 172.30.0.60 axllent/mailpit:v1.21 >/dev/null
+cat > "$CONF/monitor.env" <<ENV
+ALERT_EMAILS=oncall@$HOST
+SMTP_HOST=172.30.0.60
+SMTP_PORT=1025
+SMTP_FROM=NurseApp monitor <monitor@$HOST>
+ALERT_SMTP_STARTTLS=0
+ENV
+chmod 600 "$CONF/monitor.env"
+export CERT_WARN_DAYS=0 CERT_FAIL_DAYS=0   # Caddy's local test CA issues 12-hour certificates
+MON=("$HERE/monitor.sh" --notify --only "site,containers,database,disk,cert")
+mails() { curl -s --noproxy '*' http://172.30.0.60:8025/api/v1/messages | jq -r '.messages[].Subject'; }
+until curl -s --noproxy '*' -o /dev/null http://172.30.0.60:8025/api/v1/messages; do sleep 1; done
+"${MON[@]}" || { echo "monitor: expected all checks to pass" >&2; exit 1; }
+[[ -z "$(mails)" ]] || { echo "monitor sent an alert while everything passed" >&2; exit 1; }
+docker stop nurseapp-edge-caddy-1 >/dev/null
+if "${MON[@]}"; then echo "monitor: the site is down but every check passed" >&2; exit 1; fi
+mails | grep -q "FAILING: site" || { echo "no FAILING alert e-mail: $(mails)" >&2; exit 1; }
+"${MON[@]}" >/dev/null || true
+(( $(mails | grep -c "FAILING: site") == 1 )) || { echo "the same failure was alerted twice within 6 hours" >&2; exit 1; }
+docker start nurseapp-edge-caddy-1 >/dev/null
+until fetch /api/v1/health >/dev/null 2>&1; do sleep 1; done
+"${MON[@]}" || { echo "monitor: expected recovery" >&2; exit 1; }
+mails | grep -q "RECOVERED: site" || { echo "no RECOVERED alert e-mail: $(mails)" >&2; exit 1; }
+echo "alert e-mails: $(mails | tr '\n' ';')"
+OUT="$("$HERE/verify-install.sh" --only settings,roles,https,containers,site,admins)" || { echo "$OUT" >&2; echo "verify-install.sh failed" >&2; exit 1; }
+echo "$OUT"
+grep -q "WARN  admins" <<< "$OUT" || { echo "verify-install.sh did not flag the missing administrators" >&2; exit 1; }
+
 "$DEPLOY" status
 echo "ALL PASSED"

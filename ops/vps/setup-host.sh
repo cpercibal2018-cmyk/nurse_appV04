@@ -15,7 +15,8 @@
 #      containers' network — never from the internet;
 #   6. creates the `deploy` account used by GitHub Actions: its key can run
 #      one thing, nurseapp-release, and nothing else (no shell);
-#   7. creates /etc/nurseapp, /srv/nurseapp and the containers' network.
+#   7. creates /etc/nurseapp, /srv/nurseapp and the containers' network;
+#   8. installs the 5-minute health monitor (monitor.sh; alerts: README.md §8).
 # It does not create the database or any secret: that is db-init.sh.
 
 set -euo pipefail
@@ -143,6 +144,28 @@ install -d -m 755 /srv/nurseapp /opt/nurseapp
 rsync -a --delete "$OPS/" /opt/nurseapp/   # vps/, db/, backup/ — replaced by every release
 docker network inspect nurseapp >/dev/null 2>&1 \
   || docker network create --subnet "$NET_SUBNET" --ip-range 172.30.0.128/25 nurseapp
+
+step "8. Monitoring every 5 minutes (active once db-init.sh has written the settings)"
+cat > /etc/systemd/system/nurseapp-monitor.service <<'UNIT'
+[Unit]
+Description=Is production healthy? Alerts on change (ops/vps/monitor.sh)
+ConditionPathExists=/etc/nurseapp/deploy.env
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/nurseapp/vps/monitor.sh --notify
+SuccessExitStatus=1
+UNIT
+cat > /etc/systemd/system/nurseapp-monitor.timer <<'UNIT'
+[Unit]
+Description=Production health check every 5 minutes
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now nurseapp-monitor.timer
 
 echo
 echo "Done. Next: sudo /opt/nurseapp/vps/db-init.sh   (README.md §3)"
