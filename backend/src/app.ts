@@ -46,6 +46,7 @@ import { createAttendanceService } from './modules/attendance/service.js';
 import { createNotificationsRouter } from './modules/notifications/routes.js';
 import { createAuditRouter } from './modules/audit/routes.js';
 import { createDevConsoleRouter } from './modules/dev-console/routes.js';
+import { createFhirRouter } from './modules/interop/fhir-routes.js';
 
 export interface AppDeps {
   env: Env;
@@ -135,6 +136,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   api.use(createPdplRouter(db));
   api.use(createDevConsoleRouter(db, sms));
   api.use(createEligibilityLogicRouter(db, logic));
+  api.use(createFhirRouter(db, protection, env.APP_BASE_URL ?? env.CORS_ORIGIN));
   api.use(createDataSubjectRouter(createDataSubjectService({ db, protection, vault: documents.vault, backupRetentionDays: env.BACKUP_RETENTION_DAYS })));
   api.use(createContractsRouter(db, createContractService(db, documents, scanner, env.UPLOAD_MAX_SIZE_BYTES), env.UPLOAD_MAX_SIZE_BYTES));
   api.use(createCredentialsRouter(

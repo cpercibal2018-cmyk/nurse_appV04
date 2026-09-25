@@ -200,6 +200,9 @@ Eligibility in every response is the **live engine for the shift date** (L7), no
 | GET | `/api/v1/admin/jobs` | Jobs, schedules and last 10 runs each | SA | plan "Jobs" |
 | GET | `/api/v1/system/health/business` | Business health: `{status: HEALTHY \| ATTENTION, issues[], eligibility {lastAuditAt, lastChecked, lastDrifted, checked7d, drifts7d, driftRate7d, recentDrifts[]}, jobs[] {lastCompletedAt, ageMinutes, stale, lastAttemptFailed}, email {pendingOver15Minutes, failedLast24Hours, lastSentAt}, pdpl {unprotectedValues, overdueRequests, signOff}, keys {previousConfigured[], employeeKeysOnOldKey, searchRowsOnOldPepper}}` | SA (`jobs.read`) | spec §10.8 |
 | POST | `/api/v1/admin/jobs/:name/run` | Run now under its own run key (never consumes the scheduled period); HIGH audit | SA | plan "Jobs" |
+| GET · POST | `/api/v1/dev-console/sms-inbox?limit` · `/test` | Texts the mock SMS gateway intercepted, newest first `{driver, items, total}` · send a test text `{phone, message}` (audited, number masked; 502 `SMS_NOT_ACCEPTED`) | SA (elevated) | D-59 |
+| GET | `/api/v1/eligibility/logic` · `/:version/findings?decision=undecided\|approved\|rejected\|all&page&pageSize` | Shadow mode (spec §10.9): versions, the one in shadow with its promotion state · its disagreements within scope | HR, SA | D-60 |
+| POST | `/api/v1/eligibility/logic/findings/:id/decision` `{decision: APPROVED\|REJECTED, note}` · `/:version/promote` `{reason}` · `/:version/retire` `{reason}` | Decide a disagreement (final) · promote when §10.9 allows (every nurse recalculated) · retire the version in shadow; audited HIGH | HR (system-wide) | D-60 |
 
 **Scheduled jobs** (`backend/src/jobs/`; in the API process when `JOBS_MODE=in-process`, in `npm run worker` when `worker`). Each run is a unique `job_runs.run_key`, taken under a worker lease (spec §10.3):
 
@@ -209,7 +212,20 @@ Eligibility in every response is the **live engine for the shift date** (L7), no
 | `expiry-scan` | 06:00 daily | Credentials at 60 / 30 / 14 / 7 days, contracts at 90 / 30 / 14 / 7 days before the last valid day, both once expired (current milestone only). Credentials → employee; + unit Supervisor from 14; + scoped HR from 7. Contracts → employee + scoped HR from 90; + Supervisor from 14; none once a later contract is Approved/Active. Key = record + expiry date + milestone | spec §7.1 (N1, N3, N4); **D-39 overrides N2** |
 | `attendance-alerts` | every 15 minutes | Shifts under way: not clocked in 30 min after the start, or clocked in while ineligible → CRITICAL notice to the unit's supervisors, once per assignment | spec §14.2 |
 
-### 2.12 Removed from V03
+### 2.12 Interoperability — FHIR R4 (`modules/interop`, D-61)
+
+FHIR R4 (4.0.1) read API for the hospital's other systems (spec §14.1). Responses are `application/fhir+json`; route errors are `OperationOutcome` (404 `not-found`, 410 `deleted`, 400 `not-supported`); authentication and permission errors keep the API's own shape. Resources are those of the caller's scope — a nurse outside it reads as not found. Checked by the HL7 validator in CI (spec §11.3).
+
+| Method | Endpoint | Returns | Permission |
+| :--- | :--- | :--- | :--- |
+| GET | `/api/v1/fhir/metadata` | `CapabilityStatement` | `fhir.read` (HR, SA) |
+| GET | `/api/v1/fhir/Practitioner/:id` | Job number (`http://aigh.sa/job-number`), name, work e-mail, verified current licences as `qualification` (SCFHS number as the identifier, `http://scfhs.org.sa/registration`) | `fhir.read` |
+| GET | `/api/v1/fhir/PractitionerRole/:id` | Position (`code`), unit (`specialty`), the contract covering today (`period`; `active` only while one does) | `fhir.read` |
+| GET | `/api/v1/fhir/Practitioner?identifier=[system\|]<job number>` · `/api/v1/fhir/PractitionerRole?practitioner=Practitioner/<id>` | `Bundle` (searchset) | `fhir.read` |
+
+The ids are the employee id for both resource types. The spec's example puts qualifications on `PractitionerRole`; R4 has no such element, so licences are `Practitioner.qualification`.
+
+### 2.13 Removed from V03
 
 | Removed | Replaced by |
 | :--- | :--- |
@@ -271,7 +287,7 @@ Kept from the stage-1 analysis for traceability; none of these endpoints exists 
 
 ### A.4 Specified but never implemented (spec v2.8.7)
 
-`/api/v1/positions` (CRUD), `/api/v1/departments`, `/api/v1/credential-templates` (CRUD), `/api/v1/credential-categories` (CRUD), `/api/v1/credential-requirements` (CRUD + `/bulk`), `/api/v1/workforce/onboard`, `/api/v1/workforce/invitations`, `/api/v1/workforce/publish`, evidence `/:evidenceId/download`, `/api/v1/auth/register`, `/api/v1/push/register|unregister|devices`, `/api/v1/fhir/Practitioner/:id`, `/api/v1/fhir/PractitionerRole/:id`. Tracker B-23 records a route disagreement (`/api/v1/positions` vs `/api/v1/workforce/positions`).
+`/api/v1/positions` (CRUD), `/api/v1/departments`, `/api/v1/credential-templates` (CRUD), `/api/v1/credential-categories` (CRUD), `/api/v1/credential-requirements` (CRUD + `/bulk`), `/api/v1/workforce/onboard`, `/api/v1/workforce/invitations`, `/api/v1/workforce/publish`, evidence `/:evidenceId/download`, `/api/v1/auth/register`, `/api/v1/push/register|unregister|devices`, `/api/v1/fhir/Practitioner/:id` and `/api/v1/fhir/PractitionerRole/:id` (built in V04, §2.12). Tracker B-23 records a route disagreement (`/api/v1/positions` vs `/api/v1/workforce/positions`).
 
 ### A.5 Duplicates and conflicts
 

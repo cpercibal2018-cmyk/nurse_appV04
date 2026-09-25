@@ -66,6 +66,7 @@ Generated from `backend/src/modules/users/permissions.ts`. **`backend/test/docs.
 | `pdpl.signoff` | HR_ADMIN, SYSTEM_ADMIN | Record the Data Protection Officer's sign-off of the processing register (B-18, D-56) |
 | `pdpl.requests` | HR_ADMIN, SYSTEM_ADMIN | Work data-subject requests within scope: log, review, approve, decline, complete, download the package (spec §8.3.3, D-55). Employees make and follow their own under `/pdpl/requests/me` without a permission |
 | `pdpl.erase` | SYSTEM_ADMIN | Approve an erasure (crypto-shredding); never the person who logged it (D-55) |
+| `fhir.read` | HR_ADMIN, SYSTEM_ADMIN | FHIR R4 read API — Practitioner, PractitionerRole, metadata — within scope (spec §14.1, D-61) |
 | `jobs.read` | SYSTEM_ADMIN | Background job runs |
 | `jobs.run` | SYSTEM_ADMIN | Run a job now |
 | `devconsole.sms.read` | SYSTEM_ADMIN | Dev Console SMS inbox: the texts the mock SMS gateway intercepted (D-59) |
