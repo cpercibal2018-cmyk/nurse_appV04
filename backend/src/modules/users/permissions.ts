@@ -56,6 +56,8 @@ export const PERMISSIONS = {
   // PDPL (spec §8.3.2, D-54): the processing register — HR and System Admins read, System Admins maintain.
   'pdpl.read': ['HR_ADMIN', 'SYSTEM_ADMIN'],
   'pdpl.manage': ['SYSTEM_ADMIN'],
+  // B-18 (D-56): the Data Protection Officer's periodic sign-off of the register, from an HR or System Admin account.
+  'pdpl.signoff': ['HR_ADMIN', 'SYSTEM_ADMIN'],
   // Data-subject requests (spec §8.3.3, D-55): HR works the queue within scope; only a System Admin approves an erasure.
   'pdpl.requests': ['HR_ADMIN', 'SYSTEM_ADMIN'],
   'pdpl.erase': ['SYSTEM_ADMIN'],

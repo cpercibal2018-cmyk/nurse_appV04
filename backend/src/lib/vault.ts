@@ -7,21 +7,24 @@
 //   decision is open) without touching the services. Today: local disk under
 //   STORAGE_DIR, sharded by the first two hex characters of the key.
 // - Encryption at rest: every object is AES-256-GCM encrypted with its own
-//   random data key; the data key is wrapped with DOCUMENT_ENCRYPTION_KEY (a
-//   key version is recorded, so the key can be rotated by re-wrapping). The
+//   random data key; the data key is wrapped with DOCUMENT_ENCRYPTION_KEY.
+//   Rotation (B-18): with DOCUMENT_ENCRYPTION_KEY_PREVIOUS set, objects under
+//   either key are read, and `npm run keys:rotate` re-wraps each old object's
+//   data key (only the header changes; the body and its SHA-256 do not). The
 //   object's storage key is bound in as additional data, so an object cannot
 //   be passed off under another key. Objects written before the vault
 //   (plaintext) are still read, and `npm run vault:encrypt` converts them.
 // - Integrity: every read is checked against the SHA-256 recorded at upload;
 //   a mismatch is never served (VaultIntegrityError).
 // - Keys are 64 random hex characters, never derived from names, never
-//   reused; an object is never overwritten (D3). The database row is written
+//   reused; an object is never overwritten (D3), except that key rotation
+//   replaces it atomically with the same content under the new key. The database row is written
 //   after the object, so a failed transaction leaves an orphan object, which
 //   the daily vault-reconcile job removes (spec §5.3.1 "reconcile orphaned
 //   objects").
 
 import crypto from 'node:crypto';
-import { mkdir, open, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const MAGIC = Buffer.from('AIGHVLT1', 'latin1'); // 8 bytes
@@ -38,6 +41,8 @@ export interface StorageAdapter {
   /** Stores bytes under a new key; fails if the key exists (never overwrites). */
   create(key: string, bytes: Buffer): Promise<void>;
   read(key: string): Promise<Buffer>;
+  /** Key rotation only: atomically replaces an existing object. */
+  replace(key: string, bytes: Buffer): Promise<void>;
   /** The first `n` bytes (to tell encrypted objects from legacy ones cheaply). */
   readHead(key: string, n: number): Promise<Buffer>;
   remove(key: string): Promise<void>;
@@ -60,6 +65,12 @@ export function createLocalDiskAdapter(root: string): StorageAdapter {
       await writeFile(file(key), bytes, { flag: 'wx' });
     },
     async read(key) { return readFile(file(key)); },
+    async replace(key, bytes) {
+      await stat(file(key)); // exists — rotation never creates
+      const tmp = `${file(key)}.rotate-${crypto.randomBytes(6).toString('hex')}`;
+      await writeFile(tmp, bytes, { flag: 'wx' });
+      await rename(tmp, file(key));
+    },
     async readHead(key, n) {
       const h = await open(file(key), 'r');
       try {
@@ -100,8 +111,8 @@ function gcmDecrypt(key: Buffer, iv: Buffer, ct: Buffer, tag: Buffer, aad: Buffe
 
 export const isSealed = (head: Buffer) => head.length >= MAGIC.length && head.subarray(0, MAGIC.length).equals(MAGIC);
 
-export function createVault(adapter: StorageAdapter, kek: Buffer) {
-  if (kek.length !== 32) throw new Error('DOCUMENT_ENCRYPTION_KEY must be 32 bytes (base64 of 32 random bytes)');
+export function createVault(adapter: StorageAdapter, kek: Buffer, previousKek: Buffer | null = null) {
+  if (kek.length !== 32 || (previousKek && previousKek.length !== 32)) throw new Error('DOCUMENT_ENCRYPTION_KEY must be 32 bytes (base64 of 32 random bytes)');
   const aadFor = (key: string) => Buffer.from(`aigh-vault:${key}`, 'latin1');
 
   function seal(key: string, plain: Buffer): Buffer {
@@ -111,18 +122,26 @@ export function createVault(adapter: StorageAdapter, kek: Buffer) {
     return Buffer.concat([MAGIC, Buffer.from([KEY_VERSION]), wrap.iv, wrap.ct, wrap.tag, body.iv, body.ct, body.tag]);
   }
 
-  function unseal(key: string, sealed: Buffer): Buffer {
+  /** The object's data key, and whether it was wrapped with the previous key. */
+  function dataKey(key: string, sealed: Buffer): { dek: Buffer; old: boolean } {
     if (sealed[MAGIC.length] !== KEY_VERSION) throw new VaultIntegrityError('unknown vault key version');
-    let o = MAGIC.length + 1;
-    const wIv = sealed.subarray(o, o += IV);
-    const wCt = sealed.subarray(o, o += 32);
-    const wTag = sealed.subarray(o, o += TAG);
-    const iv = sealed.subarray(o, o += IV);
-    const ct = sealed.subarray(o, sealed.length - TAG);
-    const tag = sealed.subarray(sealed.length - TAG);
+    const o = MAGIC.length + 1;
+    const [wIv, wCt, wTag] = [sealed.subarray(o, o + IV), sealed.subarray(o + IV, o + IV + 32), sealed.subarray(o + IV + 32, o + WRAPPED)];
     try {
-      const dek = gcmDecrypt(kek, wIv, wCt, wTag, aadFor(key));
-      return gcmDecrypt(dek, iv, ct, tag, aadFor(key));
+      return { dek: gcmDecrypt(kek, wIv, wCt, wTag, aadFor(key)), old: false };
+    } catch {
+      if (previousKek) {
+        try { return { dek: gcmDecrypt(previousKek, wIv, wCt, wTag, aadFor(key)), old: true }; } catch { /* fall through */ }
+      }
+      throw new VaultIntegrityError('the object could not be decrypted (wrong key, or altered)');
+    }
+  }
+
+  function unseal(key: string, sealed: Buffer): Buffer {
+    const { dek } = dataKey(key, sealed);
+    const o = MAGIC.length + 1 + WRAPPED;
+    try {
+      return gcmDecrypt(dek, sealed.subarray(o, o + IV), sealed.subarray(o + IV, sealed.length - TAG), sealed.subarray(sealed.length - TAG), aadFor(key));
     } catch {
       throw new VaultIntegrityError('the object could not be decrypted (wrong key, or altered)');
     }
@@ -147,6 +166,24 @@ export function createVault(adapter: StorageAdapter, kek: Buffer) {
     /** True when the object is encrypted (false for a legacy plaintext object). */
     async isEncrypted(key: string) {
       return isSealed(await adapter.readHead(key, MAGIC.length));
+    },
+    /**
+     * Key rotation: re-wraps the object's data key with the current key when it was wrapped
+     * with the previous one, after checking the whole object still decrypts and matches its SHA-256.
+     * `dryRun` answers without writing ('rewrapped' = would be re-wrapped).
+     */
+    async rewrap(key: string, sha256: string, { dryRun = false } = {}): Promise<'current' | 'rewrapped' | 'plaintext'> {
+      const raw = await adapter.read(key);
+      if (!isSealed(raw)) return 'plaintext';
+      const { dek, old } = dataKey(key, raw);
+      if (!old) return 'current';
+      const bytes = unseal(key, raw);
+      if (crypto.createHash('sha256').update(bytes).digest('hex') !== sha256) throw new VaultIntegrityError('the stored bytes do not match their recorded SHA-256');
+      if (dryRun) return 'rewrapped';
+      const wrap = gcmEncrypt(kek, dek, aadFor(key));
+      const o = MAGIC.length + 1;
+      await adapter.replace(key, Buffer.concat([raw.subarray(0, o), wrap.iv, wrap.ct, wrap.tag, raw.subarray(o + WRAPPED)]));
+      return 'rewrapped';
     },
     /** Test and migration helper: the minimum sealed size. */
     headerSize: HEADER + TAG,

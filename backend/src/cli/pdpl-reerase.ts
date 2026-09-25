@@ -15,6 +15,7 @@ import { loadEnv } from '../config/env.js';
 import { fieldCryptoFromEnv } from '../lib/field-crypto.js';
 import { HttpError } from '../lib/http-errors.js';
 import { createPrisma, type Db } from '../lib/prisma.js';
+import { previousKey } from '../lib/keyring.js';
 import { createLocalDiskAdapter, createVault, documentKey, type Vault } from '../lib/vault.js';
 import { createProtection, type Protection } from '../modules/pdpl/protection.js';
 import { shredEmployee } from '../modules/pdpl/requests.js';
@@ -44,7 +45,7 @@ async function main() {
   const db = createPrisma(env.DATABASE_URL);
   try {
     const protection = createProtection(fieldCryptoFromEnv(env));
-    const vault = createVault(createLocalDiskAdapter(env.STORAGE_DIR), documentKey(env));
+    const vault = createVault(createLocalDiskAdapter(env.STORAGE_DIR), documentKey(env), previousKey(env.DOCUMENT_ENCRYPTION_KEY_PREVIOUS));
     for (const id of ids) console.log(JSON.stringify(await reapplyErasure(db, protection, vault, id)));
   } finally {
     await db.$disconnect();

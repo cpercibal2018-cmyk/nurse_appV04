@@ -24,6 +24,7 @@ import { createCatalogService } from './modules/credentials/catalog.js';
 import { createRecordService } from './modules/credentials/records.js';
 import { createCredentialsRouter } from './modules/credentials/routes.js';
 import { createEligibilityService } from './modules/eligibility/service.js';
+import { previousKey } from './lib/keyring.js';
 import { createLocalDiskAdapter, createVault, documentKey } from './lib/vault.js';
 import { createDocumentAccess, fileHeaders } from './modules/documents/access.js';
 import { fieldCryptoFromEnv } from './lib/field-crypto.js';
@@ -82,7 +83,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   const tokens = createTokenService(env.JWT_SECRET, env.ACCESS_TOKEN_TTL_SECONDS);
   const authenticate = createAuthenticate(db, tokens, env.CORS_ORIGIN);
   const accountThrottle = createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_ACCOUNT, throttleNamespace);
-  const mfa = createMfa(db, env, createSecretBox(mfaKey(env)));
+  const mfa = createMfa(db, env, createSecretBox(mfaKey(env), previousKey(env.MFA_ENCRYPTION_KEY_PREVIOUS)));
   const auth = createAuthService({
     db, env, tokens, passwords, mfa,
     accountThrottle,
@@ -101,7 +102,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
 
   // D-53: the document vault, and its single-use links. The link itself is the
   // credential (issued after the usual authorisation), so this route is public.
-  const documents = createDocumentAccess(db, createVault(createLocalDiskAdapter(env.STORAGE_DIR), documentKey(env)));
+  const documents = createDocumentAccess(db, createVault(createLocalDiskAdapter(env.STORAGE_DIR), documentKey(env), previousKey(env.DOCUMENT_ENCRYPTION_KEY_PREVIOUS)));
   app.get('/api/v1/files/:token{/:name}', async (req, res) => {
     const file = await documents.redeem(String(req.params.token), res.locals.requestId);
     res.set(fileHeaders(file, file.inline)).send(file.bytes);
@@ -114,12 +115,16 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   api.use(authenticate);
   const catalog = createCatalogService(db);
   const protection = createProtection(fieldCryptoFromEnv(env));
+  const keyStatus = {
+    masterKeyId: protection.crypto.masterKeyId, pepperId: protection.crypto.pepperId,
+    previous: (['MFA_ENCRYPTION_KEY_PREVIOUS', 'DOCUMENT_ENCRYPTION_KEY_PREVIOUS', 'PDPL_FIELD_ENCRYPTION_KEY_PREVIOUS', 'PDPL_BLIND_INDEX_PEPPER_PREVIOUS'] as const).filter((k) => env[k]),
+  };
   api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db), catalog, createBaselineImportService(db), invitations, passwordResets, mfa));
   api.use(createWorkforceRouter(db, createOrgService(db)));
   api.use(createNursesRouter(db, createNurseService(db)));
   api.use(createSchedulingRouter(db, createSchedulingService(db), createAttendanceService(db)));
   api.use(createNotificationsRouter(db));
-  api.use(createAuditRouter(db));
+  api.use(createAuditRouter(db, keyStatus));
   api.use(createPdplRouter(db));
   api.use(createDataSubjectRouter(createDataSubjectService({ db, protection, vault: documents.vault, backupRetentionDays: env.BACKUP_RETENTION_DAYS })));
   api.use(createContractsRouter(db, createContractService(db, documents, scanner, env.UPLOAD_MAX_SIZE_BYTES), env.UPLOAD_MAX_SIZE_BYTES));

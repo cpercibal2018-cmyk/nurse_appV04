@@ -14,6 +14,7 @@
 import { loadEnv } from '../config/env.js';
 import type { Db } from '../lib/prisma.js';
 import { riyadhDate } from '../lib/dates.js';
+import { previousKey } from '../lib/keyring.js';
 import { createLocalDiskAdapter, createVault, documentKey, type Vault } from '../lib/vault.js';
 
 export const ORPHAN_GRACE_HOURS = 24;
@@ -91,5 +92,5 @@ export async function reconcileVault(db: Db, vault: Vault, now = new Date()) {
 /** The scheduled job: the vault as the API configures it. */
 export function vaultReconcile(db: Db, now = new Date()) {
   const env = loadEnv();
-  return reconcileVault(db, createVault(createLocalDiskAdapter(env.STORAGE_DIR), documentKey(env)), now);
+  return reconcileVault(db, createVault(createLocalDiskAdapter(env.STORAGE_DIR), documentKey(env), previousKey(env.DOCUMENT_ENCRYPTION_KEY_PREVIOUS)), now);
 }

@@ -5,16 +5,28 @@
 //
 // Key: MFA_ENCRYPTION_KEY (32 random bytes, base64). Production refuses to
 // start without it (env.ts). Development and tests derive one from JWT_SECRET.
+// Rotation (B-18): with MFA_ENCRYPTION_KEY_PREVIOUS set, seeds sealed under
+// either key open; `npm run keys:rotate` re-seals the old ones.
 
 import crypto from 'node:crypto';
+import { withEither } from './keyring.js';
 
 export interface SecretBox {
   seal(plain: string): string;
   open(sealed: string): string;
+  /** True when the value opens only with the previous key (to be re-sealed). */
+  isOld(sealed: string): boolean;
 }
 
-export function createSecretBox(key: Buffer): SecretBox {
-  if (key.length !== 32) throw new Error('MFA_ENCRYPTION_KEY must be 32 bytes (base64 of 32 random bytes)');
+export function createSecretBox(key: Buffer, previous: Buffer | null = null): SecretBox {
+  if (key.length !== 32 || (previous && previous.length !== 32)) throw new Error('MFA_ENCRYPTION_KEY must be 32 bytes (base64 of 32 random bytes)');
+  const openWith = (k: Buffer, sealed: string) => {
+    const [version, iv, ct, tag] = sealed.split(':');
+    if (version !== 'v1' || !iv || !ct || !tag) throw new Error('unsupported sealed secret');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', k, Buffer.from(iv, 'base64url'));
+    decipher.setAuthTag(Buffer.from(tag, 'base64url'));
+    return Buffer.concat([decipher.update(Buffer.from(ct, 'base64url')), decipher.final()]).toString('utf8');
+  };
   return {
     seal(plain) {
       const iv = crypto.randomBytes(12);
@@ -22,13 +34,8 @@ export function createSecretBox(key: Buffer): SecretBox {
       const ct = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
       return ['v1', iv, ct, cipher.getAuthTag()].map((p) => (typeof p === 'string' ? p : p.toString('base64url'))).join(':');
     },
-    open(sealed) {
-      const [version, iv, ct, tag] = sealed.split(':');
-      if (version !== 'v1' || !iv || !ct || !tag) throw new Error('unsupported sealed secret');
-      const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64url'));
-      decipher.setAuthTag(Buffer.from(tag, 'base64url'));
-      return Buffer.concat([decipher.update(Buffer.from(ct, 'base64url')), decipher.final()]).toString('utf8');
-    },
+    open(sealed) { return withEither(key, previous, (k) => openWith(k, sealed)).value; },
+    isOld(sealed) { return withEither(key, previous, (k) => openWith(k, sealed)).rotated; },
   };
 }
 

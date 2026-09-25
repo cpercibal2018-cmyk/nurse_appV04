@@ -179,7 +179,19 @@ export interface RegisterEntry {
   lawfulBasis: 'EMPLOYMENT_CONTRACT' | 'LEGAL_OBLIGATION' | 'CONSENT' | 'VITAL_INTEREST' | 'PUBLIC_INTEREST';
   purpose: string; retentionRule: string; isActive: boolean; updatedAt: string;
 }
-export const useProcessingRegister = () => useQuery({ queryKey: ['pdpl', 'register'], queryFn: () => http.get<{ items: RegisterEntry[] }>('/pdpl/register') });
+export interface RegisterSignOff {
+  last: { id: number; reviewedBy: { id: number; displayName: string }; title: string; note: string | null; reviewedAt: string } | null;
+  changedSince: boolean; dueAt: string | null; due: boolean;
+}
+export const useProcessingRegister = () => useQuery({ queryKey: ['pdpl', 'register'], queryFn: () => http.get<{ items: RegisterEntry[]; signOff: RegisterSignOff }>('/pdpl/register') });
+/** B-18 (D-56): the Data Protection Officer signs off the register as it stands. */
+export function useSignOffRegister() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { title: string; note?: string; confirm: true }) => http.post<{ id: number }>('/pdpl/register/sign-offs', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pdpl'] }),
+  });
+}
 export function useUpdateRegister() {
   const qc = useQueryClient();
   return useMutation({
