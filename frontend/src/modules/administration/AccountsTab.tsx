@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { App, Button, Drawer, Form, Input, InputNumber, Modal, Popconfirm, Space, Table, Tag } from 'antd';
+import { Alert, App, Button, Drawer, Form, Input, InputNumber, Modal, Popconfirm, Space, Table, Tag } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { describeApiError } from '../../lib/errors';
 import { useAuth } from '../../hooks/useAuth';
-import { http } from '../../services/http';
+import { ApiError, http } from '../../services/http';
 import { useAccounts, useCreateAccount, useUpdateAccount, type Account } from './api';
 import type { TelegramLinkOffer as Offer } from '../../types/api';
 import { TelegramLinkOffer } from '../auth/telegram/TelegramLinkOffer';
@@ -24,6 +24,26 @@ export function AccountsTab() {
   const [form] = Form.useForm<NewAccount>();
   // D-66: a Telegram link HR shows the person as a QR code (15 minutes, single use).
   const [telegramOffer, setTelegramOffer] = useState<{ email: string; offer: Offer } | null>(null);
+  // D-67: HR starts a sign-in e-mail change; it applies when the person opens the link in the new mailbox.
+  const [emailFor, setEmailFor] = useState<Account | null>(null);
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailForm] = Form.useForm<{ newEmail: string }>();
+
+  async function changeEmail(v: { newEmail: string }) {
+    if (!emailFor) return;
+    setEmailBusy(true);
+    try {
+      const out = await http.post<{ pendingEmail: string }>(`/users/${emailFor.id}/email`, { newEmail: v.newEmail.trim() });
+      message.success(t('emailChangeSentFor', { email: out.pendingEmail }));
+      setEmailFor(null);
+    } catch (e) {
+      const code = e instanceof ApiError ? e.code : '';
+      if (code === 'EMAIL_IN_USE' || code === 'EMAIL_UNCHANGED') emailForm.setFields([{ name: 'newEmail', errors: [(e as ApiError).message] }]);
+      else message.error(describeApiError(e));
+    } finally {
+      setEmailBusy(false);
+    }
+  }
 
   async function telegramLink(a: Account) {
     try {
@@ -106,6 +126,7 @@ export function AccountsTab() {
                   </Popconfirm>
                 )}
                 {a.isActive && <Button size="small" onClick={() => void telegramLink(a)}>{t('telegramLinkFor')}</Button>}
+                {a.isActive && <Button size="small" onClick={() => { emailForm.resetFields(); setEmailFor(a); }}>{t('changeEmail')}</Button>}
                 {a.mfaEnabled && (
                   <Popconfirm title={t('resetMfa')} description={<div style={{ maxWidth: 320 }}>{t('resetMfaConfirm')}</div>} onConfirm={() => resetMfa(a)}>
                     <Button size="small">{t('resetMfa')}</Button>
@@ -133,6 +154,16 @@ export function AccountsTab() {
       <Modal open={telegramOffer !== null} footer={null} title={`${t('telegramLinkFor')} — ${telegramOffer?.email ?? ''}`}
         onCancel={() => { setTelegramOffer(null); void accounts.refetch(); }} destroyOnHidden>
         {telegramOffer && <TelegramLinkOffer offer={telegramOffer.offer} />}
+      </Modal>
+      <Modal open={emailFor !== null} title={`${t('changeEmail')} — ${emailFor?.email ?? ''}`} onCancel={() => setEmailFor(null)}
+        onOk={() => emailForm.submit()} okText={t('emailChangeSend')} cancelText={t('cancel')} confirmLoading={emailBusy} destroyOnHidden>
+        <Alert type="info" showIcon title={t('emailChangeAssistedHow')} style={{ marginBottom: 12 }} />
+        <Form form={emailForm} layout="vertical" requiredMark={false} onFinish={changeEmail}>
+          <Form.Item name="newEmail" label={t('newEmail')} normalize={(v: string) => v.trim()}
+            rules={[{ required: true, message: t('fieldRequired') }, { type: 'email', message: t('emailInvalid') }]}>
+            <Input dir="ltr" autoComplete="off" inputMode="email" autoFocus />
+          </Form.Item>
+        </Form>
       </Modal>
     </>
   );

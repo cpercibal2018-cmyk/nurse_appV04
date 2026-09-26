@@ -15,6 +15,7 @@ const AppLayout = lazy(loadLayout);
 const LoginPage = lazy(() => import('./modules/auth/LoginPage'));
 const ClaimPage = lazy(() => import('./modules/auth/ClaimPage'));
 const ResetPasswordPage = lazy(() => import('./modules/auth/ResetPasswordPage'));
+const ConfirmEmailPage = lazy(() => import('./modules/auth/ConfirmEmailPage'));
 const NotFound = lazy(() => import('./components/NotFound'));
 
 /** Waits for the startup session check, then either renders the page or sends the user to /login. */
@@ -70,6 +71,8 @@ export function App() {
           <Route path="/claim" element={<Suspense fallback={<PageSkeleton />}><ClaimPage /></Suspense>} />
           {/* Password reset (D-50): public. */}
           <Route path="/reset-password" element={<Suspense fallback={<PageSkeleton />}><ResetPasswordPage /></Suspense>} />
+          {/* Sign-in e-mail change (D-67): public, the link from the new mailbox. */}
+          <Route path="/confirm-email" element={<Suspense fallback={<PageSkeleton />}><ConfirmEmailPage /></Suspense>} />
           {MODULES.map(({ path, Page }) => (
             <Route key={path} path={path} element={<RequireSession><Page /></RequireSession>} />
           ))}

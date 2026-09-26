@@ -79,6 +79,8 @@ model User {
   downloadLinks      DownloadLink[]
   telegramLinks       TelegramLinkToken[] @relation("telegramLinkOwner")
   telegramLinksIssued TelegramLinkToken[] @relation("telegramLinkIssuer")
+  emailChanges        EmailChange[]       @relation("emailChangeFor")
+  emailChangesIssued  EmailChange[]       @relation("emailChangeIssuer")
   dsrRequested       DataSubjectRequest[]        @relation("dsrRequester")
   dsrReviewed        DataSubjectRequest[]        @relation("dsrReviewer")
   dsrDecided         DataSubjectRequest[]        @relation("dsrDecider")
@@ -1007,6 +1009,30 @@ model PasswordReset {
 
   @@index([userId, createdAt])
   @@map("password_resets")
+}
+
+/// D-67: a change of an account's sign-in e-mail, applied only when the link
+/// sent to the NEW address is opened (30 minutes, single use, SHA-256 stored).
+/// SELF needs the current password; ASSISTED is HR / a System Admin for an
+/// account in scope. A new request revokes the open one.
+model EmailChange {
+  id            Int       @id @default(autoincrement())
+  userId        Int       @map("user_id")
+  mode          String // SELF | ASSISTED (CHECK in SQL)
+  oldEmail      String    @map("old_email")
+  newEmail      String    @map("new_email")
+  tokenHash     String    @unique @map("token_hash")
+  requestedById Int       @map("requested_by_id")
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  usedAt        DateTime? @map("used_at") @db.Timestamptz
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz
+
+  user        User @relation("emailChangeFor", fields: [userId], references: [id])
+  requestedBy User @relation("emailChangeIssuer", fields: [requestedById], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("email_changes")
 }
 
 /// MFA (spec §3.5): one authenticator per account. Pending until the first

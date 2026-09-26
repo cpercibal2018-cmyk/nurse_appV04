@@ -58,6 +58,14 @@ export interface MfaSetup {
   account?: string;
 }
 
+/** D-67: the signed-in account's sign-in e-mail and any change waiting for confirmation. */
+export interface EmailChangeStatus {
+  email: string;
+  pending: { newEmail: string; expiresAt: string; mode: 'SELF' | 'ASSISTED' } | null;
+  /** False for the break-glass account. */
+  available: boolean;
+}
+
 /** D-66: the signed-in account's Telegram connection. */
 export interface TelegramStatus {
   linked: boolean;

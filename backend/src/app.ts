@@ -22,6 +22,7 @@ import { createRoleAssignmentService } from './modules/users/role-assignments.js
 import { createUsersRouter } from './modules/users/routes.js';
 import { createInvitationService } from './modules/users/invitations.js';
 import { createPasswordResetService } from './modules/users/password-reset.js';
+import { createEmailChangeService } from './modules/users/email-change.js';
 import { createBaselineImportService } from './modules/administration/baseline-import.js';
 import { createCatalogService } from './modules/credentials/catalog.js';
 import { createRecordService } from './modules/credentials/records.js';
@@ -119,7 +120,11 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
     db, passwords, accountThrottle, baseUrl: env.APP_BASE_URL ?? env.CORS_ORIGIN, mailEnabled: Boolean(env.SMTP_HOST),
     clientThrottle: createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_CLIENT, throttleNamespace),
   });
-  app.use('/api/v1/auth', createAuthRouter(env, auth, authenticate, invitations, passwordResets, mfa));
+  const emailChanges = createEmailChangeService({
+    db, passwords, accountThrottle, baseUrl: env.APP_BASE_URL ?? env.CORS_ORIGIN, mailEnabled: Boolean(env.SMTP_HOST),
+    clientThrottle: createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_CLIENT, throttleNamespace),
+  });
+  app.use('/api/v1/auth', createAuthRouter(env, auth, authenticate, invitations, passwordResets, mfa, emailChanges));
 
   // D-53: the document vault, and its single-use links. The link itself is the
   // credential (issued after the usual authorisation), so this route is public.
@@ -148,7 +153,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
     masterKeyId: protection.crypto.masterKeyId, pepperId: protection.crypto.pepperId,
     previous: (['MFA_ENCRYPTION_KEY_PREVIOUS', 'DOCUMENT_ENCRYPTION_KEY_PREVIOUS', 'PDPL_FIELD_ENCRYPTION_KEY_PREVIOUS', 'PDPL_BLIND_INDEX_PEPPER_PREVIOUS'] as const).filter((k) => env[k]),
   };
-  api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db), catalog, createBaselineImportService(db), invitations, passwordResets, mfa));
+  api.use(createUsersRouter(db, createAccountService(db, passwords), createRoleAssignmentService(db), catalog, createBaselineImportService(db), invitations, passwordResets, mfa, emailChanges));
   api.use(createWorkforceRouter(db, createOrgService(db)));
   api.use(createNursesRouter(db, createNurseService(db)));
   api.use(createSchedulingRouter(db, createSchedulingService(db), createAttendanceService(db)));

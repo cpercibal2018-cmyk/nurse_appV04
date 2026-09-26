@@ -9,6 +9,7 @@ import type { AuthService, IssuedSession } from './service.js';
 import type { MfaService } from './mfa.js';
 import { ClaimBody, PreviewBody, type InvitationService } from '../users/invitations.js';
 import { CompleteResetBody, RequestResetBody, type PasswordResetService } from '../users/password-reset.js';
+import { ConfirmEmailChangeBody, type EmailChangeService } from '../users/email-change.js';
 
 export const REFRESH_COOKIE = 'nurseapp_refresh';
 export const CSRF_COOKIE = 'nurseapp_csrf';
@@ -24,7 +25,7 @@ const MfaChallengeBody = z.strictObject({ challenge: Challenge });
 const MfaCodeBody = z.strictObject({ challenge: Challenge, code: Code });
 const CodeBody = z.strictObject({ code: Code });
 
-export function createAuthRouter(env: Env, auth: AuthService, authenticate: RequestHandler, invitations: InvitationService, resets: PasswordResetService, mfa: MfaService) {
+export function createAuthRouter(env: Env, auth: AuthService, authenticate: RequestHandler, invitations: InvitationService, resets: PasswordResetService, mfa: MfaService, emailChanges: EmailChangeService) {
   const router = Router();
   const secure = env.NODE_ENV === 'production';
 
@@ -83,6 +84,12 @@ export function createAuthRouter(env: Env, auth: AuthService, authenticate: Requ
     requireAppOrigin(req.get('origin'));
     await withRetryAfter(res, () => resets.complete(CompleteResetBody.parse(req.body), req.ip ?? 'unknown', res.locals.requestId));
     res.status(204).end();
+  });
+
+  // Sign-in e-mail change (D-67): the link from the new address; the token is the credential.
+  router.post('/email-change/confirm', async (req, res) => {
+    requireAppOrigin(req.get('origin'));
+    res.json(await withRetryAfter(res, () => emailChanges.confirm(ConfirmEmailChangeBody.parse(req.body), req.ip ?? 'unknown', res.locals.requestId)));
   });
 
   // Login has no session yet, so no CSRF token exists; the Origin check stops

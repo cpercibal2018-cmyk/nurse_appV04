@@ -9,6 +9,7 @@ import { createPamService, ElevateBody } from '../administration/pam.js';
 import { CreateAccountBody, ListAccountsQuery, UpdateAccountBody, type createAccountService } from './accounts.js';
 import type { InvitationService } from './invitations.js';
 import type { PasswordResetService } from './password-reset.js';
+import { RequestEmailChangeBody, RequestOwnEmailChangeBody, type EmailChangeService } from './email-change.js';
 import type { MfaService } from '../auth/mfa.js';
 import { ACCESS_MATRIX, PERMISSIONS } from './permissions.js';
 import type { CatalogService } from '../credentials/catalog.js';
@@ -26,10 +27,28 @@ export function createUsersRouter(
   invitations: InvitationService,
   resets: PasswordResetService,
   mfa: MfaService,
+  emailChanges: EmailChangeService,
 ) {
   const router = Router();
   const approvals = createApprovalService(db, roles, catalog, baseline);
   const pam = createPamService(db);
+
+  // ── Sign-in e-mail change (D-67) ──────────────────────────────────────────
+  // Own account: status, request with the current password, cancel. The change applies from the link in the new mailbox.
+  router.get('/me/email', async (_req, res) => {
+    res.json(await emailChanges.pending(authOf(res)));
+  });
+  router.post('/me/email', async (req, res) => {
+    res.status(202).json(await emailChanges.requestOwn(authOf(res), RequestOwnEmailChangeBody.parse(req.body), res.locals.requestId));
+  });
+  router.delete('/me/email', async (_req, res) => {
+    await emailChanges.cancelOwn(authOf(res), res.locals.requestId);
+    res.status(204).end();
+  });
+  // HR / System Admin for an account in scope, after confirming who is asking.
+  router.post('/users/:id/email', authorize('accounts.write'), async (req, res) => {
+    res.status(202).json(await emailChanges.requestFor(authOf(res), IdParam.parse(req.params).id, RequestEmailChangeBody.parse(req.body), res.locals.requestId));
+  });
 
   // ── Accounts ──────────────────────────────────────────────────────────────
   // Assisted password reset (D-50): the link goes to the account's own e-mail.
