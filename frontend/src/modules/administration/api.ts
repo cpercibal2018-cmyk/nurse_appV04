@@ -14,6 +14,8 @@ export interface Account {
   roleAssignments: Array<{ role: AppRole; scopeType: ScopeType }>;
   /** An authenticator is set up (spec §3.5). */
   mfaEnabled: boolean;
+  /** A Telegram chat is connected (D-66); the chat id itself is never listed. */
+  telegramLinked: boolean;
 }
 
 export interface Assignment {
@@ -242,6 +244,14 @@ export function useSendTestTelegram() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { chatId: string; message: string }) => http.post<{ accepted: boolean; messageId: string; driver: string }>('/dev-console/telegram-inbox/test', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['telegramInbox'] }),
+  });
+}
+/** Mock driver only: what the bot would receive if this chat sent the text (e.g. "/start <token>"). */
+export function useSimulateTelegram() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { chatId: string; text: string }) => http.post<{ handled: boolean }>('/dev-console/telegram-inbox/simulate', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['telegramInbox'] }),
   });
 }

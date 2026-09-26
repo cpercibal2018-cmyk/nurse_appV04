@@ -54,6 +54,8 @@ Every backend setting is in [`.env.example`](../.env.example) and is validated a
 | `BREAK_GLASS_ALERT_EMAILS` | — | Comma-separated: the CEO and IT Director (spec §3.6) |
 | `NOTIFICATION_DRIVER` | mock | `mock` keeps Telegram messages in the Dev Console Telegram inbox and sends nothing (§2.3, D-66); `telegram` sends through the Telegram Bot API |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_BOT_USERNAME` | — | Required with `NOTIFICATION_DRIVER=telegram`: the bot's token (a secret, from the deployment secrets) and username (without `@`) from @BotFather |
+| `TELEGRAM_UPDATES` | polling | How the bot receives `/start` (account linking): `polling` — the jobs process (API in development, worker in production) long-polls Telegram, no public address needed; `webhook` — the API registers `APP_BASE_URL/api/v1/telegram/webhook` at start-up |
+| `TELEGRAM_WEBHOOK_SECRET` | — | Required with `TELEGRAM_UPDATES=webhook`: at least 32 of `A–Z a–z 0–9 _ -` (`openssl rand -hex 32`); Telegram sends it back with every call and anything else is refused |
 | `SCFHS_DRIVER` | mock | `mock` answers licence checks from the simulated SCFHS registry in the Dev Console (§2.4, D-64); `live` is the SCFHS verification API (not built yet) |
 | `SCFHS_API_URL` / `SCFHS_API_KEY` | — | Required with `SCFHS_DRIVER=live`: the SCFHS endpoint and key from the SCFHS agreement (U3) |
 | `BADGE_SIMULATOR` | off in production, on elsewhere | `on` lets a System Admin write simulated badge events from the Dev Console (§2.5, D-65). Turn it on in production only for a demonstration, then clear the events and turn it off |
@@ -119,6 +121,8 @@ Every Telegram message goes through one gateway (`backend/src/lib/telegram.ts`, 
 | `telegram` | `sendMessage` on the Bot API (`api.telegram.org:443`, 10-second timeout). A refusal or an outage is logged (chat id masked, token never logged) and answered as not accepted — never an error to the caller |
 
 What is sent today: the break-glass sign-in, to each `BREAK_GLASS_ALERT_TELEGRAM_CHAT_IDS` chat (spec §3.6), after the sign-in is committed, so a failing gateway never blocks emergency access. The outcome is audited HIGH (`BREAK_GLASS_TELEGRAM_SENT` or `BREAK_GLASS_TELEGRAM_FAILED`). For a demonstration, **Send test message** in the inbox sends any text to any chat id (audited `TELEGRAM_TEST_SENT`, the chat id masked).
+
+**Connecting an account** (D-66): in **My account → Security → Telegram**, *Connect Telegram* shows a QR code and a link `https://t.me/<bot>?start=<token>` — single use, 15 minutes, only its SHA-256 stored. HR (or an elevated System Admin) can create one for an account in scope from **Accounts → Telegram link** and show it to the person. Opening it sends the bot `/start <token>` from the person's private chat, which links that chat (one chat per account, one account per chat; audited `TELEGRAM_LINKED`, and the account gets an in-app notice). `/stop` in the chat or *Disconnect* in the application unlinks it (`TELEGRAM_UNLINKED`). The bot's replies carry no name or e-mail. With the mock driver nothing reaches Telegram: in the Telegram inbox, *Simulate a message to the bot* with `/start <code>` links an account offline.
 
 Going live: create the bot with @BotFather; set `NOTIFICATION_DRIVER=telegram`, `TELEGRAM_BOT_TOKEN` (from the deployment secrets) and `TELEGRAM_BOT_USERNAME`; allow outbound HTTPS to `api.telegram.org`; have the CEO and IT Director start a chat with the bot and put their chat ids in `BREAK_GLASS_ALERT_TELEGRAM_CHAT_IDS`; send a test message from the inbox.
 

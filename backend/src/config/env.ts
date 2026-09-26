@@ -128,6 +128,11 @@ const EnvSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().default(''),
   /** The bot's username without "@"; required when NOTIFICATION_DRIVER=telegram. */
   TELEGRAM_BOT_USERNAME: z.string().default('').transform((s) => s.trim().replace(/^@/, '')).pipe(z.string().regex(/^([A-Za-z][A-Za-z0-9_]{3,31})?$/, 'a Telegram bot username')),
+  /** How the bot receives messages (/start <token> links an account): polling = the jobs process asks Telegram
+   *  (works without a public address, e.g. a development PC); webhook = Telegram posts to /api/v1/telegram/webhook. */
+  TELEGRAM_UPDATES: z.enum(['polling', 'webhook']).default('polling'),
+  /** Sent by Telegram with every webhook call and checked; required for webhook. 1–256 of A–Z a–z 0–9 _ -. */
+  TELEGRAM_WEBHOOK_SECRET: z.string().default('').pipe(z.string().regex(/^[A-Za-z0-9_-]{0,256}$/, 'letters, digits, _ and - only')),
   /** Spec §3.6: Telegram chats messaged when the break-glass account signs in (the CEO and IT Director), comma-separated chat ids. */
   BREAK_GLASS_ALERT_TELEGRAM_CHAT_IDS: z
     .string()
@@ -162,6 +167,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     if (e.SMTP_HOST && !e.SMTP_FROM) ctx.addIssue({ code: 'custom', path: ['SMTP_FROM'], message: 'required when SMTP_HOST is set' });
     for (const k of ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_BOT_USERNAME'] as const) {
       if (e.NOTIFICATION_DRIVER === 'telegram' && !e[k]) ctx.addIssue({ code: 'custom', path: [k], message: 'required when NOTIFICATION_DRIVER=telegram' });
+    }
+    if (e.NOTIFICATION_DRIVER === 'telegram' && e.TELEGRAM_UPDATES === 'webhook' && e.TELEGRAM_WEBHOOK_SECRET.length < 32) {
+      ctx.addIssue({ code: 'custom', path: ['TELEGRAM_WEBHOOK_SECRET'], message: 'at least 32 characters with TELEGRAM_UPDATES=webhook (openssl rand -hex 32)' });
     }
     for (const k of ['SCFHS_API_URL', 'SCFHS_API_KEY'] as const) {
       if (e.SCFHS_DRIVER === 'live' && !e[k]) ctx.addIssue({ code: 'custom', path: [k], message: 'required when SCFHS_DRIVER=live' });

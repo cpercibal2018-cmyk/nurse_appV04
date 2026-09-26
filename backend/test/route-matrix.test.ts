@@ -54,6 +54,8 @@ const PUBLIC = new Set([
   'GET /api/v1/files/:token{/:name}',
   // D-63: the OAuth 2.0 token endpoint for other systems; the client id and secret are the credentials, failures throttled.
   'POST /api/v1/fhir/token',
+  // D-66: Telegram posts the bot's messages; the secret in X-Telegram-Bot-Api-Secret-Token is the check (404 unless the webhook is on).
+  'POST /api/v1/telegram/webhook',
 ]);
 
 /** Signed-in routes without a route gate: the service checks own-or-scoped access. Reviewed list. */
@@ -70,6 +72,7 @@ const SELF_OR_SCOPED = [
   'GET /api/v1/roster/me', 'GET /api/v1/attendance/me',
   'GET /api/v1/notifications', 'POST /api/v1/notifications/:id/read', 'POST /api/v1/notifications/read-all',
   'GET /api/v1/pdpl/requests/me', 'POST /api/v1/pdpl/requests/me', 'GET /api/v1/pdpl/requests/me/:id/export', // own data-subject requests (D-55)
+  'GET /api/v1/me/telegram', 'POST /api/v1/me/telegram/link', 'DELETE /api/v1/me/telegram', // own Telegram link only (D-66)
 ].sort();
 
 const concrete = (path: string) => path.replace(/:id|:docId/g, '999999').replace(/:code/g, 'ZZ').replace(/:name/g, 'zz').replace(/:employeeId/g, '999999');

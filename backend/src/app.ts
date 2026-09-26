@@ -51,6 +51,8 @@ import { createDevConsoleRouter } from './modules/dev-console/routes.js';
 import { createFhirRouter } from './modules/interop/fhir-routes.js';
 import { createClientAuth } from './modules/interop/api-clients.js';
 import { createApiClientRouter } from './modules/interop/api-client-routes.js';
+import { createTelegramLinking } from './modules/telegram/linking.js';
+import { createTelegramRouter, telegramWebhook } from './modules/telegram/routes.js';
 
 export interface AppDeps {
   env: Env;
@@ -130,6 +132,11 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   // The OAuth 2.0 token endpoint for other systems (D-63): public, the client credentials are the check.
   app.post('/api/v1/fhir/token', express.urlencoded({ extended: false, limit: '4kb' }), clientAuth.tokenEndpoint);
 
+  // D-66: Telegram posts the bot's messages here (TELEGRAM_UPDATES=webhook); its secret header is the check.
+  const telegramLinking = createTelegramLinking(db, telegram, env.TELEGRAM_BOT_USERNAME);
+  app.locals.telegramLinking = telegramLinking; // server.ts polls with it when TELEGRAM_UPDATES=polling
+  app.post('/api/v1/telegram/webhook', telegramWebhook(env, telegramLinking));
+
   // Everything else under /api/v1 requires a signed-in caller. One protected
   // router, so authentication runs once per request; each domain module adds
   // its router here. Anonymous callers get 401 for any path, known or not.
@@ -149,6 +156,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   api.use(createAuditRouter(db, keyStatus));
   api.use(createPdplRouter(db));
   api.use(createDevConsoleRouter(db, telegram, scfhs.driver, badgeSimulatorOn(env)));
+  api.use(createTelegramRouter(db, telegramLinking, env.NOTIFICATION_DRIVER));
   api.use(createEligibilityLogicRouter(db, logic));
   api.use(createFhirRouter(db, protection, env.APP_BASE_URL ?? env.CORS_ORIGIN));
   api.use(createApiClientRouter(db));

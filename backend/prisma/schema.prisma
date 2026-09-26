@@ -56,6 +56,9 @@ model User {
   lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  /// D-66: the Telegram chat this account is messaged in, set by /start <token>; null = not linked.
+  telegramChatId   String?   @unique @map("telegram_chat_id")
+  telegramLinkedAt DateTime? @map("telegram_linked_at") @db.Timestamptz
 
   employee           Employee?                   @relation(fields: [employeeId], references: [id])
   sessions           RefreshSession[]
@@ -74,6 +77,8 @@ model User {
   mfaRecoveryCodes   MfaRecoveryCode[]
   mfaChallenges      MfaChallenge[]
   downloadLinks      DownloadLink[]
+  telegramLinks       TelegramLinkToken[] @relation("telegramLinkOwner")
+  telegramLinksIssued TelegramLinkToken[] @relation("telegramLinkIssuer")
   dsrRequested       DataSubjectRequest[]        @relation("dsrRequester")
   dsrReviewed        DataSubjectRequest[]        @relation("dsrReviewer")
   dsrDecided         DataSubjectRequest[]        @relation("dsrDecider")
@@ -863,6 +868,26 @@ model MockTelegramOutbox {
 
   @@index([createdAt(sort: Desc)])
   @@map("mock_telegram_outbox")
+}
+
+/// D-66: single-use links that connect an account to a Telegram chat
+/// (https://t.me/<bot>?start=<token>). Only the SHA-256 is stored. Issued by the
+/// account itself or by HR / a System Admin for it; valid 15 minutes; a new link
+/// replaces the account's open ones.
+model TelegramLinkToken {
+  id         Int       @id @default(autoincrement())
+  userId     Int       @map("user_id")
+  tokenHash  String    @unique @map("token_hash")
+  issuedById Int       @map("issued_by_id")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  usedAt     DateTime? @map("used_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user     User @relation("telegramLinkOwner", fields: [userId], references: [id])
+  issuedBy User @relation("telegramLinkIssuer", fields: [issuedById], references: [id])
+
+  @@index([userId, usedAt])
+  @@map("telegram_link_tokens")
 }
 
 /// E-mails to people without an account (spec §3.6: the break-glass alert to the

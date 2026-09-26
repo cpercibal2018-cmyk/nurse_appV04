@@ -97,6 +97,7 @@ These routes are open to any signed-in user; the service limits them to the call
 
 - Auth: `GET /auth/me`, `GET /auth/sessions`, `POST /auth/password`
 - PAM: `GET /pam/status`, `POST /pam/elevate` (needs a System Admin assignment), `POST /pam/end`
+- Telegram (D-66): `GET /me/telegram`, `POST /me/telegram/link`, `DELETE /me/telegram` — the caller's own connection; break-glass cannot link. HR / System Admin create a link for another account in scope with `accounts.write` (`POST /users/:id/telegram/link`). The webhook `POST /telegram/webhook` is public, checked by Telegram's secret header
 - Employees: `GET /employees/me`, `PATCH /employees/me/contact` (own phones — D-35), `GET /employees/:id` (own, or scoped HR / Supervisor)
 - Contracts: `GET /contracts/me`, `GET /contracts/:id`, its documents (own, or scoped staff)
 - Credentials: `GET /credentials/:id`, `POST /credentials/:id/renewal`, evidence upload / list / download (own, or scoped staff)
