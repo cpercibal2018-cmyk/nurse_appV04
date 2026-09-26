@@ -48,6 +48,8 @@ const PUBLIC = new Set([
   'POST /api/v1/auth/invitations/preview', 'POST /api/v1/auth/invitations/claim',
   // Password reset (D-50): the e-mailed token, Origin check and throttles guard them.
   'POST /api/v1/auth/password-reset/request', 'POST /api/v1/auth/password-reset/complete',
+  // Sign-in e-mail change (D-67): the link e-mailed to the new address is the credential; Origin check and throttle guard it.
+  'POST /api/v1/auth/email-change/confirm',
   // The second sign-in step (spec §3.5): the single-use challenge from a correct password, Origin check and throttles guard them.
   'POST /api/v1/auth/mfa/verify', 'POST /api/v1/auth/mfa/enroll/start', 'POST /api/v1/auth/mfa/enroll/confirm',
   // D-53: a single-use, 60-second link issued after the usual document authorisation; the token is the credential.
@@ -73,6 +75,7 @@ const SELF_OR_SCOPED = [
   'GET /api/v1/notifications', 'POST /api/v1/notifications/:id/read', 'POST /api/v1/notifications/read-all',
   'GET /api/v1/pdpl/requests/me', 'POST /api/v1/pdpl/requests/me', 'GET /api/v1/pdpl/requests/me/:id/export', // own data-subject requests (D-55)
   'GET /api/v1/me/telegram', 'POST /api/v1/me/telegram/link', 'DELETE /api/v1/me/telegram', // own Telegram link only (D-66)
+  'GET /api/v1/me/email', 'POST /api/v1/me/email', 'DELETE /api/v1/me/email', // own sign-in e-mail, with the current password (D-67)
 ].sort();
 
 const concrete = (path: string) => path.replace(/:id|:docId/g, '999999').replace(/:code/g, 'ZZ').replace(/:name/g, 'zz').replace(/:employeeId/g, '999999');

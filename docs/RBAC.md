@@ -97,6 +97,7 @@ These routes are open to any signed-in user; the service limits them to the call
 
 - Auth: `GET /auth/me`, `GET /auth/sessions`, `POST /auth/password`
 - PAM: `GET /pam/status`, `POST /pam/elevate` (needs a System Admin assignment), `POST /pam/end`
+- Sign-in e-mail (D-67): `GET /me/email`, `POST /me/email` (needs the current password), `DELETE /me/email` — own account only; break-glass cannot. HR / System Admin start a change for another account in scope with `accounts.write` (`POST /users/:id/email`). Either way it applies only from the link in the new mailbox (`POST /auth/email-change/confirm`, public)
 - Telegram (D-66): `GET /me/telegram`, `POST /me/telegram/link`, `DELETE /me/telegram` — the caller's own connection; break-glass cannot link. HR / System Admin create a link for another account in scope with `accounts.write` (`POST /users/:id/telegram/link`). The webhook `POST /telegram/webhook` is public, checked by Telegram's secret header
 - Employees: `GET /employees/me`, `PATCH /employees/me/contact` (own phones — D-35), `GET /employees/:id` (own, or scoped HR / Supervisor)
 - Contracts: `GET /contracts/me`, `GET /contracts/:id`, its documents (own, or scoped staff)
