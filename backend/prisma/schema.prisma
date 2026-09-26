@@ -59,6 +59,9 @@ model User {
   /// D-66: the Telegram chat this account is messaged in, set by /start <token>; null = not linked.
   telegramChatId   String?   @unique @map("telegram_chat_id")
   telegramLinkedAt DateTime? @map("telegram_linked_at") @db.Timestamptz
+  /// D-68, development only: never asked for a second step, whatever the role requires. Set and
+  /// cleared by `npm run mfa -w backend -- off|on <email|id>`; ignored with NODE_ENV=production.
+  mfaExempt        Boolean   @default(false) @map("mfa_exempt")
 
   employee           Employee?                   @relation(fields: [employeeId], references: [id])
   sessions           RefreshSession[]

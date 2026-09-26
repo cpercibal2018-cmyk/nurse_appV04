@@ -52,15 +52,23 @@ export const mfaCodeInvalid = () => new HttpError(401, 'MFA_CODE_INVALID', 'That
 export const mfaChallengeInvalid = () => new HttpError(401, 'MFA_CHALLENGE_INVALID', 'This sign-in step has expired. Sign in again.');
 
 export function createMfa(db: Db, env: Env, box: SecretBox) {
+  /** D-68: a development exemption set by `npm run mfa`; production never honours it. */
+  async function exempt(tx: DbClient, userId: number) {
+    if (env.NODE_ENV === 'production') return false;
+    return (await tx.user.findUnique({ where: { id: userId }, select: { mfaExempt: true } }))?.mfaExempt ?? false;
+  }
+
   /** VERIFY when the account has an authenticator, ENROLL when its roles require one, else null. */
   async function stepFor(tx: DbClient, user: { id: number; isBreakGlass: boolean }, now = new Date()): Promise<ChallengePurpose | null> {
     if (user.isBreakGlass) return null;
+    if (await exempt(tx, user.id)) return null;
     const factor = await tx.mfaFactor.findUnique({ where: { userId: user.id }, select: { confirmedAt: true } });
     if (factor?.confirmedAt) return 'VERIFY';
     return (await isRequired(tx, user.id, now)) ? 'ENROLL' : null;
   }
 
   async function isRequired(tx: DbClient, userId: number, now = new Date()) {
+    if (await exempt(tx, userId)) return false;
     const required = new Set<string>(env.MFA_REQUIRED_ROLES);
     return (await activeGrants(tx, userId, now)).some((g) => required.has(g.role));
   }
