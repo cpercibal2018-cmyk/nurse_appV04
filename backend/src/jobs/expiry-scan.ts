@@ -19,7 +19,7 @@
 
 import { addDays, daysBetween, dbDate, riyadhDate, toDbDate } from '../lib/dates.js';
 import type { Db, DbClient } from '../lib/prisma.js';
-import { recipientsForUnit } from '../modules/eligibility/state.service.js';
+import { unitRecipients } from '../modules/eligibility/state.service.js';
 
 type Kind = 'CREDENTIAL' | 'CONTRACT';
 /** Days before the last valid day. A credential's first milestone is its renewal window (RENEWAL_WINDOW_DAYS, §5.2 "Subject to Renew"). */
@@ -50,23 +50,48 @@ type Notice = {
   title: string; message: string; titleAr: string; messageAr: string;
 };
 
-async function deliver(tx: DbClient, n: Notice, now: Date) {
+type Recipients = { own: Map<number, number>; supervisors: (unitId: number | null) => number[]; hr: (unitId: number | null) => number[] };
+
+/** Each notice's new recipients; `sent` holds "recipientId eventKey" pairs that already have their row. */
+function recipientsOf(n: Notice, r: Recipients, sent: Set<string>) {
   const audience = ROUTING[n.kind][n.milestone] ?? [];
   const ids: number[] = [];
-  if (audience.includes('EMPLOYEE')) {
-    const own = await tx.user.findFirst({ where: { employeeId: n.employeeId, isActive: true }, select: { id: true } });
-    if (own) ids.push(own.id);
-  }
-  if (audience.includes('SUPERVISOR')) ids.push(...(await recipientsForUnit(tx, 'SUPERVISOR', n.unitId, now)));
-  if (audience.includes('HR')) ids.push(...(await recipientsForUnit(tx, 'HR_ADMIN', n.unitId, now)));
-  const priority = n.milestone === 90 || n.milestone === 60 || n.milestone === 30 ? 'MEDIUM' as const : 'HIGH' as const;
-  const { eventKey, title, message, titleAr, messageAr, employeeId } = n;
-  const r = await tx.notification.createMany({
-    data: [...new Set(ids)].map((recipientId) => ({ recipientId, employeeId, type: n.kind, priority, eventKey, title, message, titleAr, messageAr })),
-    skipDuplicates: true,
-  });
-  return r.count;
+  const own = r.own.get(n.employeeId);
+  if (audience.includes('EMPLOYEE') && own !== undefined) ids.push(own);
+  if (audience.includes('SUPERVISOR')) ids.push(...r.supervisors(n.unitId));
+  if (audience.includes('HR')) ids.push(...r.hr(n.unitId));
+  return [...new Set(ids)].filter((id) => !sent.has(`${id} ${n.eventKey}`));
 }
+
+// The expired milestone lasts until the record is renewed, so every run meets
+// the same notices again. Recipients are resolved once per run and pairs that
+// already have their row are skipped before the insert (skipDuplicates still
+// guards against a concurrent run); per record, the cost is the new rows only.
+async function deliver(db: DbClient, notices: Notice[], now: Date) {
+  const employeeIds = [...new Set(notices.map((n) => n.employeeId))];
+  const r: Recipients = {
+    own: new Map((await db.user.findMany({ where: { employeeId: { in: employeeIds }, isActive: true }, select: { id: true, employeeId: true } }))
+      .map((u) => [u.employeeId!, u.id])),
+    supervisors: await unitRecipients(db, 'SUPERVISOR', now),
+    hr: await unitRecipients(db, 'HR_ADMIN', now),
+  };
+  const sent = new Set<string>();
+  for (let i = 0; i < notices.length; i += CHUNK) {
+    const rows = await db.notification.findMany({ where: { eventKey: { in: notices.slice(i, i + CHUNK).map((n) => n.eventKey) } }, select: { recipientId: true, eventKey: true } });
+    for (const row of rows) sent.add(`${row.recipientId} ${row.eventKey}`);
+  }
+  const data = notices.flatMap((n) => {
+    const priority = n.milestone === 90 || n.milestone === 60 || n.milestone === 30 ? 'MEDIUM' as const : 'HIGH' as const;
+    const { eventKey, title, message, titleAr, messageAr, employeeId } = n;
+    return recipientsOf(n, r, sent).map((recipientId) => ({ recipientId, employeeId, type: n.kind, priority, eventKey, title, message, titleAr, messageAr }));
+  });
+  let count = 0;
+  for (let i = 0; i < data.length; i += CHUNK) count += (await db.notification.createMany({ data: data.slice(i, i + CHUNK), skipDuplicates: true })).count;
+  return count;
+}
+
+/** Rows or keys per statement, well under PostgreSQL's 65,535 bind parameters. */
+const CHUNK = 1000;
 
 export async function expiryScan(db: Db, now = new Date()) {
   const today = riyadhDate(now);
@@ -140,6 +165,6 @@ export async function expiryScan(db: Db, now = new Date()) {
       });
     }
   }
-  for (const n of notices) summary.notificationsCreated += await deliver(db, n, now);
+  summary.notificationsCreated = await deliver(db, notices, now);
   return summary;
 }
