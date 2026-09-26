@@ -1,7 +1,8 @@
-// Dev Console (D-59): the SMS inbox. While SMS_DRIVER=mock the SMS gateway keeps
-// every outgoing text in mock_sms_outbox instead of sending it; System Admins read
-// them here, newest first, and can send a test text to show the flow. The inbox
-// holds phone numbers, so it is System Admin only and purged after 30 days.
+// Dev Console (D-66): the Telegram inbox. While NOTIFICATION_DRIVER=mock the
+// Telegram gateway keeps every outgoing message in mock_telegram_outbox instead of
+// sending it; System Admins read them here, newest first, and can send a test
+// message to show the flow. The inbox holds chat ids, so it is System Admin only
+// and purged after 30 days.
 //
 // D-64: the simulated SCFHS registry. While SCFHS_DRIVER=mock, licence checks are
 // answered from mock_scfhs_registry; a System Admin sets what "SCFHS" says for a
@@ -20,7 +21,7 @@ import { z } from 'zod';
 import { appendAudit } from '../../lib/audit.js';
 import { HttpError } from '../../lib/http-errors.js';
 import type { Db } from '../../lib/prisma.js';
-import { maskPhone, normalizePhone, SMS_MAX_LENGTH, SMS_PHONE, type SmsGateway } from '../../lib/sms.js';
+import { maskChatId, TELEGRAM_CHAT_ID, TELEGRAM_MAX_LENGTH, type TelegramGateway } from '../../lib/telegram.js';
 import { isIsoDate, riyadhDate, toDbDate } from '../../lib/dates.js';
 import { shiftWindow, SHIFT_TYPES, type ShiftType } from '../../config/shifts.js';
 import { BadgeEvent, ingestEvents, SIMULATOR_SOURCE } from '../attendance/ingest.js';
@@ -29,9 +30,9 @@ import { maskReg, normalizeReg, SCFHS_REG, type ScfhsDriver } from '../../lib/sc
 import { authOf, authorize } from '../../middleware/authorize.js';
 
 export const InboxQuery = z.object({ limit: z.coerce.number().int().min(1).max(500).default(100) });
-export const TestSmsBody = z.strictObject({
-  phone: z.string().transform(normalizePhone).pipe(z.string().regex(SMS_PHONE, 'Phone: international format, e.g. +966501234567')),
-  message: z.string().trim().min(1).max(SMS_MAX_LENGTH),
+export const TestTelegramBody = z.strictObject({
+  chatId: z.string().trim().regex(TELEGRAM_CHAT_ID, 'Chat id: digits, e.g. 123456789'),
+  message: z.string().trim().min(1).max(TELEGRAM_MAX_LENGTH),
 });
 
 export const RegistryParam = z.object({ reg: z.string().transform(normalizeReg).pipe(z.string().regex(SCFHS_REG, 'Registration number: letters, digits and hyphens')) });
@@ -51,26 +52,26 @@ export const SimulatedShift = z.strictObject({
   leaveOut: z.number().int().min(0).max(500).default(0),
 });
 
-export function createDevConsoleRouter(db: Db, sms: SmsGateway, scfhsDriver: ScfhsDriver, badgeSimulator: boolean) {
+export function createDevConsoleRouter(db: Db, telegram: TelegramGateway, scfhsDriver: ScfhsDriver, badgeSimulator: boolean) {
   const r = Router();
 
-  r.get('/dev-console/sms-inbox', authorize('devconsole.sms.read'), async (req, res) => {
+  r.get('/dev-console/telegram-inbox', authorize('devconsole.telegram.read'), async (req, res) => {
     const { limit } = InboxQuery.parse(req.query);
     const [items, total] = await Promise.all([
-      db.mockSmsOutbox.findMany({ orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limit }),
-      db.mockSmsOutbox.count(),
+      db.mockTelegramOutbox.findMany({ orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limit }),
+      db.mockTelegramOutbox.count(),
     ]);
-    res.json({ driver: sms.driver, items, total });
+    res.json({ driver: telegram.driver, items, total });
   });
 
-  r.post('/dev-console/sms-inbox/test', authorize('devconsole.sms.send'), async (req, res) => {
-    const body = TestSmsBody.parse(req.body);
-    const accepted = await sms.send(body.phone, body.message);
+  r.post('/dev-console/telegram-inbox/test', authorize('devconsole.telegram.send'), async (req, res) => {
+    const body = TestTelegramBody.parse(req.body);
+    const { accepted, messageId } = await telegram.send(body.chatId, body.message);
     await appendAudit(db, {
-      actorUserId: authOf(res).user.id, action: 'SMS_TEST_SENT', resource: 'sms', changes: { driver: sms.driver, phone: maskPhone(body.phone), accepted }, requestId: res.locals.requestId,
+      actorUserId: authOf(res).user.id, action: 'TELEGRAM_TEST_SENT', resource: 'telegram', changes: { driver: telegram.driver, chatId: maskChatId(body.chatId), accepted }, requestId: res.locals.requestId,
     });
-    if (!accepted) throw new HttpError(502, 'SMS_NOT_ACCEPTED', sms.driver === 'mock' ? 'The text could not be saved to the SMS inbox' : 'The SMS gateway did not accept the text');
-    res.status(201).json({ accepted, driver: sms.driver });
+    if (!accepted) throw new HttpError(502, 'TELEGRAM_NOT_ACCEPTED', telegram.driver === 'mock' ? 'The message could not be saved to the Telegram inbox' : 'Telegram did not accept the message');
+    res.status(201).json({ accepted, messageId, driver: telegram.driver });
   });
 
   // ── Badge simulator (D-65) ─────────────────────────────────────────────

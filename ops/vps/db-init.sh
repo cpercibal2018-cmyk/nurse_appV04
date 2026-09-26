@@ -71,8 +71,11 @@ BACKUP_RETENTION_DAYS=30
 SMTP_HOST=
 SMTP_FROM=
 BREAK_GLASS_ALERT_EMAILS=
-SMS_DRIVER=mock
-BREAK_GLASS_ALERT_PHONES=
+# Telegram (D-66): mock until the bot token is set; messages carry no personal data.
+NOTIFICATION_DRIVER=mock
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_BOT_USERNAME=
+BREAK_GLASS_ALERT_TELEGRAM_CHAT_IDS=
 ENV
 cat > "$CONF/migrate.env" <<ENV
 MIGRATION_DATABASE_URL=postgresql://nurseapp_migration:$MIGRATION_PW@db.host:5432/$DB

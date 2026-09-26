@@ -231,18 +231,18 @@ export function useDsrAction() {
   });
 }
 
-// ── Dev Console: SMS inbox (D-59), System Admin ──
-export interface MockSms { id: number; recipientPhone: string; messageBody: string; status: string; createdAt: string; updatedAt: string }
-export const useSmsInbox = () => useQuery({
-  queryKey: ['smsInbox'],
-  queryFn: () => http.get<{ driver: 'mock' | 'unifonic'; items: MockSms[]; total: number }>('/dev-console/sms-inbox?limit=200'),
-  refetchInterval: 10_000, // a demonstration shows new texts as they arrive
+// ── Dev Console: Telegram inbox (D-66), System Admin ──
+export interface MockTelegram { id: number; chatId: string; messageText: string; parseMode: string | null; status: string; createdAt: string }
+export const useTelegramInbox = () => useQuery({
+  queryKey: ['telegramInbox'],
+  queryFn: () => http.get<{ driver: 'mock' | 'telegram'; items: MockTelegram[]; total: number }>('/dev-console/telegram-inbox?limit=200'),
+  refetchInterval: 10_000, // a demonstration shows new messages as they arrive
 });
-export function useSendTestSms() {
+export function useSendTestTelegram() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { phone: string; message: string }) => http.post<{ accepted: boolean; driver: string }>('/dev-console/sms-inbox/test', body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['smsInbox'] }),
+    mutationFn: (body: { chatId: string; message: string }) => http.post<{ accepted: boolean; messageId: string; driver: string }>('/dev-console/telegram-inbox/test', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['telegramInbox'] }),
   });
 }
 

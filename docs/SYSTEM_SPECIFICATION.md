@@ -47,7 +47,7 @@ The reference is silent or open on these; the owner settled them. They add detai
 | §8.1 | Organisation structure (departments, units, positions, CSV import) is hospital-wide configuration; unit-scoped HR manages beds and coverage targets | D-34 |
 | §8.1 | Separation of duties: nobody acts on their own credential (D-26), approves a contract they created or submitted (D-30), or acts on their own contract or deletes their own employee record (D-37) | D-26, D-30, D-37 |
 | §8.1 | Audit trail readable by System Admins only until HR access is decided | D-20 |
-| §3.6 | Break-glass is built minimally: irrevocable event, HIGH audit, CRITICAL in-app alert to System Admins, 4-hour session; e-mail to System Admins and to the CEO and IT Director (`BREAK_GLASS_ALERT_EMAILS`); a text to them (`BREAK_GLASS_ALERT_PHONES`) through the SMS gateway — simulated by the mock driver (Dev Console SMS inbox) until the CST Sender ID exists | D-9, D-47, D-59 |
+| §3.6 | Break-glass is built minimally: irrevocable event, HIGH audit, CRITICAL in-app alert to System Admins, 4-hour session; e-mail to System Admins and to the CEO and IT Director (`BREAK_GLASS_ALERT_EMAILS`); a Telegram message to them (`BREAK_GLASS_ALERT_TELEGRAM_CHAT_IDS`) through the Telegram gateway, with no personal data — simulated by the mock driver (Dev Console Telegram inbox) until the bot is set up. **Amendment:** Telegram replaces the SMS text of D-48 / D-59 | D-9, D-47, D-66 |
 | §5.3 | Uploads: magic-byte and size checks, then a synchronous ClamAV (`clamd`) scan before storage; infected files are rejected and audited, never stored; scanner outages fail closed. Development may skip the scan (`dev-magic-bytes`); production refuses to start without `clamav`. **The spec's asynchronous quarantine queue and scan worker are deliberately not built** ([DEPLOYMENT.md §2.1](DEPLOYMENT.md#21-malware-scanner-clamav)) | D-10, **D-43** |
 | §14.2 | Attendance: the gap view, 15-minute alerts and the badge-event ingest (`POST /attendance/events`, an API client with `attendance.ingest`) are built, with a Dev Console badge simulator until the badge system is connected; the PACS contract itself is open (B-15) | D-33, D-65 |
 | §8.3.1–8.3.4 | PDPL: fields a credential type marks sensitive (Iqama, passport, SCFHS registration — marked in the hospital baseline) are encrypted with the employee's own key (AES-256-GCM, wrapped by `PDPL_FIELD_ENCRYPTION_KEY`) and found only by exact number through an HMAC blind index (`PDPL_BLIND_INDEX_PEPPER`); a value is stored only while the processing register has an active lawful basis for its category; ID-shaped numbers are masked in every log line | D-54 |
@@ -78,6 +78,7 @@ The reference (and the owner, so far) gives no rule for these. V04 builds nothin
 | Ada'a KPI thresholds | Values from V03, source card not in the repository (D-11) |
 | Badge-feed contract (auth, format, delivery) | Not built (D-33) |
 | Approval notification rules | None beyond the approval queue itself |
+| Staff accepting or declining a published shift (e.g. from Telegram) | Not built (D-66): what a decline changes on a published roster, who is told, what it does to coverage, and any deadline are not decided |
 
 ## 5. Deferred — specified, not built in V04
 

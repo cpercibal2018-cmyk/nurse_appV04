@@ -7,7 +7,7 @@ import { renderEmail } from '../../lib/email-templates.js';
 import { HttpError } from '../../lib/http-errors.js';
 import { describeError, logger } from '../../lib/logger.js';
 import type { PasswordService } from '../../lib/passwords.js';
-import type { SmsGateway } from '../../lib/sms.js';
+import type { TelegramGateway } from '../../lib/telegram.js';
 import type { Db, DbClient } from '../../lib/prisma.js';
 import type { Throttle } from '../../lib/throttle.js';
 import { constantTimeEqual, randomToken, sha256hex, type TokenService } from '../../lib/tokens.js';
@@ -25,8 +25,8 @@ export interface AuthDeps {
   accountThrottle: Throttle;
   clientThrottle: Throttle;
   mfa: MfaService;
-  /** Texts the break-glass alert (D-48); the mock driver keeps it in the Dev Console (D-59). */
-  sms: SmsGateway;
+  /** Sends the break-glass alert by Telegram (D-66); the mock driver keeps it in the Dev Console. */
+  telegram: TelegramGateway;
 }
 
 /** Password accepted; the second step (spec §3.5) is still needed. No cookie is set yet. */
@@ -103,7 +103,7 @@ export function createAuthService(deps: AuthDeps) {
     }
     const session = await db.$transaction((tx) => completeLogin(tx, user, now, { ip: clientIp, userAgent }, requestId));
     // Break-glass is never asked for a second step, so this is its only way in.
-    if (user.isBreakGlass) await textSiren(user.id, clientIp, now, requestId);
+    if (user.isBreakGlass) await telegramSiren(user.id, now, requestId);
     return session;
   }
 
@@ -200,7 +200,7 @@ export function createAuthService(deps: AuthDeps) {
    * Break-glass siren (spec §3.6, decision D-9): irrevocable event row, HIGH
    * audit entry, a CRITICAL in-app notification (and e-mail) to every System
    * Admin, and an e-mail to each BREAK_GLASS_ALERT_EMAILS address — the CEO and
-   * IT Director (D-47). The text (D-48, D-59) follows the commit: textSiren.
+   * IT Director (D-47). The Telegram alert (D-66) follows the commit: telegramSiren.
    */
   async function sirenOnLogin(tx: DbClient, userId: number, ip: string, now: Date, seconds: number, requestId?: string) {
     const event = await tx.breakGlassEvent.create({
@@ -241,22 +241,24 @@ export function createAuthService(deps: AuthDeps) {
   }
 
   /**
-   * The break-glass alert by SMS to each BREAK_GLASS_ALERT_PHONES number (spec §3.6,
-   * D-48). Sent after the sign-in is committed: a slow or failing gateway must never
-   * hold up or undo emergency access. The outcome is audited HIGH either way.
+   * The break-glass alert by Telegram to each BREAK_GLASS_ALERT_TELEGRAM_CHAT_IDS
+   * chat (spec §3.6, D-66). Sent after the sign-in is committed: a slow or failing
+   * gateway must never hold up or undo emergency access. No personal data: the
+   * times only, not the client address. The outcome is audited HIGH either way.
    */
-  async function textSiren(userId: number, ip: string, now: Date, requestId?: string) {
-    const phones = env.BREAK_GLASS_ALERT_PHONES;
-    if (phones.length === 0) return;
+  async function telegramSiren(userId: number, now: Date, requestId?: string) {
+    const chats = env.BREAK_GLASS_ALERT_TELEGRAM_CHAT_IDS;
+    if (chats.length === 0) return;
     const at = (d: Date) => `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
     const ends = new Date(now.getTime() + sessionSeconds(true) * 1000);
-    const text = `AIGH Workforce: the break-glass (emergency) account signed in from ${ip} at ${at(now)}. The session ends ${at(ends)}. Every action is audited.`;
-    const sent = await Promise.all(phones.map((p) => deps.sms.send(p, text)));
-    const failed = sent.filter((ok) => !ok).length;
+    const text = `AIGH Workforce: the break-glass (emergency) account signed in at ${at(now)}. The session ends ${at(ends)}. Every action is audited.\n\n`
+      + `تم تسجيل الدخول بحساب الطوارئ. جميع الإجراءات مسجلة في سجل التدقيق.`;
+    const sent = await Promise.all(chats.map((c) => deps.telegram.send(c, text)));
+    const failed = sent.filter((r) => !r.accepted).length;
     await appendAudit(db, {
-      actorUserId: userId, action: failed === 0 ? 'BREAK_GLASS_SMS_SENT' : 'BREAK_GLASS_SMS_FAILED', resource: 'user', resourceId: String(userId),
-      changes: { driver: deps.sms.driver, sent: sent.length - failed, failed }, requestId, priority: 'HIGH',
-    }).catch((e) => logger.error('break-glass SMS outcome not audited', describeError(e)));
+      actorUserId: userId, action: failed === 0 ? 'BREAK_GLASS_TELEGRAM_SENT' : 'BREAK_GLASS_TELEGRAM_FAILED', resource: 'user', resourceId: String(userId),
+      changes: { driver: deps.telegram.driver, sent: sent.length - failed, failed }, requestId, priority: 'HIGH',
+    }).catch((e) => logger.error('break-glass Telegram outcome not audited', describeError(e)));
   }
 
   /**
