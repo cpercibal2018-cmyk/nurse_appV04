@@ -58,6 +58,24 @@ export interface MfaSetup {
   account?: string;
 }
 
+/** D-66: the signed-in account's Telegram connection. */
+export interface TelegramStatus {
+  linked: boolean;
+  linkedAt: string | null;
+  botUsername: string | null;
+  driver: 'mock' | 'telegram';
+  /** False for the break-glass account. */
+  available: boolean;
+}
+
+/** A single-use link that connects an account to Telegram (15 minutes). */
+export interface TelegramLinkOffer {
+  /** https://t.me/<bot>?start=<token>; null while no bot username is configured. */
+  url: string | null;
+  startParameter: string;
+  expiresAt: string;
+}
+
 export interface MfaStatus {
   enabled: boolean;
   enabledAt: string | null;

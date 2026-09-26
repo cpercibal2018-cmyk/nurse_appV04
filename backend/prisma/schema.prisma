@@ -56,6 +56,9 @@ model User {
   lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  /// D-66: the Telegram chat this account is messaged in, set by /start <token>; null = not linked.
+  telegramChatId   String?   @unique @map("telegram_chat_id")
+  telegramLinkedAt DateTime? @map("telegram_linked_at") @db.Timestamptz
 
   employee           Employee?                   @relation(fields: [employeeId], references: [id])
   sessions           RefreshSession[]
@@ -74,6 +77,8 @@ model User {
   mfaRecoveryCodes   MfaRecoveryCode[]
   mfaChallenges      MfaChallenge[]
   downloadLinks      DownloadLink[]
+  telegramLinks       TelegramLinkToken[] @relation("telegramLinkOwner")
+  telegramLinksIssued TelegramLinkToken[] @relation("telegramLinkIssuer")
   dsrRequested       DataSubjectRequest[]        @relation("dsrRequester")
   dsrReviewed        DataSubjectRequest[]        @relation("dsrReviewer")
   dsrDecided         DataSubjectRequest[]        @relation("dsrDecider")
@@ -837,6 +842,13 @@ model Notification {
   emailAttempts  Int                  @default(0) @map("email_attempts")
   emailLastAt    DateTime?            @map("email_last_at") @db.Timestamptz
   emailLastError String?              @map("email_last_error") // relay response code/message only — no content
+  /// D-66: Telegram outbox state. PENDING until the Telegram dispatcher runs; SKIPPED when the recipient
+  /// has no linked chat (or is inactive). One message per recipient per run announces all its pending rows.
+  telegramStatus    DeliveryStatus    @default(PENDING) @map("telegram_status")
+  telegramAttempts  Int               @default(0) @map("telegram_attempts")
+  telegramLastAt    DateTime?         @map("telegram_last_at") @db.Timestamptz
+  /// Telegram's message_id of the message that announced this notification.
+  telegramMessageId String?           @map("telegram_message_id")
   createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz
 
   recipient User @relation(fields: [recipientId], references: [id])
@@ -844,23 +856,46 @@ model Notification {
   @@unique([recipientId, eventKey])
   @@index([recipientId, readAt])
   @@index([emailStatus, emailLastAt])
+  @@index([telegramStatus, telegramLastAt])
   @@map("notifications")
 }
 
-/// SMS intercepted by the mock gateway (D-59): while there is no Commercial
-/// Registration (and so no CST-registered Sender ID), SMS_DRIVER=mock saves each
-/// outgoing text here instead of sending it; System Admins read it in the Dev
-/// Console. Purged after MOCK_SMS_RETENTION_DAYS (it holds phone numbers).
-model MockSmsOutbox {
-  id             Int      @id @default(autoincrement())
-  recipientPhone String   @map("recipient_phone")
-  messageBody    String   @map("message_body")
-  status         String   @default("intercepted")
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+/// Telegram messages intercepted by the mock gateway (D-66, replacing the mock
+/// SMS outbox of D-59): NOTIFICATION_DRIVER=mock saves each outgoing message here
+/// instead of sending it; System Admins read it in the Dev Console. Purged after
+/// MOCK_TELEGRAM_RETENTION_DAYS (it holds chat ids). Chat ids are text: they do
+/// not fit a JavaScript number safely and are never calculated with.
+model MockTelegramOutbox {
+  id          Int      @id @default(autoincrement())
+  chatId      String   @map("chat_id")
+  messageText String   @map("message_text")
+  /// null = plain text; "MarkdownV2"
+  parseMode   String?  @map("parse_mode")
+  status      String   @default("intercepted")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([createdAt(sort: Desc)])
-  @@map("mock_sms_outbox")
+  @@map("mock_telegram_outbox")
+}
+
+/// D-66: single-use links that connect an account to a Telegram chat
+/// (https://t.me/<bot>?start=<token>). Only the SHA-256 is stored. Issued by the
+/// account itself or by HR / a System Admin for it; valid 15 minutes; a new link
+/// replaces the account's open ones.
+model TelegramLinkToken {
+  id         Int       @id @default(autoincrement())
+  userId     Int       @map("user_id")
+  tokenHash  String    @unique @map("token_hash")
+  issuedById Int       @map("issued_by_id")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  usedAt     DateTime? @map("used_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user     User @relation("telegramLinkOwner", fields: [userId], references: [id])
+  issuedBy User @relation("telegramLinkIssuer", fields: [issuedById], references: [id])
+
+  @@index([userId, usedAt])
+  @@map("telegram_link_tokens")
 }
 
 /// E-mails to people without an account (spec §3.6: the break-glass alert to the

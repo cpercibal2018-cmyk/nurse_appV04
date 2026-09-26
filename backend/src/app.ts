@@ -14,7 +14,7 @@ import { createAuthRouter } from './modules/auth/routes.js';
 import { createAuthService } from './modules/auth/service.js';
 import { createMfa } from './modules/auth/mfa.js';
 import { createSecretBox, mfaKey } from './lib/secret-box.js';
-import { createSmsGateway, type SmsGateway } from './lib/sms.js';
+import { createTelegramGateway, type TelegramGateway } from './lib/telegram.js';
 import { createScfhsGateway, type ScfhsGateway } from './lib/scfhs.js';
 import { createScfhsService } from './modules/credentials/scfhs.js';
 import { createAccountService } from './modules/users/accounts.js';
@@ -51,6 +51,8 @@ import { createDevConsoleRouter } from './modules/dev-console/routes.js';
 import { createFhirRouter } from './modules/interop/fhir-routes.js';
 import { createClientAuth } from './modules/interop/api-clients.js';
 import { createApiClientRouter } from './modules/interop/api-client-routes.js';
+import { createTelegramLinking } from './modules/telegram/linking.js';
+import { createTelegramRouter, telegramWebhook } from './modules/telegram/routes.js';
 
 export interface AppDeps {
   env: Env;
@@ -61,8 +63,8 @@ export interface AppDeps {
   scanner?: UploadScanner;
   /** Prefix for sign-in throttle keys, so test apps sharing one database do not share counters. */
   throttleNamespace?: string;
-  /** Injectable so tests can simulate a failing gateway; defaults to env.SMS_DRIVER (D-59). */
-  sms?: SmsGateway;
+  /** Injectable so tests can simulate a failing gateway; defaults to env.NOTIFICATION_DRIVER (D-66). */
+  telegram?: TelegramGateway;
   /** Injectable so tests can simulate an unreachable SCFHS; defaults to env.SCFHS_DRIVER (D-64). */
   scfhs?: ScfhsGateway;
   /** Shadow-mode hooks for tests (the re-evaluation after a promotion runs in the background). */
@@ -74,7 +76,7 @@ export interface AppDeps {
 const HEALTH_DB_TIMEOUT_MS = 2000;
 
 /** Builds the Express application without starting a listener (tests use it directly). */
-export function createApp({ env, db, passwords = createPasswordService(env.BCRYPT_ROUNDS), scanner = createScanner(env), throttleNamespace = '', sms = createSmsGateway(env, db), scfhs = createScfhsGateway(env, db), logic = {}, requestLog = createRequestLog(db, requestLogKey(env.JWT_SECRET)) }: AppDeps) {
+export function createApp({ env, db, passwords = createPasswordService(env.BCRYPT_ROUNDS), scanner = createScanner(env), throttleNamespace = '', telegram = createTelegramGateway(env, db), scfhs = createScfhsGateway(env, db), logic = {}, requestLog = createRequestLog(db, requestLogKey(env.JWT_SECRET)) }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   if (env.TRUST_PROXY) app.set('trust proxy', 1); // one hop: the hospital reverse proxy
@@ -104,7 +106,7 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   const accountThrottle = createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_ACCOUNT, throttleNamespace);
   const mfa = createMfa(db, env, createSecretBox(mfaKey(env), previousKey(env.MFA_ENCRYPTION_KEY_PREVIOUS)));
   const auth = createAuthService({
-    db, env, tokens, passwords, mfa, sms,
+    db, env, tokens, passwords, mfa, telegram,
     accountThrottle,
     clientThrottle: createThrottle(db, env.LOGIN_THROTTLE_WINDOW_SECONDS, env.LOGIN_THROTTLE_MAX_PER_CLIENT, throttleNamespace),
   });
@@ -130,6 +132,11 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   // The OAuth 2.0 token endpoint for other systems (D-63): public, the client credentials are the check.
   app.post('/api/v1/fhir/token', express.urlencoded({ extended: false, limit: '4kb' }), clientAuth.tokenEndpoint);
 
+  // D-66: Telegram posts the bot's messages here (TELEGRAM_UPDATES=webhook); its secret header is the check.
+  const telegramLinking = createTelegramLinking(db, telegram, env.TELEGRAM_BOT_USERNAME);
+  app.locals.telegramLinking = telegramLinking; // server.ts polls with it when TELEGRAM_UPDATES=polling
+  app.post('/api/v1/telegram/webhook', telegramWebhook(env, telegramLinking));
+
   // Everything else under /api/v1 requires a signed-in caller. One protected
   // router, so authentication runs once per request; each domain module adds
   // its router here. Anonymous callers get 401 for any path, known or not.
@@ -148,7 +155,8 @@ export function createApp({ env, db, passwords = createPasswordService(env.BCRYP
   api.use(createNotificationsRouter(db));
   api.use(createAuditRouter(db, keyStatus));
   api.use(createPdplRouter(db));
-  api.use(createDevConsoleRouter(db, sms, scfhs.driver, badgeSimulatorOn(env)));
+  api.use(createDevConsoleRouter(db, telegram, scfhs.driver, badgeSimulatorOn(env)));
+  api.use(createTelegramRouter(db, telegramLinking, env.NOTIFICATION_DRIVER));
   api.use(createEligibilityLogicRouter(db, logic));
   api.use(createFhirRouter(db, protection, env.APP_BASE_URL ?? env.CORS_ORIGIN));
   api.use(createApiClientRouter(db));

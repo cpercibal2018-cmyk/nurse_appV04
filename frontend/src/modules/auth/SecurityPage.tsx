@@ -1,6 +1,7 @@
 // Two-factor sign-in for the signed-in account (spec §3.5): status, optional
 // set-up (staff), new recovery codes, and turning it off where the role does
-// not require it. A lost phone on a required role: HR resets it.
+// not require it. A lost phone on a required role: HR resets it. Below it, the
+// account's Telegram connection (D-66).
 
 import { useState } from 'react';
 import { Alert, App, Button, Card, Descriptions, Form, Input, Modal, Space, Tag } from 'antd';
@@ -11,6 +12,7 @@ import { http } from '../../services/http';
 import type { MfaSetup, MfaStatus } from '../../types/api';
 import { AuthenticatorSetup } from './mfa/AuthenticatorSetup';
 import { RecoveryCodes } from './mfa/RecoveryCodes';
+import { TelegramCard } from './telegram/TelegramCard';
 
 type Dialog = null | { kind: 'setup'; setup: MfaSetup } | { kind: 'codes'; codes: string[] } | { kind: 'regenerate' } | { kind: 'disable' };
 
@@ -30,6 +32,7 @@ export default function SecurityPage() {
 
   const s = status.data;
   return (
+    <>
     <Card title={t('twoFactor')} loading={status.isLoading}>
       {s && !s.available && <Alert type="info" showIcon title={t('mfaBreakGlass')} />}
       {s?.available && (
@@ -91,5 +94,7 @@ export default function SecurityPage() {
         )}
       </Modal>
     </Card>
+    <TelegramCard />
+    </>
   );
 }

@@ -1,5 +1,5 @@
 // Administration: accounts, role assignments, four-eyes approvals, PAM, jobs, the
-// Dev Console SMS inbox (D-59) and simulated SCFHS registry (D-64) and badge simulator (D-65), FHIR API clients (D-63) and the spec §8.1 access matrix. Tabs follow what
+// Dev Console Telegram inbox (D-66) and simulated SCFHS registry (D-64) and badge simulator (D-65), FHIR API clients (D-63) and the spec §8.1 access matrix. Tabs follow what
 // /auth/me says the user holds; the server still authorizes every call.
 
 import { Card, Table, Tabs, Typography } from 'antd';
@@ -15,7 +15,7 @@ import { useMatrix } from './api';
 import { PamTab } from './PamTab';
 import { JobsTab } from './JobsTab';
 import { RoleAssignmentsTab } from './RoleAssignmentsTab';
-import { SmsInboxTab } from './SmsInboxTab';
+import { TelegramInboxTab } from './TelegramInboxTab';
 import { ScfhsRegistryTab } from './ScfhsRegistryTab';
 import { BadgeSimulatorTab } from './BadgeSimulatorTab';
 
@@ -54,7 +54,7 @@ export default function AdministrationPage() {
     ] : []),
     ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'pam', label: t('privilegedAccess'), children: <PamTab /> }] : []),
     ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'jobs', label: t('backgroundJobs'), children: <JobsTab /> }] : []),
-    ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'smsInbox', label: t('smsInbox'), children: <SmsInboxTab /> }] : []),
+    ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'telegramInbox', label: t('telegramInbox'), children: <TelegramInboxTab /> }] : []),
     ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'scfhsRegistry', label: t('scfhsRegistry'), children: <ScfhsRegistryTab /> }] : []),
     ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'badgeSimulator', label: t('badgeSimulator'), children: <BadgeSimulatorTab /> }] : []),
     ...(holdsAssignment('SYSTEM_ADMIN') ? [{ key: 'apiClients', label: t('apiClients'), children: <ApiClientsTab /> }] : []),

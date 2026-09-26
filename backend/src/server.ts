@@ -10,6 +10,10 @@ import { startScheduler } from './jobs/scheduler.js';
 import { dispatchConfigFrom, startEmailDispatcher } from './jobs/email-dispatch.js';
 import { createMailer } from './lib/mailer.js';
 import { syncLogicVersions } from './modules/eligibility/logic.js';
+import { startTelegramUpdates } from './jobs/telegram-updates.js';
+import { startTelegramDispatcher } from './jobs/telegram-dispatch.js';
+import { createTelegramGateway } from './lib/telegram.js';
+import type { TelegramLinking } from './modules/telegram/linking.js';
 
 // Quiet: dotenv's banner is not JSON and would break the one-line-JSON log format.
 dotenv.config({ quiet: true });
@@ -34,8 +38,13 @@ const app = createApp({ env, db });
 const stopJobs = env.JOBS_MODE === 'in-process' ? startScheduler(db) : () => undefined;
 // E-mail (D-47) goes out from wherever the jobs run.
 const stopMail = env.JOBS_MODE === 'in-process' ? startEmailDispatcher(db, createMailer(env), dispatchConfigFrom(env)) : () => undefined;
+// Telegram messages to the bot (D-66): polled where the jobs run; the webhook is registered here.
+const linking = app.locals.telegramLinking as TelegramLinking;
+const stopTelegram = startTelegramUpdates(env, (u) => linking.handleUpdate(u), { poll: env.JOBS_MODE === 'in-process', serves: true });
+// Notifications announced by Telegram (D-66), from wherever the jobs run.
+const stopTelegramDispatch = env.JOBS_MODE === 'in-process' ? startTelegramDispatcher(db, createTelegramGateway(env, db), env.APP_BASE_URL ?? env.CORS_ORIGIN) : () => undefined;
 if (env.NODE_ENV === 'production' && !env.SMTP_HOST) logger.warn('e-mail is off: SMTP_HOST is not set; notifications stay in-app (D-47)');
-if (env.NODE_ENV === 'production' && env.SMS_DRIVER === 'mock') logger.warn('SMS is simulated (SMS_DRIVER=mock): texts are kept in the Dev Console SMS inbox and not sent (D-59)');
+if (env.NODE_ENV === 'production' && env.NOTIFICATION_DRIVER === 'mock') logger.warn('Telegram is simulated (NOTIFICATION_DRIVER=mock): messages are kept in the Dev Console Telegram inbox and not sent (D-66)');
 
 const server = app.listen(env.PORT, () => {
   logger.info('listening', { port: env.PORT, environment: env.NODE_ENV, region: env.DATA_RESIDENCY_REGION });
@@ -45,6 +54,8 @@ function shutdown(signal: string) {
   logger.info('shutting down', { signal });
   stopJobs();
   stopMail();
+  stopTelegram();
+  stopTelegramDispatch();
   server.close(() => {
     // Write the last buffered request-log rows (spec §9.2) before disconnecting.
     void (app.locals.requestLog as { flush: () => Promise<void> }).flush().finally(() => db.$disconnect().finally(() => process.exit(0)));

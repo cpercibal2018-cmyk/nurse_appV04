@@ -54,6 +54,8 @@ export interface BusinessHealth {
   };
   jobs: Array<{ name: string; lastCompletedAt: string | null; ageMinutes: number | null; stale: boolean; lastAttemptFailed: boolean }>;
   email: { pendingOver15Minutes: number; failedLast24Hours: number; lastSentAt: string | null };
+  /** D-66: notifications announced by Telegram. */
+  telegram: { pendingOver15Minutes: number; failedLast24Hours: number; lastSentAt: string | null; linkedAccounts: number };
   generatedAt: string;
 }
 export const useBusinessHealth = () => useQuery({ queryKey: ['business-health'], queryFn: () => http.get<BusinessHealth>('/system/health/business'), refetchInterval: 60_000 });

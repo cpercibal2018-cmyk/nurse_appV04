@@ -71,8 +71,8 @@ Generated from `backend/src/modules/users/permissions.ts`. **`backend/test/docs.
 | `apiclients.manage` | SYSTEM_ADMIN | Register, re-key and revoke the systems that call the FHIR API with client credentials; audited HIGH (D-63) |
 | `jobs.read` | SYSTEM_ADMIN | Background job runs |
 | `jobs.run` | SYSTEM_ADMIN | Run a job now |
-| `devconsole.sms.read` | SYSTEM_ADMIN | Dev Console SMS inbox: the texts the mock SMS gateway intercepted (D-59) |
-| `devconsole.sms.send` | SYSTEM_ADMIN | Send a test text through the SMS gateway, audited (D-59) |
+| `devconsole.telegram.read` | SYSTEM_ADMIN | Dev Console Telegram inbox: the messages the mock Telegram gateway intercepted (D-66) |
+| `devconsole.telegram.send` | SYSTEM_ADMIN | Send a test message through the Telegram gateway, audited (D-66) |
 | `devconsole.scfhs.read` | SYSTEM_ADMIN | The simulated SCFHS registry the mock SCFHS gateway answers from (D-64) |
 | `devconsole.scfhs.manage` | SYSTEM_ADMIN | Set or remove simulated SCFHS registry entries, audited (number masked) (D-64) |
 | `devconsole.badge.read` | SYSTEM_ADMIN | The badge simulator and the events it wrote (D-65) |
@@ -97,6 +97,7 @@ These routes are open to any signed-in user; the service limits them to the call
 
 - Auth: `GET /auth/me`, `GET /auth/sessions`, `POST /auth/password`
 - PAM: `GET /pam/status`, `POST /pam/elevate` (needs a System Admin assignment), `POST /pam/end`
+- Telegram (D-66): `GET /me/telegram`, `POST /me/telegram/link`, `DELETE /me/telegram` — the caller's own connection; break-glass cannot link. HR / System Admin create a link for another account in scope with `accounts.write` (`POST /users/:id/telegram/link`). The webhook `POST /telegram/webhook` is public, checked by Telegram's secret header
 - Employees: `GET /employees/me`, `PATCH /employees/me/contact` (own phones — D-35), `GET /employees/:id` (own, or scoped HR / Supervisor)
 - Contracts: `GET /contracts/me`, `GET /contracts/:id`, its documents (own, or scoped staff)
 - Credentials: `GET /credentials/:id`, `POST /credentials/:id/renewal`, evidence upload / list / download (own, or scoped staff)
@@ -129,7 +130,7 @@ These routes are open to any signed-in user; the service limits them to the call
 
 **PAM (R13).** System Admin assignments are dormant. The holder elevates with a reason (≥ 10 characters) for 1–4 hours (default 2); elevation ends early on `POST /pam/end`. Expired elevations are ignored at once and removed and audited by the daily job.
 
-**Break-glass (R18, spec §3.6, D-9).** One flagged account. A successful sign-in writes an irrevocable `break_glass_events` row (delete is rejected by trigger), a HIGH audit entry and a CRITICAL in-app notification to every System Admin. The session has root access without PAM or four-eyes and ends after 4 hours. It still **cannot issue waivers** (D-28). The CEO and IT Director are alerted by e-mail (`BREAK_GLASS_ALERT_EMAILS`, D-47) and by text (`BREAK_GLASS_ALERT_PHONES`); the text is kept in the Dev Console SMS inbox, not sent, while `SMS_DRIVER=mock` (D-59).
+**Break-glass (R18, spec §3.6, D-9).** One flagged account. A successful sign-in writes an irrevocable `break_glass_events` row (delete is rejected by trigger), a HIGH audit entry and a CRITICAL in-app notification to every System Admin. The session has root access without PAM or four-eyes and ends after 4 hours. It still **cannot issue waivers** (D-28). The CEO and IT Director are alerted by e-mail (`BREAK_GLASS_ALERT_EMAILS`, D-47) and by Telegram (`BREAK_GLASS_ALERT_TELEGRAM_CHAT_IDS`, no personal data); the message is kept in the Dev Console Telegram inbox, not sent, while `NOTIFICATION_DRIVER=mock` (D-66).
 
 ## 7. Open access questions
 

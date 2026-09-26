@@ -14,6 +14,8 @@ export interface Account {
   roleAssignments: Array<{ role: AppRole; scopeType: ScopeType }>;
   /** An authenticator is set up (spec §3.5). */
   mfaEnabled: boolean;
+  /** A Telegram chat is connected (D-66); the chat id itself is never listed. */
+  telegramLinked: boolean;
 }
 
 export interface Assignment {
@@ -231,18 +233,26 @@ export function useDsrAction() {
   });
 }
 
-// ── Dev Console: SMS inbox (D-59), System Admin ──
-export interface MockSms { id: number; recipientPhone: string; messageBody: string; status: string; createdAt: string; updatedAt: string }
-export const useSmsInbox = () => useQuery({
-  queryKey: ['smsInbox'],
-  queryFn: () => http.get<{ driver: 'mock' | 'unifonic'; items: MockSms[]; total: number }>('/dev-console/sms-inbox?limit=200'),
-  refetchInterval: 10_000, // a demonstration shows new texts as they arrive
+// ── Dev Console: Telegram inbox (D-66), System Admin ──
+export interface MockTelegram { id: number; chatId: string; messageText: string; parseMode: string | null; status: string; createdAt: string }
+export const useTelegramInbox = () => useQuery({
+  queryKey: ['telegramInbox'],
+  queryFn: () => http.get<{ driver: 'mock' | 'telegram'; items: MockTelegram[]; total: number }>('/dev-console/telegram-inbox?limit=200'),
+  refetchInterval: 10_000, // a demonstration shows new messages as they arrive
 });
-export function useSendTestSms() {
+export function useSendTestTelegram() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { phone: string; message: string }) => http.post<{ accepted: boolean; driver: string }>('/dev-console/sms-inbox/test', body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['smsInbox'] }),
+    mutationFn: (body: { chatId: string; message: string }) => http.post<{ accepted: boolean; messageId: string; driver: string }>('/dev-console/telegram-inbox/test', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['telegramInbox'] }),
+  });
+}
+/** Mock driver only: what the bot would receive if this chat sent the text (e.g. "/start <token>"). */
+export function useSimulateTelegram() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { chatId: string; text: string }) => http.post<{ handled: boolean }>('/dev-console/telegram-inbox/simulate', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['telegramInbox'] }),
   });
 }
 

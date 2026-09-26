@@ -14,7 +14,7 @@ How V04 runs in production and how a release reaches it. The container images, t
  │ web (nginx: frontend + /api proxy) ─▶ api ─▶ clamav (clamd)         │
  │ worker (jobs + e-mail dispatcher)      uploads: /srv/nurseapp/storage│
  └──────────────┬───────────────────────────────┬──────────────────────┘
-                │ tcp:5432 (VPC only)           │ HA VPN ─▶ hospital SMTP relay / SMS gateway
+                │ tcp:5432 (VPC only)           │ HA VPN ─▶ hospital SMTP relay
                 ▼                               ▼
  nurseapp-db (Compute Engine, PostgreSQL 15)   hospital network
    backup kit (ops/backup) ─▶ Cloud Storage bucket, me-central2
@@ -85,7 +85,7 @@ gcloud compute firewall-rules create nurseapp-app-to-db --network=nurseapp-vpc -
   --allow=tcp:5432 --source-tags=nurseapp-app --target-tags=nurseapp-db
 ```
 
-**Hospital network (D-47, D-48):** the SMTP relay and the SMS gateway are inside the hospital. Hospital IT and the cloud administrator connect `nurseapp-vpc` to it with **HA VPN** (or Interconnect), advertise only the relay's and gateway's addresses, and let the hospital firewall admit `10.20.0.0/24` to them. Until then e-mail stays off (`SMTP_HOST` empty).
+**Hospital network (D-47):** the SMTP relay is inside the hospital. Hospital IT and the cloud administrator connect `nurseapp-vpc` to it with **HA VPN** (or Interconnect), advertise only the relay's address, and let the hospital firewall admit `10.20.0.0/24` to it. Until then e-mail stays off (`SMTP_HOST` empty). Telegram (D-66, which replaced the hospital SMS gateway of D-48) is reached over the internet at `api.telegram.org:443`.
 
 ## 3. Registry, service accounts, GitHub identity
 

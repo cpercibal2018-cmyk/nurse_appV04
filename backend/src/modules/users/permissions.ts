@@ -68,9 +68,9 @@ export const PERMISSIONS = {
   // FHIR API clients (D-63): the systems that may call the FHIR API without a person signed in.
   'apiclients.manage': ['SYSTEM_ADMIN'],
   'jobs.read': ['SYSTEM_ADMIN'],
-  // Dev Console (D-59): the texts the mock SMS gateway intercepted, and a test text for demonstrations.
-  'devconsole.sms.read': ['SYSTEM_ADMIN'],
-  'devconsole.sms.send': ['SYSTEM_ADMIN'],
+  // Dev Console (D-66): the messages the mock Telegram gateway intercepted, and a test message for demonstrations.
+  'devconsole.telegram.read': ['SYSTEM_ADMIN'],
+  'devconsole.telegram.send': ['SYSTEM_ADMIN'],
   // Dev Console (D-64): the simulated SCFHS registry the mock SCFHS gateway answers from.
   'devconsole.scfhs.read': ['SYSTEM_ADMIN'],
   'devconsole.scfhs.manage': ['SYSTEM_ADMIN'],

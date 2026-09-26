@@ -12,6 +12,10 @@ import { startScheduler } from './scheduler.js';
 import { dispatchConfigFrom, startEmailDispatcher } from './email-dispatch.js';
 import { createMailer } from '../lib/mailer.js';
 import { syncLogicVersions } from '../modules/eligibility/logic.js';
+import { createTelegramGateway } from '../lib/telegram.js';
+import { createTelegramLinking } from '../modules/telegram/linking.js';
+import { startTelegramUpdates } from './telegram-updates.js';
+import { startTelegramDispatcher } from './telegram-dispatch.js';
 
 dotenv.config({ quiet: true });
 const env = loadEnv();
@@ -25,7 +29,12 @@ await syncLogicVersions(db);
 const stopJobs = startScheduler(db);
 const stopMail = startEmailDispatcher(db, createMailer(env), dispatchConfigFrom(env)); // D-47
 if (env.NODE_ENV === 'production' && !env.SMTP_HOST) logger.warn('e-mail is off: SMTP_HOST is not set; notifications stay in-app (D-47)');
-const stop = () => { stopJobs(); stopMail(); };
+// Telegram messages to the bot (D-66): the worker polls when TELEGRAM_UPDATES=polling.
+const telegram = createTelegramGateway(env, db);
+const linking = createTelegramLinking(db, telegram, env.TELEGRAM_BOT_USERNAME);
+const stopTelegram = startTelegramUpdates(env, (u) => linking.handleUpdate(u), { poll: true, serves: false });
+const stopTelegramDispatch = startTelegramDispatcher(db, telegram, env.APP_BASE_URL ?? env.CORS_ORIGIN); // notifications by Telegram
+const stop = () => { stopJobs(); stopMail(); stopTelegram(); stopTelegramDispatch(); };
 
 function shutdown(signal: string) {
   logger.info('worker shutting down', { signal });

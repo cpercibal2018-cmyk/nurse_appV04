@@ -120,19 +120,25 @@ const EnvSchema = z.object({
     .default('')
     .transform((s) => s.split(',').map((a) => a.trim()).filter(Boolean))
     .pipe(z.array(z.string().email())),
-  // ── SMS (D-48, D-59) ──────────────────────────────────────────────────────
-  /** mock: texts are saved to mock_sms_outbox (the Dev Console) and never leave the server — until the
-   *  hospital has a Commercial Registration and a CST-registered Sender ID. unifonic: the live gateway (not built yet). */
-  SMS_DRIVER: z.enum(['mock', 'unifonic']).default('mock'),
-  /** Unifonic application SID and the CST-registered Sender ID; required when SMS_DRIVER=unifonic. */
-  UNIFONIC_APP_SID: z.string().default(''),
-  UNIFONIC_SENDER_ID: z.string().default(''),
-  /** Spec §3.6: phones texted when the break-glass account signs in (the CEO and IT Director), comma-separated, international format. */
-  BREAK_GLASS_ALERT_PHONES: z
+  // ── Telegram (D-66, replacing SMS: D-48, D-59) ─────────────────────────────
+  /** mock: messages are saved to mock_telegram_outbox (the Dev Console) and never leave the server.
+   *  telegram: the Telegram Bot API. */
+  NOTIFICATION_DRIVER: z.enum(['mock', 'telegram']).default('mock'),
+  /** The bot's token from @BotFather; required when NOTIFICATION_DRIVER=telegram. A secret. */
+  TELEGRAM_BOT_TOKEN: z.string().default(''),
+  /** The bot's username without "@"; required when NOTIFICATION_DRIVER=telegram. */
+  TELEGRAM_BOT_USERNAME: z.string().default('').transform((s) => s.trim().replace(/^@/, '')).pipe(z.string().regex(/^([A-Za-z][A-Za-z0-9_]{3,31})?$/, 'a Telegram bot username')),
+  /** How the bot receives messages (/start <token> links an account): polling = the jobs process asks Telegram
+   *  (works without a public address, e.g. a development PC); webhook = Telegram posts to /api/v1/telegram/webhook. */
+  TELEGRAM_UPDATES: z.enum(['polling', 'webhook']).default('polling'),
+  /** Sent by Telegram with every webhook call and checked; required for webhook. 1–256 of A–Z a–z 0–9 _ -. */
+  TELEGRAM_WEBHOOK_SECRET: z.string().default('').pipe(z.string().regex(/^[A-Za-z0-9_-]{0,256}$/, 'letters, digits, _ and - only')),
+  /** Spec §3.6: Telegram chats messaged when the break-glass account signs in (the CEO and IT Director), comma-separated chat ids. */
+  BREAK_GLASS_ALERT_TELEGRAM_CHAT_IDS: z
     .string()
     .default('')
-    .transform((s) => s.split(',').map((p) => p.replace(/[\s\-()]/g, '')).filter(Boolean))
-    .pipe(z.array(z.string().regex(/^\+[1-9]\d{7,14}$/, 'international format, e.g. +966501234567'))),
+    .transform((s) => s.split(',').map((c) => c.trim()).filter(Boolean))
+    .pipe(z.array(z.string().regex(/^-?[1-9]\d{0,19}$/, 'a Telegram chat id, e.g. 123456789'))),
   // ── SCFHS licence verification (spec §5.4, D-64) ──────────────────────────
   /** mock: answers come from the simulated SCFHS registry (Dev Console) — until the hospital has access to
    *  the SCFHS verification service. live: the SCFHS API (not built yet: needs the SCFHS agreement, U3). */
@@ -159,8 +165,11 @@ export const badgeSimulatorOn = (env: Pick<Env, 'BADGE_SIMULATOR' | 'NODE_ENV'>)
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const parsed = EnvSchema.superRefine((e, ctx) => {
     if (e.SMTP_HOST && !e.SMTP_FROM) ctx.addIssue({ code: 'custom', path: ['SMTP_FROM'], message: 'required when SMTP_HOST is set' });
-    for (const k of ['UNIFONIC_APP_SID', 'UNIFONIC_SENDER_ID'] as const) {
-      if (e.SMS_DRIVER === 'unifonic' && !e[k]) ctx.addIssue({ code: 'custom', path: [k], message: 'required when SMS_DRIVER=unifonic' });
+    for (const k of ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_BOT_USERNAME'] as const) {
+      if (e.NOTIFICATION_DRIVER === 'telegram' && !e[k]) ctx.addIssue({ code: 'custom', path: [k], message: 'required when NOTIFICATION_DRIVER=telegram' });
+    }
+    if (e.NOTIFICATION_DRIVER === 'telegram' && e.TELEGRAM_UPDATES === 'webhook' && e.TELEGRAM_WEBHOOK_SECRET.length < 32) {
+      ctx.addIssue({ code: 'custom', path: ['TELEGRAM_WEBHOOK_SECRET'], message: 'at least 32 characters with TELEGRAM_UPDATES=webhook (openssl rand -hex 32)' });
     }
     for (const k of ['SCFHS_API_URL', 'SCFHS_API_KEY'] as const) {
       if (e.SCFHS_DRIVER === 'live' && !e[k]) ctx.addIssue({ code: 'custom', path: [k], message: 'required when SCFHS_DRIVER=live' });
