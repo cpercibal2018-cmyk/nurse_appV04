@@ -854,6 +854,7 @@ model Notification {
   recipient User @relation(fields: [recipientId], references: [id])
 
   @@unique([recipientId, eventKey])
+  @@index([eventKey]) // expiry scan: who already has this event (N3)
   @@index([recipientId, readAt])
   @@index([emailStatus, emailLastAt])
   @@index([telegramStatus, telegramLastAt])
