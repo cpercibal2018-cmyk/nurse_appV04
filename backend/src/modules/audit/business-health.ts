@@ -123,6 +123,17 @@ export async function businessHealth(db: Db, now = new Date(), keyStatus?: KeySt
   if (email.pendingOver15Minutes > 0) issues.push({ code: 'EMAIL_BACKLOG', message: `${email.pendingOver15Minutes} e-mail(s) waiting more than 15 minutes` });
   if (email.failedLast24Hours > 0) issues.push({ code: 'EMAIL_FAILED', message: `${email.failedLast24Hours} e-mail(s) failed in the last 24 hours` });
 
+  // ── Telegram delivery (D-66) ──────────────────────────────────────────────
+  const [tgPending, tgFailed, tgLast, tgLinked] = await Promise.all([
+    db.notification.count({ where: { telegramStatus: 'PENDING', createdAt: { lt: stuckBefore } } }),
+    db.notification.count({ where: { telegramStatus: 'FAILED', telegramLastAt: { gte: dayAgo } } }),
+    db.notification.findFirst({ where: { telegramStatus: 'SENT' }, orderBy: { telegramLastAt: 'desc' }, select: { telegramLastAt: true } }),
+    db.user.count({ where: { telegramChatId: { not: null }, isActive: true } }),
+  ]);
+  const telegram = { pendingOver15Minutes: tgPending, failedLast24Hours: tgFailed, lastSentAt: tgLast?.telegramLastAt ?? null, linkedAccounts: tgLinked };
+  if (telegram.pendingOver15Minutes > 0) issues.push({ code: 'TELEGRAM_BACKLOG', message: `${telegram.pendingOver15Minutes} Telegram announcement(s) waiting more than 15 minutes` });
+  if (telegram.failedLast24Hours > 0) issues.push({ code: 'TELEGRAM_FAILED', message: `${telegram.failedLast24Hours} notification(s) could not be announced by Telegram in the last 24 hours` });
+
   // ── Key rotation (B-18) ───────────────────────────────────────────────────
   const keys = keyStatus ? {
     previousConfigured: keyStatus.previous,
@@ -152,6 +163,7 @@ export async function businessHealth(db: Db, now = new Date(), keyStatus?: KeySt
     pdpl,
     keys,
     email,
+    telegram,
     generatedAt: now,
   };
 }

@@ -758,6 +758,8 @@ const en = {
   reasonsUpdated: 'reasons updated',
   noStoredState: 'no stored state',
   emailHealth: '{{pending}} waiting over 15 min · {{failed}} failed in 24 h · last sent {{last}}',
+  telegramDelivery: 'Telegram delivery',
+  telegramHealth: '{{linked}} account(s) connected · {{pending}} waiting over 15 min · {{failed}} failed in 24 h · last sent {{last}}',
 };
 
 const ar: Record<keyof typeof en, string> = {
@@ -1513,6 +1515,8 @@ const ar: Record<keyof typeof en, string> = {
   reasonsUpdated: 'تحديث الأسباب',
   noStoredState: 'لا توجد حالة مخزنة',
   emailHealth: '{{pending}} بانتظار أكثر من 15 دقيقة · {{failed}} فشل خلال 24 ساعة · آخر إرسال {{last}}',
+  telegramDelivery: 'التسليم عبر تيليجرام',
+  telegramHealth: '{{linked}} حساب مرتبط · {{pending}} بانتظار أكثر من 15 دقيقة · {{failed}} فشل خلال 24 ساعة · آخر إرسال {{last}}',
 };
 
 export type TranslationKey = keyof typeof en;

@@ -842,6 +842,13 @@ model Notification {
   emailAttempts  Int                  @default(0) @map("email_attempts")
   emailLastAt    DateTime?            @map("email_last_at") @db.Timestamptz
   emailLastError String?              @map("email_last_error") // relay response code/message only — no content
+  /// D-66: Telegram outbox state. PENDING until the Telegram dispatcher runs; SKIPPED when the recipient
+  /// has no linked chat (or is inactive). One message per recipient per run announces all its pending rows.
+  telegramStatus    DeliveryStatus    @default(PENDING) @map("telegram_status")
+  telegramAttempts  Int               @default(0) @map("telegram_attempts")
+  telegramLastAt    DateTime?         @map("telegram_last_at") @db.Timestamptz
+  /// Telegram's message_id of the message that announced this notification.
+  telegramMessageId String?           @map("telegram_message_id")
   createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz
 
   recipient User @relation(fields: [recipientId], references: [id])
@@ -849,6 +856,7 @@ model Notification {
   @@unique([recipientId, eventKey])
   @@index([recipientId, readAt])
   @@index([emailStatus, emailLastAt])
+  @@index([telegramStatus, telegramLastAt])
   @@map("notifications")
 }
 

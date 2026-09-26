@@ -53,6 +53,7 @@ function HealthCard() {
         { key: 'r', label: t('driftRate7d'), children: e.driftRate7d === null ? '—' : `${(e.driftRate7d * 100).toFixed(1)}% (${e.drifts7d} / ${e.checked7d})` },
         { key: 'd', label: t('recentDrifts'), children: e.recentDrifts.length === 0 ? '—' : e.recentDrifts.slice(0, 5).map((d) => (d.stored === d.expected ? `${d.jobNumber}: ${d.expected} (${t('reasonsUpdated')})` : `${d.jobNumber}: ${d.stored ?? t('noStoredState')} → ${d.expected}`)).join(' · ') },
         { key: 'm', label: t('emailDelivery'), children: t('emailHealth', { pending: h.email.pendingOver15Minutes, failed: h.email.failedLast24Hours, last: h.email.lastSentAt ? new Date(h.email.lastSentAt).toLocaleString() : '—' }) },
+        { key: 'tg', label: t('telegramDelivery'), children: t('telegramHealth', { linked: h.telegram.linkedAccounts, pending: h.telegram.pendingOver15Minutes, failed: h.telegram.failedLast24Hours, last: h.telegram.lastSentAt ? new Date(h.telegram.lastSentAt).toLocaleString() : '—' }) },
       ]} />
     </Card>
   );
