@@ -89,6 +89,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               : <img src="/logo-sidebar.png" alt={t('appName')} width={210} height={96} style={{ maxWidth: '100%', height: 'auto' }} />}
           </div>
           <Menu theme="dark" mode="inline" selectedKeys={[selectedKey(location.pathname)]} items={menuItems} className="app-menu" />
+          <div className="app-version">v{__APP_VERSION__}</div>
         </Sider>
 
         <Layout style={{ marginInlineStart: sidebarWidth, transition: 'margin 0.2s' }}>

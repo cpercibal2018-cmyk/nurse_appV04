@@ -12,6 +12,7 @@
 //   period = the contract covering today; active only while one does.
 // Both resources share the employee id (ids are per resource type in FHIR).
 
+import { APP_VERSION } from '../../lib/version.js';
 import type { Bundle, CapabilityStatement, CodeableConcept, OperationOutcome, Practitioner, PractitionerQualification, PractitionerRole } from 'fhir/r4.js';
 
 export const FHIR_SYSTEMS = {
@@ -109,7 +110,7 @@ export function capabilityStatement(now: Date, baseUrl: string): CapabilityState
     kind: 'instance',
     fhirVersion: '4.0.1',
     format: ['application/fhir+json'],
-    software: { name: 'AIGH Nursing Workforce Management System', version: '4' },
+    software: { name: 'AIGH Nursing Workforce Management System', version: APP_VERSION },
     implementation: { description: 'AIGH Nursing Workforce FHIR R4 API', url: baseUrl }, // cpb-14: required for kind = instance
     rest: [{
       mode: 'server',

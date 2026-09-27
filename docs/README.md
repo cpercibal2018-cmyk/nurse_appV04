@@ -15,6 +15,7 @@
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Configuration, processes and jobs, release steps, backups, **known gaps before production**, monitoring |
 | [MIGRATION.md](MIGRATION.md) | Moving from V03: data, user-visible changes, V03 programme items |
 | [SEED_DATA_INVENTORY.md](SEED_DATA_INVENTORY.md) | The complete original seed (organisation, positions, credential catalogue, demo data) as it was before hospital data moved out of TypeScript |
+| [CHANGELOG.md](../CHANGELOG.md) | Versions and what changed in each, from the `0.1.0` baseline |
 | [CLEANUP_REPORT.md](CLEANUP_REPORT.md) | What the final cleanup removed, moved and kept, and the full validation matrix |
 | [V04_ARCHITECTURE_PLAN.md](V04_ARCHITECTURE_PLAN.md) | The plan, the **owner decision record** (§9a, D-1 … D-50) and implementation notes per commit |
 | [reference/AIGH_Nursing_Workforce_Management_System_v2_8_7.md](reference/AIGH_Nursing_Workforce_Management_System_v2_8_7.md) | The original specification, verbatim (never edited) |

@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCES = [
   'README.md',
+  'CHANGELOG.md',
   'ops/backup/README.md',
   ...readdirSync(join(ROOT, 'docs')).filter((f) => f.endsWith('.md')).map((f) => `docs/${f}`),
   ...readdirSync(join(ROOT, 'docs', 'history')).filter((f) => f.endsWith('.md')).map((f) => `docs/history/${f}`),
