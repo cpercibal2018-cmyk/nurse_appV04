@@ -34,15 +34,17 @@ body {
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.18);
 }
 
+/* The sidebar is dark green in both themes, so its logo is the variant with
+   light lettering (logo-sidebar.png); logo-login.webp keeps the navy lettering
+   for the light login card. */
 .app-logo {
-  height: 60px;
+  min-height: 60px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 12px;
+  padding: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
-.app-logo img { border-radius: 6px; }
 
 .app-menu { border: none !important; margin-top: 8px; }
 

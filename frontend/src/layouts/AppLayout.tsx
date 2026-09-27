@@ -84,11 +84,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
           style={{ insetInlineStart: 0 }}
         >
           <div className="app-logo">
-            <img
-              src="/logo-dark.jpg"
-              alt={t('appName')}
-              style={collapsed ? { height: 36, width: 36, objectFit: 'cover', objectPosition: isRtl ? 'right' : 'left' } : { height: 44, maxWidth: '100%', objectFit: 'contain' }}
-            />
+            {collapsed
+              ? <img src="/logo-emblem.png" alt={t('appName')} width={40} height={38} />
+              : <img src="/logo-sidebar.png" alt={t('appName')} width={210} height={96} style={{ maxWidth: '100%', height: 'auto' }} />}
           </div>
           <Menu theme="dark" mode="inline" selectedKeys={[selectedKey(location.pathname)]} items={menuItems} className="app-menu" />
         </Sider>
