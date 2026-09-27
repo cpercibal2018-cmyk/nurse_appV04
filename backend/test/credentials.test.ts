@@ -241,6 +241,7 @@ describeDb('credentials and eligibility', () => {
       const sup = await signIn(app, (await makeUser(db, { roles: [{ role: 'SUPERVISOR', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
       expect((await sup.get(`/credentials/${id}/documents`)).status).toBe(403);
       expect((await sup.get(`/credentials/${id}/documents/${docId}`)).status).toBe(403);
+      expect((await sup.post(`/credentials/${id}/documents/${docId}/link`, {})).status).toBe(403); // nor a 60-second link (D-53)
       // The supervisor compliance view carries no tracking data, pending values or evidence ids.
       const view = await sup.get(`/credentials/${id}`);
       expect(view.status).toBe(200);
