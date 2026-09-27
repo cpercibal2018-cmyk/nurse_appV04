@@ -81,8 +81,9 @@ export default function LoginPage() {
   return (
     <div className="login-backdrop">
       <Card style={{ width: 440, maxWidth: '100%' }}>
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <img src="/logo-light.jpg" alt={t('appName')} style={{ height: 88, objectFit: 'contain', maxWidth: '100%' }} />
+        <div style={{ textAlign: 'center', marginBottom: 16 }}>
+          {/* The emblem with the name underneath: tall, so it needs more height than the old wordmark. */}
+          <img src="/logo-login.webp" alt={t('appName')} width={200} height={200} style={{ width: 200, height: 200, objectFit: 'contain', maxWidth: '100%' }} />
         </div>
         {error && <Alert type="error" showIcon title={t('loginFailed')} description={error} style={{ marginBottom: 16 }} />}
 
