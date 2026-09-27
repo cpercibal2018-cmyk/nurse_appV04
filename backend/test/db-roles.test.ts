@@ -194,6 +194,17 @@ describeRoles(`database roles (spec §10.7)${allowed ? '' : ' — skipped: the t
         await run(base, script('02_grants.sql')); // re-applying the grants restores the refusal
       }
       expect(await runtimeRoleProblems(runtime)).toEqual([]);
+
+      // TRUNCATE empties a table without row triggers or audit: start-up refuses it too, not only verify.sql.
+      await run(base, `GRANT TRUNCATE ON employees, units TO ${roleName('runtime')}`);
+      try {
+        expect(await runtimeRoleProblems(runtime)).toEqual([`"${roleName('runtime')}" can truncate tables (employees, units)`]);
+        await expect(assertRuntimeRole(runtime, true)).rejects.toThrow(/can truncate tables \(employees, units\)/);
+        await expect(run(base, script('verify.sql'))).rejects.toThrow(/1 check\(s\) FAILED/);
+      } finally {
+        await run(base, script('02_grants.sql'));
+      }
+      expect(await runtimeRoleProblems(runtime)).toEqual([]);
     });
   });
 
