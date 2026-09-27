@@ -1,4 +1,6 @@
-# AIGH Nursing Workforce Management System — V04
+# AIGH Nursing Workforce Management System
+
+Version **0.1.0**, the architecture baseline: see [CHANGELOG.md](CHANGELOG.md).
 
 Clean rebuild of `nurse_appV03`: one backend, one frontend, one schema, one API.
 

@@ -46,7 +46,19 @@ body {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.app-menu { border: none !important; margin-top: 8px; }
+.app-menu { border: none !important; margin-top: 8px; flex: 1 0 auto; }
+
+/* Logo, menu, then the version pinned to the foot of the sidebar; with a long
+   menu it follows the last item instead of covering it. */
+.app-sider .ant-layout-sider-children { display: flex; flex-direction: column; min-height: 100%; }
+.app-version {
+  padding: 10px 0 12px;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.6);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
 
 .app-header {
   position: sticky;

@@ -124,6 +124,6 @@ describeDb('FHIR read API (spec §14.1)', () => {
 
     const sup = await signIn(app(), (await makeUser(db, { roles: [{ role: 'SUPERVISOR', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
     expect((await sup.get('/fhir/metadata')).status).toBe(403);
-    expect((await hr.get('/fhir/metadata')).body).toMatchObject({ resourceType: 'CapabilityStatement', fhirVersion: '4.0.1', kind: 'instance', implementation: { url: expect.stringMatching(/\/api\/v1\/fhir$/) } });
+    expect((await hr.get('/fhir/metadata')).body).toMatchObject({ resourceType: 'CapabilityStatement', fhirVersion: '4.0.1', kind: 'instance', software: { version: expect.stringMatching(/^\d+\.\d+\.\d+$/) }, implementation: { url: expect.stringMatching(/\/api\/v1\/fhir$/) } });
   });
 });
