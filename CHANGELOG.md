@@ -2,6 +2,11 @@
 
 All notable changes to the AIGH Nursing Workforce Management System. Versions follow [Semantic Versioning](https://semver.org/); while the version is `0.y.z` the system is in development and runs demonstration data only.
 
+## [Unreleased]
+
+### Fixed
+- Production start-up now also refuses a database login that may `TRUNCATE` any table (`backend/src/lib/db-role.ts`). Before, only `ops/db/verify.sql` caught that grant; the API and worker would still have started.
+
 ## [0.1.0] - Architecture Baseline Reset (2026-09-27)
 
 ### Added

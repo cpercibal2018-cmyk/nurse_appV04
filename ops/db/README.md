@@ -49,7 +49,7 @@ DATABASE_URL=postgresql://nurseapp_runtime:<runtime password>@localhost:5432/nur
 MIGRATION_DATABASE_URL=postgresql://nurseapp_migration:<migration password>@localhost:5432/nurseapp_v04
 ```
 
-**Production refuses to start until this is done.** With `NODE_ENV=production` the API and the worker check the login they connect as, and stop with `DatabaseRoleError` if it is a superuser, owns the tables, can create objects in `public` or can rewrite `audit_entries` (`backend/src/lib/db-role.ts`). The check is by capability, not by name. After the switch, run `verify.sql` once more: check 11 turns WARN while any API or worker session is still connected as the owner.
+**Production refuses to start until this is done.** With `NODE_ENV=production` the API and the worker check the login they connect as, and stop with `DatabaseRoleError` if it is a superuser, owns the tables, can create objects in `public`, can rewrite `audit_entries` or can `TRUNCATE` any table (`backend/src/lib/db-role.ts`). The check is by capability, not by name. After the switch, run `verify.sql` once more: check 11 turns WARN while any API or worker session is still connected as the owner.
 
 Without `MIGRATION_DATABASE_URL`, migrations use `DATABASE_URL` — which, once it is the runtime role, can no longer migrate. Passwords with `@ : / ? # %` must be URL-encoded. Roles are per server; grants are per database — repeat step 3 (and set the URLs) for each database, e.g. `nurseapp_test` if the tests should also run as these roles (they do not need to: the test suite creates its own databases).
 
