@@ -127,6 +127,20 @@ case "$CMD" in
     mkdir -p "$STATE/caddy/data" "$STATE/caddy/config" "$STATE/caddy/etc/site" "$STATE/clamav"
     [[ -f "$STATE/caddy/etc/site/upstream.caddy" ]] || echo 'respond "The application is being installed." 503' > "$STATE/caddy/etc/site/upstream.caddy"
     changed=0
+    # REDIRECT_HOSTS (deploy.env): names that only forward to https://SITE_HOST, e.g. the bare domain and www.
+    redirects=""
+    for h in ${REDIRECT_HOSTS:-}; do
+      [[ "$h" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] || die "REDIRECT_HOSTS: '$h' is not a lower-case host name"
+      [[ "$h" != "$SITE_HOST" ]] || die "REDIRECT_HOSTS must not include SITE_HOST ($SITE_HOST)"
+      redirects+="${redirects:+, }$h"
+    done
+    if [[ -n "$redirects" ]]; then
+      printf '%s {\n\tredir https://%s{uri} permanent\n}\n' "$redirects" "$SITE_HOST" > "$STATE/caddy/etc/site/redirects.caddy.new"
+    else
+      : > "$STATE/caddy/etc/site/redirects.caddy.new"
+    fi
+    if cmp -s "$STATE/caddy/etc/site/redirects.caddy.new" "$STATE/caddy/etc/site/redirects.caddy"; then rm -f "$STATE/caddy/etc/site/redirects.caddy.new"
+    else mv "$STATE/caddy/etc/site/redirects.caddy.new" "$STATE/caddy/etc/site/redirects.caddy"; changed=1; fi
     cmp -s "$HERE/Caddyfile" "$STATE/caddy/etc/Caddyfile" || { cp "$HERE/Caddyfile" "$STATE/caddy/etc/Caddyfile.new" && mv "$STATE/caddy/etc/Caddyfile.new" "$STATE/caddy/etc/Caddyfile"; changed=1; }
     edge up -d --remove-orphans
     # A new Caddyfile on a running Caddy: applied gracefully.

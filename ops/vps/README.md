@@ -45,6 +45,8 @@ The specification requires **all production data, backups and WAL archives to re
    ```
    [`setup-host.sh`](setup-host.sh) — idempotent — updates the OS and turns on unattended security updates; SSH keys only, no root login, fail2ban; firewall: SSH (from `ADMIN_SSH_CIDR` if given), 80, 443 and nothing else; Docker Engine + Compose; PostgreSQL 15 listening only on `localhost` and the Docker host address, with the containers' subnet allowed only to the application database; the `deploy` account; `/etc/nurseapp`, `/srv/nurseapp` and the containers' network; and the 5-minute health monitor (§8). If the provider has its own firewall (Hostinger: VPS → Firewall), open the same three ports there.
 
+   Some provider images set `PermitRootLogin yes` / `PasswordAuthentication yes` in `/etc/ssh/sshd_config` **above** its `Include` line, where they beat any drop-in (sshd keeps the first value it reads; found on UltaHost). The script comments those global lines out (the original is kept as `sshd_config.before-nurseapp`) and **stops with an error** unless `sshd -T` then reports keys only and no root sign-in. On a host without an IPv6 route it also makes `apt` use IPv4 only. A provider panel action (password reset, plan change) can re-run the image's setup and put such lines back: run `verify-install.sh` afterwards.
+
 **HTTPS** needs nothing else: on the first release Caddy obtains the certificate from Let's Encrypt, redirects HTTP to HTTPS and renews it by itself. HSTS, CSP and the other security headers come from the web container's nginx, as in every deployment.
 
 ## 3. Database and settings (once)
@@ -60,7 +62,7 @@ sudo SITE_HOST=nurse.<hospital-domain> ACME_EMAIL=it@<hospital-domain> \
 | :--- | :--- | :--- |
 | `/etc/nurseapp/app.env` | `DATABASE_URL` (runtime role), `JWT_SECRET`, the four encryption keys (newly generated), `CORS_ORIGIN`, the residency region, e-mail settings (empty = off) | API and worker |
 | `/etc/nurseapp/migrate.env` | the migration role's URL | the release step only — never the running app |
-| `/etc/nurseapp/deploy.env` | `SITE_HOST`, `ACME_EMAIL`, `DB_NAME` | `deploy.sh`, Caddy |
+| `/etc/nurseapp/deploy.env` | `SITE_HOST`, `ACME_EMAIL`, `DB_NAME`; optional `REDIRECT_HOSTS` — space-separated names that only forward to `https://SITE_HOST` (e.g. `example.org www.example.org`), each with its own certificate and a DNS A record pointing here | `deploy.sh`, Caddy |
 | `/etc/nurseapp/audit-reader.env` | the audit reader's password | compliance queries (§7) |
 
 It refuses to overwrite an existing settings file: new keys would make the stored data unreadable.

@@ -85,6 +85,8 @@ cat > "$CONF/deploy.env" <<ENV
 SITE_HOST=$SITE_HOST
 ACME_EMAIL=$ACME_EMAIL
 DB_NAME=$DB
+# Names that only forward to https://$SITE_HOST, space-separated, e.g. the bare domain and www:
+REDIRECT_HOSTS=
 ENV
 cat > "$CONF/audit-reader.env" <<ENV
 # For compliance queries over an SSH tunnel (README.md §7): psql "postgresql://nurseapp_audit_reader:…@localhost:5432/$DB"

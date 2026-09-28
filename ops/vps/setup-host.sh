@@ -39,6 +39,11 @@ step() { echo; echo "== $*"; }
 export DEBIAN_FRONTEND=noninteractive
 
 step "1. OS updates, unattended security updates, time zone"
+# Without an IPv6 route apt still tries the mirrors' IPv6 addresses first, and a slow
+# mirror then times out mid-install; use IPv4 only on such hosts.
+if [[ -z "$(ip -6 route show default 2>/dev/null)" ]]; then
+  echo 'Acquire::ForceIPv4 "true";  // nurseapp: this host has no IPv6 route' > /etc/apt/apt.conf.d/99-nurseapp-force-ipv4
+fi
 apt-get update -q
 apt-get -y -q upgrade
 apt-get install -y -q ca-certificates curl gnupg ufw fail2ban unattended-upgrades rsync jq openssl
@@ -46,6 +51,20 @@ dpkg-reconfigure -f noninteractive unattended-upgrades
 timedatectl set-timezone UTC   # logs and cron in UTC; the backup timer names Asia/Riyadh itself
 
 step "2. SSH: keys only, no root, two accounts; fail2ban"
+# sshd keeps the FIRST value it reads. Some provider images set these in the main
+# file above its Include line (UltaHost: PermitRootLogin/PasswordAuthentication yes),
+# which silently beats the drop-in below — comment them out of the global section
+# (lines before any Match block), keeping a copy of the original.
+SSHD_KEYS='PermitRootLogin|PasswordAuthentication|KbdInteractiveAuthentication|X11Forwarding|AllowTcpForwarding|AllowUsers'
+if awk -v k="^[[:space:]]*($SSHD_KEYS)[[:space:]]" 'tolower($1) == "match" {exit} $0 ~ k {found=1} END {exit !found}' /etc/ssh/sshd_config; then
+  [[ -e /etc/ssh/sshd_config.before-nurseapp ]] || cp -p /etc/ssh/sshd_config /etc/ssh/sshd_config.before-nurseapp
+  awk -v k="^[[:space:]]*($SSHD_KEYS)[[:space:]]" '
+    tolower($1) == "match" { inmatch = 1 }
+    !inmatch && $0 ~ k { print "# nurseapp: set in sshd_config.d/10-nurseapp.conf — " $0; next }
+    { print }' /etc/ssh/sshd_config > /etc/ssh/sshd_config.nurseapp-new
+  chmod --reference=/etc/ssh/sshd_config /etc/ssh/sshd_config.nurseapp-new
+  mv /etc/ssh/sshd_config.nurseapp-new /etc/ssh/sshd_config
+fi
 cat > /etc/ssh/sshd_config.d/10-nurseapp.conf <<EOF
 PasswordAuthentication no
 KbdInteractiveAuthentication no
@@ -56,6 +75,12 @@ AllowUsers $ADMIN_USER deploy
 EOF
 sshd -t
 systemctl reload ssh 2>/dev/null || systemctl reload sshd
+# What sshd will actually use, not what the files say: stop here rather than finish
+# with password or root sign-in still open.
+SSHD_EFFECTIVE="$(sshd -T)"
+for want in 'passwordauthentication no' 'kbdinteractiveauthentication no' 'permitrootlogin no'; do
+  grep -qx "$want" <<< "$SSHD_EFFECTIVE" || { echo "ERROR: SSH still has '$(grep "^${want% *} " <<< "$SSHD_EFFECTIVE")' — check /etc/ssh/sshd_config and sshd_config.d/" >&2; exit 1; }
+done
 systemctl enable --now fail2ban
 
 step "3. Firewall"
