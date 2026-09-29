@@ -22,3 +22,8 @@
 	# No access log: download links carry a single-use token in the path (D-53).
 	# The API keeps its own request log with tokens redacted (D-52).
 }
+
+# Other names that only forward to SITE_HOST (REDIRECT_HOSTS in deploy.env, e.g. the
+# bare domain and www), each with its own certificate. Written by deploy.sh; empty
+# when there are none.
+import /etc/caddy/site/redirects.caddy
