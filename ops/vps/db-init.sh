@@ -85,7 +85,8 @@ cat > "$CONF/deploy.env" <<ENV
 SITE_HOST=$SITE_HOST
 ACME_EMAIL=$ACME_EMAIL
 DB_NAME=$DB
-# Names that only forward to https://$SITE_HOST, space-separated, e.g. the bare domain and www:
+# Names that only forward to https://$SITE_HOST, e.g. the bare domain and www — space-separated
+# IN DOUBLE QUOTES (bash reads this file): REDIRECT_HOSTS="example.org www.example.org"
 REDIRECT_HOSTS=
 ENV
 cat > "$CONF/audit-reader.env" <<ENV

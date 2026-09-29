@@ -62,7 +62,7 @@ sudo SITE_HOST=nurse.<hospital-domain> ACME_EMAIL=it@<hospital-domain> \
 | :--- | :--- | :--- |
 | `/etc/nurseapp/app.env` | `DATABASE_URL` (runtime role), `JWT_SECRET`, the four encryption keys (newly generated), `CORS_ORIGIN`, the residency region, e-mail settings (empty = off) | API and worker |
 | `/etc/nurseapp/migrate.env` | the migration role's URL | the release step only — never the running app |
-| `/etc/nurseapp/deploy.env` | `SITE_HOST`, `ACME_EMAIL`, `DB_NAME`; optional `REDIRECT_HOSTS` — space-separated names that only forward to `https://SITE_HOST` (e.g. `example.org www.example.org`), each with its own certificate and a DNS A record pointing here | `deploy.sh`, Caddy |
+| `/etc/nurseapp/deploy.env` | `SITE_HOST`, `ACME_EMAIL`, `DB_NAME`; optional `REDIRECT_HOSTS` — names that only forward to `https://SITE_HOST`, space-separated **in double quotes** (the file is read by bash: `REDIRECT_HOSTS="example.org www.example.org"`), each with its own certificate and a DNS A record pointing here | `deploy.sh`, Caddy |
 | `/etc/nurseapp/audit-reader.env` | the audit reader's password | compliance queries (§7) |
 
 It refuses to overwrite an existing settings file: new keys would make the stored data unreadable.
