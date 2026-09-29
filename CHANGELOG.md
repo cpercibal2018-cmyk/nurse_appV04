@@ -5,7 +5,7 @@ All notable changes to the AIGH Nursing Workforce Management System. Versions fo
 ## [Unreleased]
 
 ### Added
-- VPS: `REDIRECT_HOSTS` in `/etc/nurseapp/deploy.env` — names such as the bare domain and `www` that permanently redirect to `https://SITE_HOST`, each with its own certificate (`ops/vps/Caddyfile`, `deploy.sh edge`). Empty by default: nothing changes.
+- VPS: `REDIRECT_HOSTS` in `/etc/nurseapp/deploy.env` (space-separated, in double quotes: bash reads the file) — names such as the bare domain and `www` that permanently redirect to `https://SITE_HOST`, each with its own certificate (`ops/vps/Caddyfile`, `deploy.sh edge`). Empty by default: nothing changes.
 
 ### Fixed
 - `ops/vps/setup-host.sh` comments out provider lines above the `Include` in `/etc/ssh/sshd_config` that silently kept root and password sign-in on (found on UltaHost), and now stops unless `sshd -T` reports keys only and no root sign-in. On a host without an IPv6 route, `apt` uses IPv4 only (a mirror's IPv6 address had timed out mid-install).
