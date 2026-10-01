@@ -101,6 +101,10 @@ tar -cf "$WORK/evil.tar" -C "$WORK/bundle" ops/vps/deploy.sh && tar -rf "$WORK/e
 if NURSEAPP_OPS="$WORK/opt" "$HERE/nurseapp-release" release "$SHA" < "$WORK/evil.tar" 2>/dev/null; then echo "a bundle with a foreign path was accepted" >&2; exit 1; fi
 if NURSEAPP_OPS="$WORK/opt" "$HERE/nurseapp-release" "release;id" < /dev/null 2>/dev/null; then echo "a bad command was accepted" >&2; exit 1; fi
 NURSEAPP_OPS="$WORK/opt" "$HERE/nurseapp-release" release "$SHA" < "$WORK/bundle.tar"
+# PostgreSQL runs the backup kit as postgres: the released scripts must be readable by others.
+for p in "$WORK/opt" "$WORK/opt/backup/scripts" "$WORK/opt/backup/scripts/wal-archive.sh"; do
+  [[ "$(stat -c %a "$p")" == 755 ]] || { echo "released $p is not readable by the postgres user" >&2; exit 1; }
+done
 [[ "$(live)" == green ]] || { echo "expected green live" >&2; exit 1; }
 (( $(running blue) == 0 )) || { echo "blue still running after the switch" >&2; exit 1; }
 (( $(running green) == 3 )) || { echo "green is not api + worker + web" >&2; exit 1; }

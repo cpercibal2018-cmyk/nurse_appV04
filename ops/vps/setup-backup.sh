@@ -31,6 +31,7 @@ gpg --show-keys --with-colons "$BACKUP_PUBKEY" | grep -q '^pub' || { echo "$BACK
 if gpg --show-keys --with-colons "$BACKUP_PUBKEY" | grep -q '^sec'; then echo "$BACKUP_PUBKEY holds a PRIVATE key — it must not be on the VPS" >&2; exit 1; fi
 
 echo "== 1. public key for the postgres user"
+chmod -R u=rwX,go=rX /opt/nurseapp   # the kit runs as postgres (releases before this fix left it root-only)
 install -m 644 "$BACKUP_PUBKEY" "$PUB"
 install -m 644 -o postgres -g postgres "$BACKUP_PUBKEY" "$PGPUB"
 install -d -m 700 -o postgres -g postgres "$GNUPG" "$STORE"
