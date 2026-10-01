@@ -16,6 +16,7 @@ import { useUnits } from '../administration/api';
 import { usePositions } from '../workforce/api';
 import { useEmployee, useEmployeeAction, useEmployees, useInvitations, useInviteEmployee, useOnboardingDefaults, type EmployeeRow } from './api';
 
+import { GuideHelp } from '../guidelines/GuideHelp';
 const OPTIONAL_TEXT = ['middleName', 'jobTitle', 'fileNo', 'rankGrade', 'nationality', 'jobPostLocation', 'actualWorkPlace', 'specialty', 'primaryPhone', 'emergencyContactPhone'] as const;
 
 /** Form values → API body: empty strings become null, dates YYYY-MM-DD. */
@@ -102,7 +103,7 @@ export default function NursesPage() {
 
   const e = detail.data;
   return (
-    <Card title={t('nurses')} extra={canWrite && <Button type="primary" onClick={() => { onboardForm.resetFields(); setOnboarding(crypto.randomUUID()); }}>{t('onboardEmployee')}</Button>}>
+    <Card title={<>{t('nurses')} <GuideHelp section="nurses" /></>} extra={canWrite && <Button type="primary" onClick={() => { onboardForm.resetFields(); setOnboarding(crypto.randomUUID()); }}>{t('onboardEmployee')}</Button>}>
       <Flex gap={8} wrap style={{ marginBottom: 12 }}>
         <Input.Search allowClear placeholder={t('searchJobOrName')} style={{ width: 280 }} onSearch={(q) => setFilter({ ...filter, q: q || undefined, page: 1 })} />
         <Select allowClear placeholder={t('unit')} style={{ width: 260 }} showSearch optionFilterProp="label"

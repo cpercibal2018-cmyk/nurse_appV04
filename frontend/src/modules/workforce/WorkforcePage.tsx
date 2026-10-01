@@ -6,6 +6,7 @@ import { Alert, App, Button, Card, Drawer, Flex, Form, Input, InputNumber, Modal
 import { useTranslation } from 'react-i18next';
 import { usePermissions } from '../../hooks/usePermissions';
 import { describeApiError } from '../../lib/errors';
+import { GuideHelp } from '../guidelines/GuideHelp';
 import {
   SHIFTS, TIERS, useAllDepartments, useAllUnits, useBedHistory, useCoverage, usePositions, useSummary, useWorkforceAction,
   type DepartmentRow, type ImportResult, type PositionRow, type ShiftType, type UnitRow,
@@ -257,7 +258,7 @@ export default function WorkforcePage() {
   const { hasRole } = usePermissions();
   const canWrite = hasRole('HR_ADMIN', 'SYSTEM_ADMIN');
   return (
-    <Card title={t('workforce')}>
+    <Card title={<>{t('workforce')} <GuideHelp section="workforce" /></>}>
       <Tabs destroyOnHidden items={[
         { key: 'units', label: t('units'), children: <UnitsTab canWrite={canWrite} /> },
         { key: 'departments', label: t('departments'), children: <DepartmentsTab canWrite={canWrite} /> },

@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { describeApiError } from '../../lib/errors';
 import { useMarkRead, useNotifications, type NotificationRow } from './api';
 
+import { GuideHelp } from '../guidelines/GuideHelp';
 const PRIORITY_COLOR: Record<NotificationRow['priority'], string> = { CRITICAL: 'red', HIGH: 'volcano', MEDIUM: 'blue', LOW: 'default' };
 
 export default function NotificationsPage() {
@@ -20,7 +21,7 @@ export default function NotificationsPage() {
   const read = (id: number | 'all') => mark.mutateAsync(id).catch((e) => message.error(describeApiError(e)));
 
   return (
-    <Card title={t('notifications')} extra={
+    <Card title={<>{t('notifications')} <GuideHelp section="notifications" /></>} extra={
       <Flex gap={8}>
         <Segmented value={unreadOnly ? 'unread' : 'all'} onChange={(v) => { setUnreadOnly(v === 'unread'); setPage(1); }}
           options={[{ value: 'unread', label: `${t('unread')} (${list.data?.unread ?? 0})` }, { value: 'all', label: t('all') }]} />

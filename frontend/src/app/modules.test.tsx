@@ -1,6 +1,6 @@
 // The page registry drives both the router and the menu (Phase 15 "routes").
 import { describe, expect, it } from 'vitest';
-import { MODULES } from './modules';
+import { isModuleVisible, MODULES } from './modules';
 
 describe('page registry', () => {
   it('has unique paths and labels, and only real roles in its access hints', () => {
@@ -15,6 +15,15 @@ describe('page registry', () => {
     expect(find('/audit').requires).toEqual(['SYSTEM_ADMIN']);
     for (const p of ['/nurses', '/credentials', '/eligibility', '/kpi']) expect(find(p).requires).toEqual(['HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR']);
     expect(find('/my-credentials').employeeOnly).toBe(true);
+  });
+
+  it('offers the Guidelines to every signed-in user, in the same registry', () => {
+    const g = MODULES.find((m) => m.path === '/guidelines');
+    expect(g?.labelKey).toBe('guidelines');
+    expect(g?.requires).toBeUndefined();
+    expect(g?.employeeOnly).toBeUndefined();
+    expect(isModuleVisible(g!, { holdsAssignment: () => false, isEmployee: false })).toBe(true);
+    expect(isModuleVisible(MODULES.find((m) => m.path === '/audit')!, { holdsAssignment: () => false, isEmployee: true })).toBe(false);
   });
 
   it('every page module can be loaded', async () => {

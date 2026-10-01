@@ -15,6 +15,7 @@ import { EligibilityTag, ReasonList } from '../credentials/components';
 import { SHIFTS, type ShiftType } from '../workforce/api';
 import { useBoard, useOwnRoster, usePool, useRosterAction, type Assignment, type GenerateResult, type OwnShift, type PublishResult } from './api';
 
+import { GuideHelp } from '../guidelines/GuideHelp';
 const ELIG_COLOR = { ELIGIBLE: 'green', ELIGIBLE_WITH_POLICY_WARNING: 'orange', ELIGIBLE_WITH_GRACE: 'gold', INELIGIBLE: 'red' } as const;
 
 function OwnSchedule() {
@@ -27,7 +28,7 @@ function OwnSchedule() {
     { title: t('unit'), dataIndex: 'unitCode' }, { title: t('notes'), dataIndex: 'notes' },
   ];
   return (
-    <Card title={t('scheduling')}>
+    <Card title={<>{t('scheduling')} <GuideHelp section="scheduling" task="own-roster" /></>}>
       <Typography.Title level={5}>{t('myShifts')}</Typography.Title>
       <Table rowKey="id" size="small" loading={roster.isLoading} dataSource={roster.data?.own} pagination={false} columns={cols} />
       <Typography.Title level={5} style={{ marginTop: 16 }}>{t('homeUnitSchedule')}</Typography.Title>
@@ -105,7 +106,7 @@ export default function SchedulingPage() {
   }
 
   return (
-    <Card title={t('scheduling')}>
+    <Card title={<>{t('scheduling')} <GuideHelp section="scheduling" /></>}>
       <Flex gap={8} wrap style={{ marginBottom: 12 }}>
         <Select placeholder={t('unit')} style={{ width: 280 }} showSearch optionFilterProp="label" value={unitId} onChange={setUnitId}
           options={(units.data?.items ?? []).map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))} />

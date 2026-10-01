@@ -4,6 +4,8 @@
 
 | Document | Read it for |
 | :--- | :--- |
+| [USER_MANUAL.md](USER_MANUAL.md) | **How to use the system**, task by task (generated; also in the app under Guidelines, and as [a PDF](generated/AIGH_Nursing_Workforce_User_Manual_V04.pdf)) |
+| [GUIDELINES_COVERAGE.md](GUIDELINES_COVERAGE.md) | The trace behind the user manual: every user-facing task from screen to permission, rule and status |
 | [SYSTEM_SPECIFICATION.md](SYSTEM_SPECIFICATION.md) | **What the system must do**: the reference specification plus every owner amendment, clarification, open conflict and REQUIREMENT NOT ESTABLISHED item |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How it is built: components, layout, modules, request flow, jobs, tests |
 | [RBAC.md](RBAC.md) | Roles, scopes, the permission table (checked against the code by a test), field visibility, separation of duties, PAM, break-glass |
@@ -41,4 +43,5 @@ Produced before V04 was built and retired in commit 12 ([CLEANUP_REPORT.md §1.2
 
 - `npm run docs:check` (also part of `npm test` and CI) fails on any broken link or heading anchor in these documents.
 - `backend/test/docs.test.ts` fails if [RBAC.md](RBAC.md) §3 and the permission table in the code differ.
+- The user manual is generated from `frontend/src/modules/guidelines/content` by `npm run docs:manual` (Markdown, workflow images, PDF); `guidelines.test.ts` fails if the generated files and the content differ, or if a Guidelines link points at a page or section that does not exist.
 - A new owner decision gets a D-number in the decision record first; the affected documents then cite it.

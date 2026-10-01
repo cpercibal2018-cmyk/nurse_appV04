@@ -11,6 +11,7 @@ import { describeApiError } from '../../lib/errors';
 import { useCredentialAction, useEligibility, useTemplates, useWaivers, type EligibilityStatus, type StateRow, type Waiver } from '../credentials/api';
 import { EligibilityTag, ReasonList } from '../credentials/components';
 
+import { GuideHelp } from '../guidelines/GuideHelp';
 const STATUSES: Array<EligibilityStatus | 'ALL'> = ['ALL', 'INELIGIBLE', 'ELIGIBLE_WITH_GRACE', 'ELIGIBLE_WITH_POLICY_WARNING', 'ELIGIBLE'];
 
 export default function EligibilityPage() {
@@ -41,7 +42,7 @@ export default function EligibilityPage() {
   }
 
   return (
-    <Card title={t('eligibility')}>
+    <Card title={<>{t('eligibility')} <GuideHelp section="eligibility" /></>}>
       <Segmented style={{ marginBottom: 12 }} value={filter} onChange={(v) => setFilter(v as typeof filter)}
         options={STATUSES.map((s) => ({ value: s, label: s === 'ALL' ? t('all') : t(`elig_${s}`) }))} />
       <Table<StateRow>

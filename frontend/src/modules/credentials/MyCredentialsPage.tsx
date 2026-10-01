@@ -8,6 +8,7 @@ import { describeApiError } from '../../lib/errors';
 import { useCredentialAction, useMyCredentials, useMyEligibility, useMyRequirements, useTemplates, type CredentialRow, type Template } from './api';
 import { CredentialStatusTag, DocumentsDrawer, EligibilityTag, LifecycleTag, normaliseTracking, ReasonList, TrackingFields } from './components';
 
+import { GuideHelp } from '../guidelines/GuideHelp';
 export default function MyCredentialsPage() {
   const { t } = useTranslation();
   const { message } = App.useApp();
@@ -56,7 +57,7 @@ export default function MyCredentialsPage() {
       {missing.length > 0 && (
         <Alert type="error" showIcon title={t('missingRequired')} description={missing.map((r) => `${r.template.code} — ${r.template.name}`).join(' · ')} />
       )}
-      <Card title={t('myCredentials')} extra={<Button type="primary" onClick={() => { form.resetFields(); setAdding(true); }}>{t('addCredential')}</Button>}>
+      <Card title={<>{t('myCredentials')} <GuideHelp section="self-service" task="my-credentials" /></>} extra={<Button type="primary" onClick={() => { form.resetFields(); setAdding(true); }}>{t('addCredential')}</Button>}>
         <Table<CredentialRow>
           rowKey="id" loading={mine.isLoading} dataSource={mine.data?.items} pagination={false} scroll={{ x: true }}
           locale={{ emptyText: <Empty description={t('noData')} /> }}

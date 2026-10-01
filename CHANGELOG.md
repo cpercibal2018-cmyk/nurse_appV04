@@ -5,6 +5,8 @@ All notable changes to the AIGH Nursing Workforce Management System. Versions fo
 ## [Unreleased]
 
 ### Added
+- **Guidelines** (side menu, every signed-in user): the user manual inside the application — what each screen is for, every task in one template (purpose, who, before you start, steps, system result, approval, next step, common problems, related), 25 workflows drawn as images, the complete hospital workflow, troubleshooting and a quick reference; search; "Only tasks for my roles"; light, dark, Arabic interface (the guide's text is English). Every task is labelled Implemented, Partially implemented or Planned and is traced to the code in [docs/GUIDELINES_COVERAGE.md](docs/GUIDELINES_COVERAGE.md). A "?" beside the title of twelve pages opens the matching section.
+- The same content as [docs/USER_MANUAL.md](docs/USER_MANUAL.md), workflow images in `docs/generated/flows/`, and a printable PDF (`docs/generated/AIGH_Nursing_Workforce_User_Manual_V04.pdf`, also downloadable from the Guidelines page), built by `npm run docs:manual` (dev dependency `pdfkit`).
 - VPS: `REDIRECT_HOSTS` in `/etc/nurseapp/deploy.env` (space-separated, in double quotes: bash reads the file) — names such as the bare domain and `www` that permanently redirect to `https://SITE_HOST`, each with its own certificate (`ops/vps/Caddyfile`, `deploy.sh edge`). Empty by default: nothing changes.
 
 ### Fixed

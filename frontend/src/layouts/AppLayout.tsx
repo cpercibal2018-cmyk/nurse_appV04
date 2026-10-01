@@ -11,7 +11,7 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { MODULES } from '../app/modules';
+import { isModuleVisible, MODULES } from '../app/modules';
 import { useAuth } from '../hooks/useAuth';
 import { usePermissions } from '../hooks/usePermissions';
 import { usePreferences } from '../hooks/usePreferences';
@@ -32,7 +32,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const { t } = useTranslation();
-  const { holdsAssignment, isEmployee } = usePermissions();
+  const permissions = usePermissions();
   const pam = useAuth((s) => s.pam);
   const breakGlass = useAuth((s) => s.breakGlass);
   const location = useLocation();
@@ -50,7 +50,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     navigate('/login', { replace: true });
   }
 
-  const menuItems = MODULES.filter((m) => (!m.requires || holdsAssignment(...m.requires)) && (!m.employeeOnly || isEmployee)).map((m) => ({
+  const menuItems = MODULES.filter((m) => isModuleVisible(m, permissions)).map((m) => ({
     key: m.path,
     icon: m.icon,
     // Preload the page's chunk on hover/focus so navigation feels instant.

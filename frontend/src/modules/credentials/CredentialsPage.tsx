@@ -14,6 +14,7 @@ import { CredentialStatusTag, DocumentsDrawer, LifecycleTag } from './components
 import { ScfhsDrawer } from './ScfhsDrawer';
 import { changeBody, createBody, fieldProblems, isDateType, toFormValues, type FieldRowValue, type TemplateFormValues } from './catalogForm';
 
+import { GuideHelp } from '../guidelines/GuideHelp';
 type Decision = { kind: 'suspend' | 'revoke' | 'reject'; row: CredentialRow };
 
 function RecordsTable({ queue }: { queue?: 'review' }) {
@@ -341,7 +342,7 @@ export default function CredentialsPage() {
   const { hasRole } = usePermissions();
   const hr = hasRole('HR_ADMIN', 'SYSTEM_ADMIN');
   return (
-    <Card title={t('credentials')}>
+    <Card title={<>{t('credentials')} <GuideHelp section="credentials" /></>}>
       <Tabs
         destroyOnHidden
         items={[
