@@ -86,9 +86,10 @@ export const FLOWS: Flow[] = [
   {
     id: 'contract-lifecycle',
     title: 'Contract approval',
-    caption: 'The creator and the submitter can never approve. Only Approved and Active contracts cover a date.',
+    caption: 'The creator and the submitter can never approve. Only Approved and Active contracts cover a date. A renewal needs valid credentials (the ended contract itself does not count); a first contract is not checked.',
     nodes: [
       { kind: 'start', label: 'New contract or Renew contract → Draft', role: 'HR_ADMIN' },
+      { kind: 'state', label: 'Renewal only: refused unless every required credential is valid (checked again at Approve)', role: 'SYSTEM' },
       { kind: 'step', label: 'Upload the signed copy (PDF, scanned clean)', role: 'HR_ADMIN' },
       { kind: 'step', label: 'Submit → Pending approval', role: 'HR_ADMIN' },
       {

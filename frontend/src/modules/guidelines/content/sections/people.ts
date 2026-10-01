@@ -175,6 +175,7 @@ export const PEOPLE: GuideSection[] = [
     callouts: [
       { kind: 'warning', text: 'Nobody can create, renew, change or upload to their own contract, and nobody approves a contract they created or submitted.' },
       { kind: 'info', text: 'Two Approved/Active periods of one nurse may never overlap. Every contract change re-evaluates the nurse\'s eligibility at once.' },
+      { kind: 'warning', text: 'A renewal needs valid credentials. For a nurse who has had a contract before, a contract is neither created nor approved while a required credential of their unit and position is missing, expired, not yet verified, suspended or revoked. The ended contract itself does not count, so an expired contract can always be renewed once the credentials are in order. A nurse\'s first contract is not checked.' },
     ],
     tasks: [
       {
@@ -189,7 +190,10 @@ export const PEOPLE: GuideSection[] = [
         result: 'A Draft contract. It gives no coverage yet.',
         approval: 'Approval by a different HR administrator comes after Submit.',
         next: 'Upload the signed copy, then Submit (next task).',
-        problems: [{ problem: 'The employee is not offered', fix: 'They already have an Approved or Active contract: use Renew contract.' }],
+        problems: [
+          { problem: 'The employee is not offered', fix: 'They already have an Approved or Active contract: use Renew contract.' },
+          { problem: '"Renew or verify these credentials before renewing the contract"', fix: 'The nurse had a contract before, so this counts as a renewal: the credentials listed must be valid first (see Renew a contract).' },
+        ],
         related: ['nurses', 'eligibility'],
         flow: 'contract-lifecycle',
         keywords: ['new contract', 'create contract', 'employment'],
@@ -201,11 +205,16 @@ export const PEOPLE: GuideSection[] = [
         purpose: 'Prepare the next period so the nurse stays covered without a gap.',
         who: 'HR Admin or System Admin within scope.',
         roles: ['HR_ADMIN', 'SYSTEM_ADMIN'],
+        before: ['Every required credential of the nurse\'s unit and position is valid: verified, in date, not suspended or revoked (a credential in its grace period, under a waiver or in a transition period also passes). Check Eligibility: only credential reasons matter here, not the contract reason.'],
         steps: ['Open Contracts and click Renew contract.', 'Choose the employee: the current contract is shown and the dates are pre-filled (the day after the current end, same length).', 'Adjust the dates if needed and Submit.'],
-        result: 'A new Draft contract for the next period.',
+        result: 'A new Draft contract for the next period. Refused with the list of credentials to renew or verify first if any required credential is not valid — checked again when the contract is approved.',
         approval: 'After Submit, a different HR administrator approves.',
         next: 'Upload the copy and Submit. Once approved, the nurse gets no contract reminders for the old period.',
-        problems: [{ problem: 'A nurse is missing from the renewal list', fix: 'The list shows at most 500 employees in your scope; type to search.' }],
+        problems: [
+          { problem: 'A nurse is missing from the renewal list', fix: 'The list shows at most 500 employees in your scope; type to search.' },
+          { problem: '"Renew or verify these credentials before renewing the contract: …"', fix: 'The nurse renews the listed credentials on My Credentials and HR verifies them (or approves the renewals); then renew the contract. A nurse with no unit is refused too, because no credential can be checked: assign the unit first.' },
+          { problem: 'Approve refused with the same message', fix: 'A credential expired or was suspended after the renewal was created. Bring it back in order, then approve.' },
+        ],
         related: ['eligibility', 'notifications'],
         flow: 'contract-lifecycle',
         keywords: ['renew contract', 'extend', 'next period'],
