@@ -121,6 +121,10 @@ promote() {
 case "$CMD" in
   load)
     [[ -f "$ARG" ]] || die "usage: $0 load <images.tar.gz>"
+    # The release scripts are public repository files; PostgreSQL's archive_command and the
+    # nightly backup run ops/backup/scripts as postgres. An older nurseapp-release (umask 077)
+    # leaves them root-only — fixed here because this file travels with every release.
+    chmod -R u=rwX,go=rX "$OPS"
     gunzip -c "$ARG" | docker load
     ;;
   edge)

@@ -34,6 +34,7 @@ case "${1:-}" in
     [[ -x "$WORK/ops/vps/deploy.sh" && -f "$WORK/images.tar.gz" ]] || { echo "bundle is incomplete" >&2; exit 1; }
     chmod 755 "$WORK"/ops/vps/*.sh "$WORK"/ops/backup/scripts/*.sh 2>/dev/null || true
     rsync -a --delete "$WORK/ops/" "$OPT/"
+    chmod -R u=rwX,go=rX "$OPT"   # umask 077 left it root-only; the backup kit runs as postgres
     "$DEPLOY" load "$WORK/images.tar.gz"
     exec "$DEPLOY" release "$SHA"
     ;;
