@@ -285,7 +285,7 @@ export const OPERATIONS: GuideSection[] = [
         ],
       },
     ],
-    callouts: [{ kind: 'info', text: 'The badge-system interface is built (the badge system signs in as an API client), but the hospital\'s badge system is not connected yet. Until then System Admins can demonstrate with the Badge simulator. Manual clocking is not part of V04.' }],
+    callouts: [{ kind: 'info', text: 'The badge-system interface is built (the badge system signs in as an API client), but the hospital\'s badge system is not connected yet, so the live server receives no clock events. The Badge simulator (System Admin) is switched off on the live server; it works only where the server setting BADGE_SIMULATOR is on. Manual clocking is not part of V04.' }],
     tasks: [
       {
         id: 'gaps',

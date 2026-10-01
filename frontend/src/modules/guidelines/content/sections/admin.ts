@@ -25,7 +25,7 @@ export const ADMIN: GuideSection[] = [
           ['Background jobs', 'Schedules, last runs, run now; business health', 'System Admin', '—', 'Yes'],
           ['Telegram inbox', 'Messages the simulated Telegram gateway kept; test messages', 'System Admin', '—', '—'],
           ['SCFHS registry', 'The simulated SCFHS answers used until real SCFHS access', 'System Admin', '—', 'Yes'],
-          ['Badge simulator', 'Simulated clock events for demonstrations', 'System Admin', '—', 'Yes'],
+          ['Badge simulator', 'Simulated clock events for demonstrations; off on the live server (setting BADGE_SIMULATOR)', 'System Admin', '—', 'Yes'],
           ['API clients', 'Other systems allowed to call the API (FHIR reads, badge events)', 'System Admin', '—', 'Yes'],
           ['Access matrix', 'Who may do what, by area (read only)', 'Everyone in Administration', '—', '—'],
         ],
@@ -33,7 +33,7 @@ export const ADMIN: GuideSection[] = [
     ],
     callouts: [
       { kind: 'warning', text: 'Nobody manages their own account, grants or revokes their own role, or decides their own request. The break-glass account is managed outside the application.' },
-      { kind: 'info', text: 'Telegram inbox, SCFHS registry and Badge simulator are demonstration tools: they hold synthetic data only and stand in for systems the hospital has not connected yet.' },
+      { kind: 'info', text: 'Telegram inbox, SCFHS registry and Badge simulator are demonstration tools: they hold synthetic data only and stand in for systems the hospital has not connected yet. On the live server the SCFHS registry and the Telegram inbox are in use; the Badge simulator is switched off.' },
     ],
     tasks: [
       {

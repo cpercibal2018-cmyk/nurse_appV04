@@ -1657,7 +1657,7 @@ Planned versus actual: for a unit and date, every published shift with its clock
 **Screen:** `/attendance`  
 **Where:** Side menu → Attendance. Choose the unit and the date.
 
-> **Note:** The badge-system interface is built (the badge system signs in as an API client), but the hospital's badge system is not connected yet. Until then System Admins can demonstrate with the Badge simulator. Manual clocking is not part of V04.
+> **Note:** The badge-system interface is built (the badge system signs in as an API client), but the hospital's badge system is not connected yet, so the live server receives no clock events. The Badge simulator (System Admin) is switched off on the live server; it works only where the server setting BADGE_SIMULATOR is on. Manual clocking is not part of V04.
 
 ![Attendance and gaps](generated/flows/attendance.svg)
 
@@ -1780,7 +1780,7 @@ Accounts, roles, approvals, hospital set-up, data protection and system tools. H
 
 > **Important:** Nobody manages their own account, grants or revokes their own role, or decides their own request. The break-glass account is managed outside the application.
 
-> **Note:** Telegram inbox, SCFHS registry and Badge simulator are demonstration tools: they hold synthetic data only and stand in for systems the hospital has not connected yet.
+> **Note:** Telegram inbox, SCFHS registry and Badge simulator are demonstration tools: they hold synthetic data only and stand in for systems the hospital has not connected yet. On the live server the SCFHS registry and the Telegram inbox are in use; the Badge simulator is switched off.
 
 ![Granting a role](generated/flows/role-grant.svg)
 
@@ -1802,7 +1802,7 @@ Accounts, roles, approvals, hospital set-up, data protection and system tools. H
 | Background jobs | Schedules, last runs, run now; business health | System Admin | — | Yes |
 | Telegram inbox | Messages the simulated Telegram gateway kept; test messages | System Admin | — | — |
 | SCFHS registry | The simulated SCFHS answers used until real SCFHS access | System Admin | — | Yes |
-| Badge simulator | Simulated clock events for demonstrations | System Admin | — | Yes |
+| Badge simulator | Simulated clock events for demonstrations; off on the live server (setting BADGE_SIMULATOR) | System Admin | — | Yes |
 | API clients | Other systems allowed to call the API (FHIR reads, badge events) | System Admin | — | Yes |
 | Access matrix | Who may do what, by area (read only) | Everyone in Administration | — | — |
 
