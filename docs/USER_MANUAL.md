@@ -545,9 +545,11 @@ Employment contracts. A nurse is covered — and can be eligible — only on dat
 
 > **Note:** Two Approved/Active periods of one nurse may never overlap. Every contract change re-evaluates the nurse's eligibility at once.
 
+> **Important:** A renewal needs valid credentials. For a nurse who has had a contract before, a contract is neither created nor approved while a required credential of their unit and position is missing, expired, not yet verified, suspended or revoked. The ended contract itself does not count, so an expired contract can always be renewed once the credentials are in order. A nurse's first contract is not checked.
+
 ![Contract approval](generated/flows/contract-lifecycle.svg)
 
-*The creator and the submitter can never approve. Only Approved and Active contracts cover a date.*
+*The creator and the submitter can never approve. Only Approved and Active contracts cover a date. A renewal needs valid credentials (the ended contract itself does not count); a first contract is not checked.*
 
 ![What happens to a contract by date](generated/flows/contract-dates.svg)
 
@@ -605,12 +607,13 @@ Employment contracts. A nurse is covered — and can be eligible — only on dat
 **Common problems.**
 
 - *The employee is not offered* — They already have an Approved or Active contract: use Renew contract.
+- *"Renew or verify these credentials before renewing the contract"* — The nurse had a contract before, so this counts as a renewal: the credentials listed must be valid first (see Renew a contract).
 
 **Related.** [Nurses](#5-nurses) · [Eligibility](#8-eligibility)
 
 ![Contract approval](generated/flows/contract-lifecycle.svg)
 
-*The creator and the submitter can never approve. Only Approved and Active contracts cover a date.*
+*The creator and the submitter can never approve. Only Approved and Active contracts cover a date. A renewal needs valid credentials (the ended contract itself does not count); a first contract is not checked.*
 
 ### 6.2 Renew a contract
 
@@ -621,13 +624,17 @@ Employment contracts. A nurse is covered — and can be eligible — only on dat
 
 **Who can perform it.** HR Admin or System Admin within scope.
 
+**Before you start.**
+
+- Every required credential of the nurse's unit and position is valid: verified, in date, not suspended or revoked (a credential in its grace period, under a waiver or in a transition period also passes). Check Eligibility: only credential reasons matter here, not the contract reason.
+
 **Steps.**
 
 1. Open Contracts and click Renew contract.
 2. Choose the employee: the current contract is shown and the dates are pre-filled (the day after the current end, same length).
 3. Adjust the dates if needed and Submit.
 
-**System result.** A new Draft contract for the next period.
+**System result.** A new Draft contract for the next period. Refused with the list of credentials to renew or verify first if any required credential is not valid — checked again when the contract is approved.
 
 **Approval.** After Submit, a different HR administrator approves.
 
@@ -636,12 +643,14 @@ Employment contracts. A nurse is covered — and can be eligible — only on dat
 **Common problems.**
 
 - *A nurse is missing from the renewal list* — The list shows at most 500 employees in your scope; type to search.
+- *"Renew or verify these credentials before renewing the contract: …"* — The nurse renews the listed credentials on My Credentials and HR verifies them (or approves the renewals); then renew the contract. A nurse with no unit is refused too, because no credential can be checked: assign the unit first.
+- *Approve refused with the same message* — A credential expired or was suspended after the renewal was created. Bring it back in order, then approve.
 
 **Related.** [Eligibility](#8-eligibility) · [Notifications](#13-notifications)
 
 ![Contract approval](generated/flows/contract-lifecycle.svg)
 
-*The creator and the submitter can never approve. Only Approved and Active contracts cover a date.*
+*The creator and the submitter can never approve. Only Approved and Active contracts cover a date. A renewal needs valid credentials (the ended contract itself does not count); a first contract is not checked.*
 
 ### 6.3 Upload the signed contract copy
 
@@ -701,7 +710,7 @@ Employment contracts. A nurse is covered — and can be eligible — only on dat
 
 ![Contract approval](generated/flows/contract-lifecycle.svg)
 
-*The creator and the submitter can never approve. Only Approved and Active contracts cover a date.*
+*The creator and the submitter can never approve. Only Approved and Active contracts cover a date. A renewal needs valid credentials (the ended contract itself does not count); a first contract is not checked.*
 
 ### 6.5 Suspend, reinstate or terminate a contract
 
