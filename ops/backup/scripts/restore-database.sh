@@ -189,6 +189,19 @@ mkdir -p "${RESTORE_DIR}/pg_wal"
 [ -f "${INNER}/pg_wal.tar.gz" ] && tar -xzf "${INNER}/pg_wal.tar.gz" -C "${RESTORE_DIR}/pg_wal"
 chmod 700 "${RESTORE_DIR}"
 
+# Debian/Ubuntu clusters (the VPS) keep postgresql.conf, pg_hba.conf and pg_ident.conf
+# in /etc/postgresql/<ver>/<cluster>, outside PGDATA, so pg_basebackup does not carry
+# them and the recovery instance would refuse to start. Write minimal ones: the
+# pg_hba.conf admits only local-socket connections by OS user (peer), so nothing
+# reaches the restored copy over the network. Everything the restore needs is passed
+# on the command line or in postgresql.auto.conf.
+if [ ! -f "${RESTORE_DIR}/postgresql.conf" ]; then
+  log "no postgresql.conf in the backup (config kept outside PGDATA) — writing a minimal one"
+  echo "# written by restore-database.sh — the source cluster keeps its configuration outside PGDATA" > "${RESTORE_DIR}/postgresql.conf"
+fi
+[ -f "${RESTORE_DIR}/pg_hba.conf" ] || echo "local all all peer" > "${RESTORE_DIR}/pg_hba.conf"
+[ -f "${RESTORE_DIR}/pg_ident.conf" ] || : > "${RESTORE_DIR}/pg_ident.conf"
+
 # 3. Recovery configuration
 # restore_command is executed by the postmaster through /bin/sh, with PGDATA as its
 # working directory — not the kit root. Hence the absolute ${SCRIPTS_DIR}, and the
