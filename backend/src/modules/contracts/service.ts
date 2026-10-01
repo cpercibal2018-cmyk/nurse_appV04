@@ -13,6 +13,15 @@
 // Renewal timing (owner decision D-41): a renewal may be created and approved
 // while the current contract still covers — the next period sits next to it
 // (§4.2, C12). V03's C7 (renew only after coverage lapsed) is not used.
+//
+// Renewal needs valid credentials (owner decision, 2026-10-02): a contract for
+// someone who has had a contract before — a renewal, or a new contract after
+// the old one ended — is neither created nor approved while a MANDATORY
+// credential of their unit and position is missing, expired, unverified,
+// suspended or revoked (or they have no unit, so none can be checked). Only the
+// credential reasons count: the contract-coverage reason is ignored, or an
+// expired contract could never be renewed. Grace, waivers and transition
+// warnings pass, as they do for eligibility. A first contract is not gated.
 
 import { z } from 'zod';
 import type { Contract, ContractStatus } from '../../generated/prisma/client.js';
@@ -24,7 +33,7 @@ import type { Db, DbClient } from '../../lib/prisma.js';
 import { scanOrReject, type UploadScanner } from '../../lib/scanner.js';
 import { checkUpload } from '../../lib/uploads.js';
 import type { DocumentAccess } from '../documents/access.js';
-import { refreshEligibility } from '../eligibility/state.service.js';
+import { evaluateFor, refreshEligibility } from '../eligibility/state.service.js';
 import { HR_ROLES, inScope, viewerOf, type Viewer } from '../credentials/access.js';
 import { unitScope, type AuthContext } from '../users/access.js';
 
@@ -134,6 +143,18 @@ export function createContractService(db: Db, documents: DocumentAccess, scanner
     return emp;
   }
 
+  /** Owner decision 2026-10-02: no renewal while the credentials are not valid (see the header). */
+  async function assertCredentialsAllowRenewal(tx: DbClient, employeeId: number, exceptContractId?: number) {
+    const before = await tx.contract.findFirst({ where: { employeeId, ...(exceptContractId ? { id: { not: exceptContractId } } : {}) }, select: { id: true } });
+    if (!before) return; // a first contract
+    const result = await evaluateFor(tx, employeeId, riyadhDate());
+    const blocking = result.reasons.filter((r) => r.severity === 'BLOCK' && (r.templateId !== undefined || r.code === 'UNIT_NOT_ASSIGNED'));
+    if (blocking.length > 0) {
+      throw unprocessable('CREDENTIALS_BLOCK_RENEWAL', `Renew or verify these credentials before renewing the contract: ${blocking.map((r) => r.message).join('; ')}`,
+        { reasons: blocking.map((r) => ({ code: r.code, templateCode: r.templateCode ?? null, message: r.message })) });
+    }
+  }
+
   async function createDraft(tx: DbClient, auth: AuthContext, emp: { id: number; jobNumber: string }, start: string, end: string, event: string, extra: Record<string, unknown>, requestId?: string) {
     if (end <= start) throw unprocessable('CONTRACT_DATES_INVALID', 'The contract end must be after its start (C5)');
     const c = await tx.contract.create({
@@ -216,6 +237,7 @@ export function createContractService(db: Db, documents: DocumentAccess, scanner
         if (await tx.contract.findFirst({ where: { employeeId: emp.id, status: { in: [...COVERING] } }, select: { id: true } })) {
           throw conflict('EMPLOYEE_HAS_CONTRACT', 'This employee already has an approved or active contract — use renewal for the next period (C10)');
         }
+        await assertCredentialsAllowRenewal(tx, emp.id);
         const c = await createDraft(tx, auth, emp, body.startDate, body.endDate, 'CONTRACT_CREATED', {}, requestId);
         return { id: c.id };
       });
@@ -229,6 +251,7 @@ export function createContractService(db: Db, documents: DocumentAccess, scanner
         const emp = await assertEmployee(tx, auth, prior.employeeId);
         const latest = await tx.contract.findFirst({ where: { employeeId: prior.employeeId }, orderBy: { endDate: 'desc' }, select: { id: true } });
         if (latest?.id !== prior.id) throw unprocessable('NOT_LATEST_CONTRACT', 'Renew from the employee\'s latest contract');
+        await assertCredentialsAllowRenewal(tx, emp.id);
         const pre = renewalPeriodAfter({ startDate: dbDate(prior.startDate), endDate: dbDate(prior.endDate) });
         const c = await createDraft(tx, auth, emp, body.startDate ?? pre.start, body.endDate ?? pre.end, 'CONTRACT_RENEWAL_CREATED', { renewedFromId: prior.id }, requestId);
         return { id: c.id };
@@ -270,6 +293,7 @@ export function createContractService(db: Db, documents: DocumentAccess, scanner
             const status = coveringStatus(start, end, today);
             if (!status) throw unprocessable('CONTRACT_PERIOD_ENDED', 'This contract period has already ended');
             await assertNoOverlap(tx, c);
+            if (body.action === 'approve') await assertCredentialsAllowRenewal(tx, c.employeeId, c.id);
             next = status;
             if (body.action === 'approve') { data.approvedById = auth.user.id; data.approvedAt = new Date(); }
             break;

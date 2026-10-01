@@ -6,9 +6,9 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Express } from 'express';
 import { findChainBreaks } from '../src/lib/audit.js';
-import { addDays, riyadhDate } from '../src/lib/dates.js';
+import { addDays, riyadhDate, toDbDate } from '../src/lib/dates.js';
 import type { Db } from '../src/lib/prisma.js';
-import { FILES, makeEmployee, makeNurse, makeOrg, makeUser, openDb, signIn, TEST_URL, testApp, uniq } from './helpers.js';
+import { FILES, makeEmployee, makeNurse, makeOrg, makeTemplate, makeUser, openDb, signIn, TEST_URL, testApp, uniq } from './helpers.js';
 
 const describeDb = TEST_URL ? describe : describe.skip;
 const today = () => riyadhDate();
@@ -351,6 +351,43 @@ describeDb('workforce, employees and contracts', () => {
       await hr.upload(`/contracts/${overlapping.body.id}/documents`, FILES.pdf, 'application/pdf');
       await act(hr, overlapping.body.id, 'submit');
       expect((await act(hr2, overlapping.body.id, 'approve')).body.error.code).toBe('CONTRACT_PERIOD_OVERLAP');
+    });
+
+    it('a renewal needs valid credentials; the contract itself is ignored, and a first contract is not gated (owner decision 2026-10-02)', async () => {
+      const own = await db.unit.create({ data: { code: uniq('RC').toUpperCase().slice(0, 20), name: 'Renewal gate unit', departmentId: org.dept.id } });
+      const tpl = await makeTemplate(db);
+      await db.credentialRequirement.create({ data: { templateId: tpl.id, unitId: own.id, positionCode: null, policyStatus: 'MANDATORY' } });
+
+      // A first contract is not gated, whatever the credentials.
+      const newcomer = await makeEmployee(db, own.id);
+      expect((await idem(hr.post('/contracts', { employeeId: newcomer.id, startDate: today(), endDate: addDays(today(), 30) }))).status).toBe(201);
+
+      // The old contract has ended, so the nurse is INELIGIBLE for the contract too — that reason must not stop the renewal.
+      const emp = await makeEmployee(db, own.id);
+      const old = await db.contract.create({ data: { employeeId: emp.id, jobNumber: emp.jobNumber, status: 'Expired', startDate: toDbDate(addDays(today(), -400)), endDate: toDbDate(addDays(today(), -35)) } });
+      const refused = await idem(hr.post(`/contracts/${old.id}/renew`, {}));
+      expect(refused.status).toBe(422);
+      expect(refused.body.error.code).toBe('CREDENTIALS_BLOCK_RENEWAL');
+      expect(refused.body.error.details.reasons).toEqual([expect.objectContaining({ code: 'CREDENTIAL_MISSING', templateCode: tpl.code })]);
+      expect(JSON.stringify(refused.body.error.details.reasons)).not.toContain('NO_CONTRACT_COVERAGE');
+      // A "new" contract after the old one ended is a renewal too.
+      expect((await idem(hr.post('/contracts', { employeeId: emp.id, startDate: today(), endDate: addDays(today(), 30) }))).body.error.code).toBe('CREDENTIALS_BLOCK_RENEWAL');
+
+      const cred = await db.credential.create({ data: { employeeId: emp.id, templateId: tpl.id, status: 'Valid', trackingData: {}, expiryDate: toDbDate(addDays(today(), 200)) } });
+      const next = await idem(hr.post(`/contracts/${old.id}/renew`, {}));
+      expect(next.status).toBe(201);
+      await hr.upload(`/contracts/${next.body.id}/documents`, FILES.pdf, 'application/pdf');
+      await act(hr, next.body.id, 'submit');
+
+      // Checked again at approval: the credential expired in between.
+      await db.credential.update({ where: { id: cred.id }, data: { expiryDate: toDbDate(addDays(today(), -1)) } });
+      const blocked = await act(hr2, next.body.id, 'approve');
+      expect(blocked.body.error.code).toBe('CREDENTIALS_BLOCK_RENEWAL');
+      expect(blocked.body.error.details.reasons[0]).toMatchObject({ code: 'CREDENTIAL_EXPIRED', templateCode: tpl.code });
+      expect((await db.contract.findUniqueOrThrow({ where: { id: next.body.id } })).status).toBe('PendingApproval');
+
+      await db.credential.update({ where: { id: cred.id }, data: { expiryDate: toDbDate(addDays(today(), 200)) } });
+      expect((await act(hr2, next.body.id, 'approve')).body).toMatchObject({ status: 'Active', eligibility: 'ELIGIBLE' });
     });
 
     it('scope, own-contract and view rules', async () => {
