@@ -22,7 +22,9 @@ PG=15
 KIT=/opt/nurseapp/backup/scripts
 STORE=/srv/backup
 GNUPG=/var/lib/postgresql/.gnupg-backup
-PUB=/etc/nurseapp/backup.pub
+PUB=/etc/nurseapp/backup.pub          # root's copy (exit package, deploy.sh)
+PGPUB=/var/lib/postgresql/backup.pub  # postgres's copy: /etc/nurseapp is root-only (db-init.sh), so the
+                                      # archive_command and the nightly job (both run as postgres) cannot read PUB
 LOG=/var/log/aigh-backup.log
 
 gpg --show-keys --with-colons "$BACKUP_PUBKEY" | grep -q '^pub' || { echo "$BACKUP_PUBKEY is not a public key" >&2; exit 1; }
@@ -30,10 +32,11 @@ if gpg --show-keys --with-colons "$BACKUP_PUBKEY" | grep -q '^sec'; then echo "$
 
 echo "== 1. public key for the postgres user"
 install -m 644 "$BACKUP_PUBKEY" "$PUB"
+install -m 644 -o postgres -g postgres "$BACKUP_PUBKEY" "$PGPUB"
 install -d -m 700 -o postgres -g postgres "$GNUPG" "$STORE"
 install -d -m 700 -o postgres -g postgres "$STORE/full" "$STORE/wal"
 touch "$LOG" && chown postgres:postgres "$LOG" && chmod 640 "$LOG"
-sudo -u postgres gpg --batch --quiet --homedir "$GNUPG" --import "$PUB"
+sudo -u postgres gpg --batch --quiet --homedir "$GNUPG" --import "$PGPUB"
 
 echo "== 2. WAL archiving"
 cat > "/etc/postgresql/$PG/main/conf.d/20-archive.conf" <<CONF
@@ -41,7 +44,7 @@ cat > "/etc/postgresql/$PG/main/conf.d/20-archive.conf" <<CONF
 wal_level = replica
 archive_mode = on
 archive_timeout = 300   # D-58: at most 5 minutes of changes may be lost (B-22)
-archive_command = 'BACKUP_STORAGE_PATH=$STORE BACKUP_ENCRYPTION_KEY_PATH=$PUB GNUPGHOME=$GNUPG BACKUP_LOG_FILE=$LOG bash "$KIT/wal-archive.sh" %p %f'
+archive_command = 'BACKUP_STORAGE_PATH=$STORE BACKUP_ENCRYPTION_KEY_PATH=$PGPUB GNUPGHOME=$GNUPG BACKUP_LOG_FILE=$LOG bash "$KIT/wal-archive.sh" %p %f'
 max_wal_senders = 3
 CONF
 systemctl restart "postgresql@$PG-main"
@@ -54,7 +57,7 @@ echo "== 3. nightly base backup (01:00 Asia/Riyadh)"
 cat > /etc/default/aigh-backup <<ENV
 PGBIN=/usr/lib/postgresql/$PG/bin
 BACKUP_STORAGE_PATH=$STORE
-BACKUP_ENCRYPTION_KEY_PATH=$PUB
+BACKUP_ENCRYPTION_KEY_PATH=$PGPUB
 GNUPGHOME=$GNUPG
 BACKUP_LOG_FILE=$LOG
 DB_HOST=127.0.0.1
