@@ -6,7 +6,7 @@ import { lazy, type ComponentType, type LazyExoticComponent, type ReactNode } fr
 import {
   AuditOutlined, BellOutlined, CheckCircleOutlined, ClockCircleOutlined, DashboardOutlined,
   FileProtectOutlined, FundOutlined, IdcardOutlined, SafetyCertificateOutlined, ScheduleOutlined,
-  SettingOutlined, TeamOutlined, ApartmentOutlined, HistoryOutlined, UserOutlined, SafetyOutlined, LockOutlined,
+  SettingOutlined, TeamOutlined, ApartmentOutlined, HistoryOutlined, UserOutlined, SafetyOutlined, LockOutlined, BookOutlined,
 } from '@ant-design/icons';
 import type { TranslationKey } from '../lib/i18n';
 import type { AppRole } from '../types/api';
@@ -47,4 +47,10 @@ export const MODULES: AppModule[] = [
   page('/sessions', 'signInHistory', <HistoryOutlined />, () => import('../modules/auth/SessionsPage')),
   page('/security', 'twoFactor', <SafetyOutlined />, () => import('../modules/auth/SecurityPage')),
   page('/admin', 'admin', <SettingOutlined />, () => import('../modules/administration/AdministrationPage'), { requires: ['HR_ADMIN', 'SYSTEM_ADMIN'] }),
+  page('/guidelines', 'guidelines', <BookOutlined />, () => import('../modules/guidelines/GuidelinesPage')), // the user manual, for every signed-in user
 ];
+
+/** Whether a page appears in this user's menu (a UI hint; the server authorizes every request). */
+export function isModuleVisible(m: AppModule, can: { holdsAssignment: (...roles: AppRole[]) => boolean; isEmployee: boolean }) {
+  return (!m.requires || can.holdsAssignment(...m.requires)) && (!m.employeeOnly || can.isEmployee);
+}
