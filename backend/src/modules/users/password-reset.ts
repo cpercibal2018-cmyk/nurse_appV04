@@ -64,9 +64,10 @@ export function createPasswordResetService({ db, passwords, clientThrottle, acco
     const validityAr = mode === 'SELF' ? `${SELF_MINUTES} دقيقة` : `${ASSISTED_HOURS} ساعة`;
     const mail = renderEmail({
       title: 'Reset your AIGH Nursing Workforce password',
-      message: `A password reset was requested for your account. Open the link below within ${validity} and choose a new password. The link works once, and all your current sessions will be signed out.\n\n${link}\n\nIf you did not ask for this, ignore this e-mail — your password stays the same — and tell HR.`,
+      message: `A password reset was requested for your account. Use the link below within ${validity} and choose a new password. The link works once, and all your current sessions will be signed out. If you did not ask for this, ignore this e-mail — your password stays the same — and tell HR.`,
       titleAr: 'إعادة تعيين كلمة المرور',
-      messageAr: `طُلبت إعادة تعيين كلمة مرور حسابك. افتح الرابط التالي خلال ${validityAr} واختر كلمة مرور جديدة. يعمل الرابط مرة واحدة.\n\n${link}\n\nإذا لم تطلب ذلك فتجاهل هذه الرسالة وأبلغ الموارد البشرية.`,
+      messageAr: `طُلبت إعادة تعيين كلمة مرور حسابك. استخدم الرابط أعلاه خلال ${validityAr} واختر كلمة مرور جديدة. يعمل الرابط مرة واحدة. إذا لم تطلب ذلك فتجاهل هذه الرسالة وأبلغ الموارد البشرية.`,
+      link,
     });
     await tx.emailOutbox.create({
       data: { toAddress: user.email, subject: mail.subject, bodyText: mail.text, bodyHtml: mail.html, priority: 'HIGH', eventKey: `password-reset:${row.id}` },
