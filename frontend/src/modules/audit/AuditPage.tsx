@@ -7,10 +7,11 @@ import { useTranslation } from 'react-i18next';
 import { describeApiError } from '../../lib/errors';
 import { useAudit, useRequestLog, useVerify, type AuditFilter, type AuditRow, type RequestLogFilter, type RequestLogRow } from './api';
 
+import { GuideHelp } from '../guidelines/GuideHelp';
 export default function AuditPage() {
   const { t } = useTranslation();
   return (
-    <Card title={t('audit')}>
+    <Card title={<>{t('audit')} <GuideHelp section="audit" /></>}>
       <Tabs destroyOnHidden items={[
         { key: 'trail', label: t('auditTrail'), children: <AuditTrail /> },
         { key: 'requests', label: t('requestLog'), children: <RequestLog /> },

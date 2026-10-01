@@ -19,6 +19,7 @@ import { TelegramInboxTab } from './TelegramInboxTab';
 import { ScfhsRegistryTab } from './ScfhsRegistryTab';
 import { BadgeSimulatorTab } from './BadgeSimulatorTab';
 
+import { GuideHelp } from '../guidelines/GuideHelp';
 function MatrixTab() {
   const { t } = useTranslation();
   const m = useMatrix();
@@ -62,7 +63,7 @@ export default function AdministrationPage() {
   ];
 
   return (
-    <Card title={t('admin')}>
+    <Card title={<>{t('admin')} <GuideHelp section="administration" /></>}>
       <Tabs items={items} destroyOnHidden />
     </Card>
   );

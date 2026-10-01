@@ -11,6 +11,7 @@ import { describeApiError } from '../../lib/errors';
 import { useUnits } from '../administration/api';
 import { useGaps, useOwnEvents, type Gap } from '../scheduling/api';
 
+import { GuideHelp } from '../guidelines/GuideHelp';
 const GAP_COLOR: Record<Gap['status'], string> = { UPCOMING: 'default', PENDING: 'blue', PRESENT: 'green', MISSING: 'red', INELIGIBLE_ON_DUTY: 'magenta' };
 const time = (iso: string | null) => (iso ? dayjs(iso).format('DD MMM HH:mm') : '—');
 
@@ -26,7 +27,7 @@ export default function AttendancePage() {
   const own = useOwnEvents(from, dayjs().format('YYYY-MM-DD'), !staff);
 
   return (
-    <Card title={t('attendance')}>
+    <Card title={<>{t('attendance')} <GuideHelp section="attendance" /></>}>
       <Alert type="info" showIcon title={t('attendanceFeedPending')} style={{ marginBottom: 12 }} />
       {!staff ? (
         <Table rowKey="id" size="small" loading={own.isLoading} dataSource={own.data?.items} pagination={{ pageSize: 30 }}

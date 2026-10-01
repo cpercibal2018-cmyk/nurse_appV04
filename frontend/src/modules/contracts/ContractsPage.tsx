@@ -11,6 +11,7 @@ import { usePermissions } from '../../hooks/usePermissions';
 import { describeApiError } from '../../lib/errors';
 import { toHijriShort } from '../../lib/hijri';
 import { http } from '../../services/http';
+import { GuideHelp } from '../guidelines/GuideHelp';
 import {
   CONTRACT_STATUSES, NEEDS_REASON, TRANSITIONS, useContractAction, useContractDocs, useContracts, useCreatable, useRenewable,
   type ContractAction, type ContractRow, type ContractStatus, type Renewable,
@@ -72,7 +73,7 @@ export default function ContractsPage() {
   const actionsFor = (r: ContractRow) => (Object.keys(TRANSITIONS) as ContractAction[]).filter((a) => TRANSITIONS[a].includes(r.status));
 
   return (
-    <Card title={t('contracts')} extra={hr && (
+    <Card title={<>{t('contracts')} <GuideHelp section="contracts" /></>} extra={hr && (
       <Space>
         <Button type="primary" onClick={() => openPicker('new')}>{t('newContract')}</Button>
         <Button onClick={() => openPicker('renew')}>{t('renewContract')}</Button>

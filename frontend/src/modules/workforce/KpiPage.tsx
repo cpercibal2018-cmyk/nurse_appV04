@@ -7,6 +7,7 @@ import dayjs from 'dayjs';
 import { useTranslation } from 'react-i18next';
 import { SHIFTS, useKpi, type Band, type ShiftType } from './api';
 
+import { GuideHelp } from '../guidelines/GuideHelp';
 const BAND_COLOR: Record<Band, string> = { Standard: 'green', Distress: 'gold', Failing: 'orange', Failed: 'red' };
 
 export default function KpiPage() {
@@ -17,7 +18,7 @@ export default function KpiPage() {
   const band = (b: Band) => <Tag color={BAND_COLOR[b]}>{t(`band_${b}`)}</Tag>;
 
   return (
-    <Card title={t('kpi')}>
+    <Card title={<>{t('kpi')} <GuideHelp section="kpi" /></>}>
       <Flex gap={12} wrap style={{ marginBottom: 16 }}>
         <DatePicker value={dayjs(date)} allowClear={false} onChange={(d) => d && setDate(d.format('YYYY-MM-DD'))} />
         <Segmented value={shift} onChange={(v) => setShift(v as ShiftType)} options={SHIFTS.map((s) => ({ value: s, label: t(`shift_${s}`) }))} />
