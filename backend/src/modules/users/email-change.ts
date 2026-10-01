@@ -59,8 +59,8 @@ export function createEmailChangeService({ db, passwords, clientThrottle, accoun
     if (other) throw emailInUse();
   }
 
-  function mail(to: string, title: string, message: string, titleAr: string, messageAr: string, eventKey: string) {
-    const m = renderEmail({ title, message, titleAr, messageAr });
+  function mail(to: string, title: string, message: string, titleAr: string, messageAr: string, eventKey: string, link?: string) {
+    const m = renderEmail({ title, message, titleAr, messageAr, link });
     return { toAddress: to, subject: m.subject, bodyText: m.text, bodyHtml: m.html, priority: 'HIGH' as const, eventKey };
   }
 
@@ -76,10 +76,10 @@ export function createEmailChangeService({ db, passwords, clientThrottle, accoun
     await tx.emailOutbox.createMany({
       data: [
         mail(newEmail, 'Confirm your new AIGH Nursing Workforce sign-in e-mail',
-          `A request was made to use this address to sign in to AIGH Nursing Workforce. Open the link below within ${EMAIL_CHANGE_MINUTES} minutes to confirm. Until then nothing changes. After confirming, sign in with this address; all current sessions are signed out.\n\n${link}\n\nIf you did not expect this, ignore this e-mail.`,
+          `A request was made to use this address to sign in to AIGH Nursing Workforce. Use the link below within ${EMAIL_CHANGE_MINUTES} minutes to confirm. Until then nothing changes. After confirming, sign in with this address; all current sessions are signed out. If you did not expect this, ignore this e-mail.`,
           'تأكيد البريد الإلكتروني الجديد لتسجيل الدخول',
-          `طُلب استخدام هذا العنوان لتسجيل الدخول إلى نظام القوى العاملة التمريضية. افتح الرابط التالي خلال ${EMAIL_CHANGE_MINUTES} دقيقة للتأكيد. لن يتغير شيء قبل ذلك.\n\n${link}\n\nإذا لم تتوقع هذه الرسالة فتجاهلها.`,
-          `email-change:${row.id}:confirm`),
+          `طُلب استخدام هذا العنوان لتسجيل الدخول إلى نظام القوى العاملة التمريضية. استخدم الرابط أعلاه خلال ${EMAIL_CHANGE_MINUTES} دقيقة للتأكيد. لن يتغير شيء قبل ذلك. إذا لم تتوقع هذه الرسالة فتجاهلها.`,
+          `email-change:${row.id}:confirm`, link),
         mail(user.email, 'A change of your sign-in e-mail was requested',
           `A request was made to change the sign-in e-mail of your AIGH Nursing Workforce account to ${maskEmail(newEmail)}. It takes effect only if confirmed from that address within ${EMAIL_CHANGE_MINUTES} minutes. If this was not you, change your password and tell HR at once.`,
           'طُلب تغيير البريد الإلكتروني لتسجيل الدخول',

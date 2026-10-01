@@ -38,6 +38,7 @@ describeDb('registration by invitation (spec §3.2)', () => {
     const mail = await db.emailOutbox.findFirstOrThrow({ where: { eventKey: `invitation:${invitationId}` } });
     const m = /https:\/\/nurse\.aigh\.sa\/claim#token=([A-Za-z0-9_-]{43})/.exec(mail.bodyText);
     expect(mail.bodyHtml).toContain(m![1]);
+    expect(mail.bodyHtml).toContain(`<a href="https://nurse.aigh.sa/claim#token=${m![1]}"`); // clickable, not plain text
     return { token: m![1]!, mail };
   }
 

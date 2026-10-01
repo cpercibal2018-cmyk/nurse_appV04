@@ -36,6 +36,18 @@ describe('e-mail templates and settings', () => {
     expect(m.html).not.toMatch(/<img|<script|https?:\/\/(?!nurse\.aigh\.sa)/);
   });
 
+  it('turns `link` into a real anchor (button plus the plain address), once, between the English and Arabic text', () => {
+    const url = 'https://nurse.aigh.sa/claim#token=abc-DEF_123';
+    const m = renderEmail({ title: 'Invite', message: 'Use the link below.', titleAr: 'دعوة', messageAr: 'استخدم الرابط أعلاه.', link: url });
+    expect(m.html.match(/<a href="https:\/\/nurse\.aigh\.sa\/claim#token=abc-DEF_123"/g)).toHaveLength(2); // button + fallback address
+    expect(m.html.indexOf('Use the link below.')).toBeLessThan(m.html.indexOf('<a href='));
+    expect(m.html.indexOf('<a href=')).toBeLessThan(m.html.indexOf('استخدم الرابط أعلاه.'));
+    expect(m.text).toContain(`Open: ${url}`);
+    expect(m.text.indexOf('Open:')).toBeLessThan(m.text.indexOf('دعوة'));
+    // a URL written inside `message` is escaped text, not an anchor: callers must use `link`
+    expect(renderEmail({ title: 't', message: `see ${url}` }).html).not.toContain('<a href=');
+  });
+
   it('validates the SMTP settings', () => {
     const base = { DATABASE_URL: 'postgresql://x@y/z', JWT_SECRET: 'x'.repeat(32) };
     expect(() => loadEnv({ ...base, SMTP_HOST: 'smtp.aigh.local' })).toThrow(/SMTP_FROM: required/);

@@ -125,9 +125,10 @@ export function createInvitationService({ db, passwords, throttle, baseUrl, mail
         const link = `${baseUrl.replace(/\/$/, '')}/claim#token=${token}`;
         const mail = renderEmail({
           title: 'Your AIGH Nursing Workforce account',
-          message: `You have been invited to create your account. Open the link below within ${INVITATION_HOURS} hours, enter your Job Number, and choose a password. The link works once.\n\n${link}\n\nIf you did not expect this e-mail, ignore it.`,
+          message: `You have been invited to create your account. Use the link below within ${INVITATION_HOURS} hours, enter your Job Number, and choose a password. The link works once. If you did not expect this e-mail, ignore it.`,
           titleAr: 'حسابك في نظام القوى العاملة التمريضية',
-          messageAr: `تمت دعوتك لإنشاء حسابك. افتح الرابط التالي خلال ${INVITATION_HOURS} ساعة، وأدخل رقمك الوظيفي، واختر كلمة مرور. يعمل الرابط مرة واحدة.\n\n${link}`,
+          messageAr: `تمت دعوتك لإنشاء حسابك. استخدم الرابط أعلاه خلال ${INVITATION_HOURS} ساعة، وأدخل رقمك الوظيفي، واختر كلمة مرور. يعمل الرابط مرة واحدة.`,
+          link,
         });
         await tx.emailOutbox.create({
           data: { toAddress: email, subject: mail.subject, bodyText: mail.text, bodyHtml: mail.html, priority: 'HIGH', eventKey: `invitation:${inv.id}` },
