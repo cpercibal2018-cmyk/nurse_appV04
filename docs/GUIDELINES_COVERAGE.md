@@ -1,0 +1,93 @@
+# Guidelines coverage matrix
+
+Every user-facing task in V04, traced from the screen to the rule that enforces it, and the Guidelines section that explains it. Built by reading the code on 2026-10-01 (release after `cb43df5`); the in-app Guidelines (`/guidelines`) and the [user manual](USER_MANUAL.md) are written from this table.
+
+**Status:** **Implemented** — on a screen and enforced by the server. **Partial** — the server supports it but the screen does not offer it (an API client or a later screen would), or part of it is missing. **Planned** — not available; said so in the Guidelines.
+
+Permissions are from [`permissions.ts`](../backend/src/modules/users/permissions.ts); "HR" = HR Admin, "SA" = System Admin (counts only while elevated, R13), "Sup" = Supervisor, "Emp" = any signed-in account linked to an employee. Scope (unit / department / hospital-wide) narrows every staff permission.
+
+## Nurses, contracts, credentials, eligibility
+
+| Module | Page / route | Task | Role | Permission (route) | Workflow / rule | Approval | Next step | Guidelines section | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| Nurses | `/nurses` | Search, view a nurse | HR, SA, Sup | `employees.read` (`GET /employees`) | Supervisor sees the baseline view (private fields hidden, D-36) | — | Contracts, Credentials | Nurses | Implemented |
+| Nurses | `/nurses` → Onboard employee | Onboard (employee + Draft contract) | HR, SA | `employees.write` (`POST /employees/onboard`) | One transaction; default Unassigned / SN (E6, E10) | Contract needs a second HR approver (D-30) | Contracts → submit | Nurses | Implemented |
+| Nurses | `/nurses` → Edit | Edit master record | HR, SA | `employees.write` (`PATCH /employees/:id`) | Unit move re-evaluates eligibility, returns invalid future shifts to Draft | — | Eligibility | Nurses | Implemented |
+| Nurses | `/nurses` → Change position | Change position | HR only | `employees.position` (`POST /employees/:id/position`) | Reason required; audited from → to (E9) | — | Eligibility | Nurses | Implemented |
+| Nurses | `/nurses` → Delete | Soft delete | HR, SA | `employees.write` (`DELETE /employees/:id`) | Reason ≥ 10; never own record (D-37); becomes INELIGIBLE | — | — | Nurses | Implemented |
+| Nurses | `/nurses` → Login account | Send invitation | HR, SA | `accounts.write` (`POST /employees/:id/invitations`) | Needs e-mail on, an Approved/Active contract, a valid contact e-mail; link valid 72 h | — | Employee claims (`/claim`) | Nurses | Implemented |
+| Contracts | `/contracts` | New contract | HR, SA | `contracts.manage` (`POST /contracts`) | Draft; only employees with no Approved/Active contract (C6) | — | Upload copy, submit | Contracts | Implemented |
+| Contracts | `/contracts` | Renew contract | HR, SA | `contracts.manage` (`POST /contracts/:id/renew`) | Prefill: day after the prior end, same length (C8) | — | Upload copy, submit | Contracts | Implemented |
+| Contracts | `/contracts` → Contract copy | Upload signed copy | HR, SA | `contracts.manage` (`POST /contracts/:id/documents`) | PDF, scanned; required before submit (C11) | — | Submit | Contracts | Implemented |
+| Contracts | `/contracts` | Submit / Return / Approve / Suspend / Reinstate / Terminate | HR, SA | `contracts.manage` (`POST /contracts/:id/transition`) | Map D-29; creator or submitter cannot approve (D-30); reason for return, suspend, reinstate, terminate | Approve = second HR person | Eligibility | Contracts | Implemented |
+| Contracts | `/contracts` | Own contract (read, copy) | Emp | `GET /contracts/me` | Reduced view | — | — | Self-service | Implemented |
+| Credentials | `/credentials` → Records | Search by identifier number | HR | `credentials.read` (`GET /credentials?identifier=`) | ≥ 3 characters, audited, never stored (D-54) | — | — | Credentials | Implemented |
+| Credentials | `/credentials` → Records / Review queue | Verify | HR, SA | `credentials.manage` (`POST /credentials/:id/verify`) | Only PendingVerification; expiry date and (if required) clean evidence needed; not own (D-26) | — | Eligibility recalculated | Credentials | Implemented |
+| Credentials | `/credentials` → Records | Approve / reject renewal | HR, SA | `credentials.manage` (`…/renewal/approve`, `…/renewal/reject`) | Approve promotes staged data + evidence, closes grace; reject needs a reason | — | Eligibility recalculated | Credentials | Implemented |
+| Credentials | `/credentials` → Records | Suspend / revoke | HR, SA | `credentials.manage` (`…/suspend`, `…/revoke`) | Reason required; immediate ineligibility; revoked is final | — | Scheduling (shifts return to Draft) | Credentials | Implemented |
+| Credentials | `/credentials` → Evidence | Upload, view, download evidence | HR, SA, owner | `POST/GET /credentials/:id/documents` | PDF/JPEG/PNG/WebP ≤ 10 MB, virus-scanned; CLEAN only; single-use 60 s link; supervisors never (D5) | HR review | Verify / renewal decision | Credentials | Implemented |
+| Credentials | `/credentials` → SCFHS | SCFHS check now / history | HR, SA | `credentials.manage` (`POST /credentials/:id/scfhs-check`) | Types with "Check with SCFHS"; also on submission and nightly; mismatch → HR notified or auto-suspend | — | Review the record | Credentials | Implemented (simulated registry until SCFHS access) |
+| Credentials | `/credentials` → Requirements | Add / delete requirement | HR, SA | `requirements.write` (`POST`, `DELETE /credential-requirements`) | Unit + optional position + type + MANDATORY / TRANSITION / OPTIONAL; re-evaluates affected nurses at once | — | Eligibility | Credentials | Implemented |
+| Credentials | `/credentials` → Requirements | Edit a requirement in place; bulk add | HR, SA | `PUT /credential-requirements/:id`, `POST …/bulk` | — | — | — | Credentials | Partial (API only; on screen: delete and add again) |
+| Credentials | `/credentials` → Catalog | Add / edit credential type | HR, SA (hospital-wide) | `credentials.catalog.write` | Reason ≥ 10; PENDING_APPROVAL (D-24) | Second hospital-wide admin | Approvals | Credentials | Implemented |
+| Credentials | `/credentials` → Categories | Add / edit category | HR, SA (hospital-wide) | `credentials.catalog.write` | Reason ≥ 10; PENDING_APPROVAL (P8) | Second hospital-wide admin | Approvals | Credentials | Implemented |
+| Credentials | (none) | HR records a credential for a nurse | HR, SA | `credentials.manage` (`POST /credentials`) | Starts PendingVerification | — | Verify | Credentials | Partial (API only; nurses add their own under My Credentials) |
+| Credentials | `/my-credentials` | Add own credential, upload evidence | Emp | `credentials.self` (`POST /credentials/me`) | Starts PendingVerification | HR verifies | Verify | Self-service, Credentials | Implemented |
+| Credentials | `/my-credentials` | Renew own credential | Emp | `POST /credentials/:id/renewal` | Valid / ExpiringSoon / Expired only; new expiry required; current stays usable until its own expiry | HR approves / rejects | Eligibility | Credentials | Implemented |
+| Eligibility | `/eligibility` | Read status and reasons | HR, SA, Sup | `eligibility.read` | Stored state for today; engine order L4 | — | Fix the source record | Eligibility | Implemented |
+| Eligibility | `/eligibility` | Grant emergency waiver | Sup, HR Admin | `waivers.write` (`POST /waivers`) | One blocking credential type, ≤ 72 h, not own; audited HIGH | — | Scheduling | Eligibility | Implemented |
+| Eligibility | (none) | Recalculate one nurse now | HR, SA | `credentials.manage` (`POST /eligibility/:id/refresh`) | Normally automatic on every change | — | — | Eligibility | Partial (API only; recalculation is automatic) |
+
+## Workforce, scheduling, attendance, notifications
+
+| Module | Page / route | Task | Role | Permission (route) | Workflow / rule | Approval | Next step | Guidelines section | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| Workforce | `/workforce` → Units | View units, beds, summary | Everyone | `workforce.read` | Hospital total computed live (W3) | — | — | Workforce | Implemented |
+| Workforce | `/workforce` → Units | Add / edit unit (department, critical area, active) | HR, SA (hospital-wide) | `workforce.write` | Deactivation refused while it has active employees (W2) | — | Coverage targets | Workforce | Implemented |
+| Workforce | `/workforce` → Units | Change beds; bed history | HR, SA (unit scope); history also Sup | `workforce.write`, `workforce.bedHistory` | 0–500, reason required, logged before → after (W4) | — | KPI | Workforce | Implemented |
+| Workforce | `/workforce` → Units | Import units (CSV) | HR, SA (hospital-wide) | `POST /units/import` | Preview first; never deletes or deactivates | — | — | Workforce | Implemented |
+| Workforce | (none) | Bulk bed update | HR, SA | `PUT /units/bed-capacity/bulk` | Per-row result (W5) | — | — | Workforce | Partial (API only) |
+| Workforce | `/workforce` → Departments | Add / edit / deactivate | HR, SA (hospital-wide) | `workforce.write` | Deactivation refused while it has active units (W1) | — | — | Workforce | Implemented |
+| Workforce | `/workforce` → Positions | Add / edit position, schedulable flag | HR, SA (hospital-wide) | `workforce.write` | Changing "schedulable" re-evaluates holders (W7) | — | Eligibility | Workforce | Implemented |
+| Workforce | `/workforce` → Coverage targets | Set minimum staff per unit and shift | HR, SA (unit scope) | `PUT /coverage-targets` | Empty = unspecified, never zero (W8) | — | Scheduling, KPI | Workforce | Implemented |
+| KPI | `/kpi` | Nurse-to-bed KPI A / B | HR, SA, Sup | `kpi.read` | Published assignments ÷ active beds; bands unverified (D-11) | — | — | KPI | Implemented |
+| Scheduling | `/scheduling` | Board, coverage, pool | Sup (write); HR, SA (read) | `roster.read`, `roster.write` | Live engine per shift date (L7); home unit only (D-32) | — | — | Scheduling | Implemented |
+| Scheduling | `/scheduling` | Add draft / remove draft / cancel published shift | Sup | `POST`, `DELETE /shift-assignments` | One slot per nurse per date + shift (S1); no past dates; cancel needs a reason | — | Publish | Scheduling | Implemented |
+| Scheduling | `/scheduling` | Auto-fill | Sup | `POST /roster/auto-generate` | Preview, then drafts only; heuristic, not policy | — | Review, publish | Scheduling | Implemented |
+| Scheduling | `/scheduling` | Publish week | Sup | `POST /roster/publish` | Re-validates every draft; ineligible stay Draft; grace / waiver reliance recorded | — | Attendance | Scheduling | Implemented |
+| Scheduling | `/scheduling` | Own shifts and home-unit schedule | Emp | `GET /roster/me` | Published only | — | — | Self-service | Implemented |
+| Attendance | `/attendance` | Gap view (UPCOMING … INELIGIBLE_ON_DUTY) | HR, SA, Sup | `attendance.read` | `classifyShift`; alerts every 15 min to supervisors | — | Act on MISSING / INELIGIBLE_ON_DUTY | Attendance | Implemented (feed: see next row) |
+| Attendance | (badge system) | Clock events in | API client | `attendance.ingest` (`POST /attendance/events`) | Badge system as an API client (D-65) | — | Gap view | Attendance | Partial (interface built; hospital PACS not connected, D-33) |
+| Attendance | `/attendance` | Own clock events | Emp | `GET /attendance/me` | Last 30 days | — | — | Self-service | Implemented |
+| Attendance | — | Manual clock-in / correction | — | — | — | — | — | Attendance | Planned (not in V04) |
+| Notifications | `/notifications`, header bell | List, unread, mark read, mark all read | Everyone | own rows | In-app; e-mail copy when SMTP is set; Telegram ping when linked | — | The record the notice is about | Notifications | Implemented |
+
+## Administration, audit, security
+
+| Module | Page / route | Task | Role | Permission (route) | Workflow / rule | Approval | Next step | Guidelines section | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| Admin | `/admin` → Accounts | New account, search, activate / deactivate | HR, SA | `accounts.write` | Initial password 12–72; not own account; not break-glass | — | Role assignments | Administration | Implemented |
+| Admin | `/admin` → Accounts | Send reset link / Change e-mail / Reset two-factor / Telegram link | HR, SA | `accounts.write` | Reset link 24 h; e-mail change link 30 min to the new address | — | — | Administration | Implemented |
+| Admin | `/admin` → Role assignments | Grant / revoke role | HR, SA | `roles.write` | Reason ≥ 20 / ≥ 10; one row per role + scope type (R7); no self (R2); Sup ≤ 90 d, others ≤ 365 d | SA, or HR Admin hospital-wide: second admin | Approvals | Administration | Implemented |
+| Admin | (none) | Change the scope of an existing assignment | HR, SA | `PATCH /role-assignments/:id` | Upgrade to SYSTEM is four-eyes | Second admin | — | Administration | Partial (API only; on screen: revoke and grant again) |
+| Admin | `/admin` → Approvals | Approve / reject / withdraw | HR, SA | `approvals.decide` | Not own request (R11); reason ≥ 5 | — | Change applied | Approvals | Implemented |
+| Admin | `/admin` → Hospital baseline import | Preview, request import | HR, SA (hospital-wide) | `baseline.import` | JSON; CREATE / UNCHANGED / CONFLICT / REJECTED; reason ≥ 10 | Second hospital-wide admin | Approvals | Administration | Implemented |
+| Admin | `/admin` → Data protection | Personal-data requests queue | HR, SA (scope) | `pdpl.requests`, `pdpl.erase` | Review, approve, complete, decline; erasure SA only, not the logger, job number typed | Erasure: SA | — | Administration | Implemented |
+| Admin | `/admin` → Data protection | Processing register; DPO sign-off | Edit SA; sign-off HR, SA | `pdpl.manage`, `pdpl.signoff` | Reason ≥ 10; audited HIGH | — | — | Administration | Implemented |
+| Admin | `/admin` → Eligibility logic | Shadow-mode findings, promote, retire | Decide HR Admin (hospital-wide); read HR, SA | `eligibility.logic.*` | Promote after 7 days without disagreement or all approved | — | — | Administration | Implemented |
+| Admin | `/admin` → Privileged access | Elevate / end elevation | SA | `/pam/elevate`, `/pam/end` | Reason ≥ 10; 1–4 hours | — | Admin tabs, Audit | Administration, Security | Implemented |
+| Admin | `/admin` → Background jobs | Schedules, last runs, run now, business health | SA | `jobs.read`, `jobs.run` | — | — | — | Administration | Implemented |
+| Admin | `/admin` → Telegram inbox / SCFHS registry / Badge simulator | Demonstration tools | SA | `devconsole.*` | Simulated data only | — | — | Administration | Implemented (demo tools) |
+| Admin | `/admin` → API clients | Register, replace secret, revoke | SA | `apiclients.manage` | Secret shown once | — | — | Administration | Implemented |
+| Admin | `/admin` → Access matrix | Read the access table | Everyone in Administration | `matrix.read` | Spec §8.1 | — | — | Roles and permissions | Implemented |
+| Audit | `/audit` | Search audit trail; verify chain; request log | SA (elevated) | `audit.read` | Hash chain written by the database | — | — | Audit | Implemented |
+| Security | `/security`, user menu | Change password; two-factor; recovery codes; sign-in e-mail; Telegram | Everyone | own account | Two-factor required for SA, HR Admin, Supervisor | — | — | Security | Implemented |
+| Security | `/sessions` | Own sign-in history | Everyone | own sessions | — | — | — | Security | Implemented |
+| Security | `/login` | Sign in; forgot password; claim invitation | Everyone | public | 5 wrong attempts per account / 20 per network in 15 min | — | — | Getting started, Security | Implemented |
+| Self-service | `/my-profile` | Read profile, edit own phones | Emp | `PATCH /employees/me/contact` | E.164 numbers (D-35) | — | — | Self-service | Implemented |
+| Self-service | `/my-data` | Personal-data request | Emp | `POST /pdpl/requests/me` | Answer within 30 days | HR / SA | Download package | Self-service | Implemented |
+| Dashboard | `/` | Welcome, API and database status | Everyone | `GET /health` | — | — | — | Dashboard | Partial (workforce figures planned) |
+
+## Not covered because they are not user tasks
+
+FHIR read API (`/fhir/*`, for other systems with an API client), the exit package (a server command, `ops/vps/README.md` §8) and the background jobs' own work are described where a user meets their result, not as tasks.
