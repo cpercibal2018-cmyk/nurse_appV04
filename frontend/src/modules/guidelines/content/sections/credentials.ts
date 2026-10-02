@@ -47,7 +47,7 @@ export const CREDENTIALS: GuideSection[] = [
     ],
     callouts: [
       { kind: 'warning', text: 'Nobody verifies, approves, rejects, suspends or revokes their own credential.' },
-      { kind: 'info', text: 'Recording a credential for a nurse is done by the nurse on My Credentials. HR recording it on the nurse\'s behalf exists in the API but not yet on this screen.' },
+      { kind: 'info', text: 'A credential is recorded either by the nurse on My Credentials or by HR on the nurse\'s behalf (Records → Record credential for a nurse). Either way it starts Pending verification and counts only after HR verifies it.' },
     ],
     tasks: [
       {
@@ -68,6 +68,30 @@ export const CREDENTIALS: GuideSection[] = [
         problems: [{ problem: 'No Evidence / SCFHS / Verify buttons', fix: 'You are a supervisor (compliance view), or the record is outside your HR scope.' }],
         related: ['eligibility', 'self-service'],
         keywords: ['credential status', 'licence', 'license', 'certificate', 'expiry', 'identify credential', 'search iqama'],
+      },
+      {
+        id: 'record-for-nurse',
+        title: 'Record a credential for a nurse',
+        status: 'IMPLEMENTED',
+        purpose: 'Put a nurse\'s licence or certificate on record when the nurse cannot do it themselves (for example when loading a unit\'s staff).',
+        who: 'HR Admin and System Admin, for nurses in their scope.',
+        roles: ['HR_ADMIN', 'SYSTEM_ADMIN'],
+        before: ['The nurse\'s staff record exists.', 'The document (PDF, JPEG, PNG or WebP, at most 10 MB) and its details.'],
+        steps: [
+          'Open Credentials → Records and click Record credential for a nurse.',
+          'Search the nurse by job number or name, choose the credential type, fill in the fields the type asks for (with the expiry date for a type that expires) and Submit.',
+          'The Evidence panel opens for the new credential: Upload evidence and choose the file.',
+        ],
+        result: '"Recorded — now upload the evidence". The credential is Pending verification and appears in the Review queue; it does not count for eligibility yet.',
+        approval: 'HR verifies it on the Review queue (Verify). Nobody verifies their own credential.',
+        next: 'Review queue → Evidence → Verify.',
+        problems: [
+          { problem: 'The nurse is not offered', fix: 'The nurse is outside your HR scope, or the search needs more of the job number or name.' },
+          { problem: '"This credential type expires: record its expiry date before verifying"', fix: 'The expiry date was left empty. Record the credential again with its expiry date.' },
+        ],
+        related: ['self-service', 'eligibility'],
+        flow: 'credential-new',
+        keywords: ['add credential for nurse', 'record credential', 'hr add licence', 'enter certificate', 'load credentials'],
       },
       {
         id: 'review-queue',

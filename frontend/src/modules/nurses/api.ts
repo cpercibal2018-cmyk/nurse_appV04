@@ -15,8 +15,8 @@ export interface EmployeeRow {
 
 export interface EmployeeFilter { q?: string; unitId?: number; page: number }
 
-export const useEmployees = (f: EmployeeFilter) => useQuery({
-  queryKey: ['employees', f], placeholderData: keepPreviousData,
+export const useEmployees = (f: EmployeeFilter, enabled = true) => useQuery({
+  queryKey: ['employees', f], placeholderData: keepPreviousData, enabled,
   queryFn: () => {
     const p = new URLSearchParams({ page: String(f.page), pageSize: '50' });
     if (f.q) p.set('q', f.q);

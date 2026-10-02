@@ -10,7 +10,8 @@ import { describeApiError } from '../../lib/errors';
 import { useUnits } from '../administration/api';
 import { usePositions } from '../workforce/api';
 import { FIELD_TYPES, PDPL_CATEGORIES, useCategories, useCredentialAction, useCredentials, useRequirements, useTemplates, type Category, type CredentialRow, type Requirement, type Template } from './api';
-import { CredentialStatusTag, DocumentsDrawer, LifecycleTag } from './components';
+import { CredentialStatusTag, DocumentsDrawer, LifecycleTag, normaliseTracking, TrackingFields } from './components';
+import { useEmployees } from '../nurses/api';
 import { ScfhsDrawer } from './ScfhsDrawer';
 import { changeBody, createBody, fieldProblems, isDateType, toFormValues, type FieldRowValue, type TemplateFormValues } from './catalogForm';
 
@@ -37,12 +38,45 @@ function RecordsTable({ queue }: { queue?: 'review' }) {
     try { await p; message.success(t('saved')); } catch (e) { message.error(describeApiError(e)); }
   }
 
+  // HR records a credential on a nurse's behalf (POST /credentials, scoped on the server).
+  const [recording, setRecording] = useState(false);
+  const [nurseQuery, setNurseQuery] = useState('');
+  const nurses = useEmployees({ q: nurseQuery || undefined, page: 1 }, recording);
+  const [recordForm] = Form.useForm();
+  const recordTemplateId = Form.useWatch('templateId', recordForm) as number | undefined;
+  const recordTemplate = templates.data?.items.find((x) => x.id === recordTemplateId);
+  async function submitRecord(v: { employeeId: number; templateId: number; trackingData?: Record<string, unknown> }) {
+    try {
+      const created = await action.mutateAsync({ kind: 'record', self: false, body: { employeeId: v.employeeId, templateId: v.templateId, trackingData: normaliseTracking(v) } }) as { id: number };
+      message.success(t('recordedUploadEvidence'));
+      setRecording(false); recordForm.resetFields();
+      setDocsFor(created.id);
+    } catch (e) { message.error(describeApiError(e)); }
+  }
+
   return (
     <>
       {hr && !queue && (
-        <Input.Search allowClear placeholder={t('searchIdentifier')} style={{ width: 320, marginBottom: 12 }} maxLength={40}
-          onSearch={(v) => setIdentifier(v.trim().length >= 3 ? v.trim() : '')} />
+        <Flex gap={8} wrap style={{ marginBottom: 12 }}>
+          <Input.Search allowClear placeholder={t('searchIdentifier')} style={{ width: 320 }} maxLength={40}
+            onSearch={(v) => setIdentifier(v.trim().length >= 3 ? v.trim() : '')} />
+          <Button type="primary" onClick={() => { recordForm.resetFields(); setNurseQuery(''); setRecording(true); }}>{t('recordForNurse')}</Button>
+        </Flex>
       )}
+      <Modal title={t('recordForNurse')} open={recording} onCancel={() => setRecording(false)} onOk={() => recordForm.submit()}
+        okText={t('submit')} cancelText={t('cancel')} confirmLoading={action.isPending} destroyOnHidden>
+        <Alert type="info" showIcon title={t('recordForNurseHint')} style={{ marginBottom: 12 }} />
+        <Form form={recordForm} layout="vertical" onFinish={submitRecord}>
+          <Form.Item name="employeeId" label={t('employee')} rules={[{ required: true }]}>
+            <Select showSearch={{ filterOption: false, onSearch: setNurseQuery }} loading={nurses.isFetching} placeholder={t('searchJobOrName')}
+              options={nurses.data?.items.map((e) => ({ value: e.id, label: `${e.jobNumber} — ${e.fullName}${e.unit ? ` (${e.unit.code})` : ''}` }))} />
+          </Form.Item>
+          <Form.Item name="templateId" label={t('credential')} rules={[{ required: true }]}>
+            <Select showSearch optionFilterProp="label" options={templates.data?.items.filter((x) => x.isActive).map((x) => ({ value: x.id, label: `${x.code} — ${x.name}` }))} />
+          </Form.Item>
+          {recordTemplate && <TrackingFields defs={recordTemplate.fieldDefs} />}
+        </Form>
+      </Modal>
       <Table<CredentialRow>
         rowKey="id" size="middle" loading={rows.isLoading} dataSource={rows.data?.items} pagination={{ pageSize: 20 }} scroll={{ x: true }}
         columns={[
