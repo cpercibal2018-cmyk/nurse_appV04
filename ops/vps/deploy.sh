@@ -172,20 +172,26 @@ case "$CMD" in
     migrate "$ARG"
     next="$( [[ -n "${live_color:-}" ]] && other "$live_color" || echo blue )"
     promote "$next" "$ARG" "${live_color:-}"
-    [[ -n "${live_color:-}" ]] && echo "$live_color $live_tag" > "$STATE/PREVIOUS"
+    # The same tag again (restart, a re-run deploy) is not a new release: PREVIOUS keeps
+    # the release before it, so a rollback still has somewhere to go.
+    [[ -n "${live_color:-}" && "${live_tag:-}" != "$ARG" ]] && echo "$live_color $live_tag" > "$STATE/PREVIOUS"
     echo "$next $ARG" > "$STATE/ACTIVE"
     log "release $ARG is live on $next"
-    prune_images "$ARG" "${live_tag:-}"
+    read -r _ prev_tag <<< "$(read_state PREVIOUS)"
+    prune_images "$ARG" "${prev_tag:-}"
     ;;
   rollback)
     read -r prev_color prev_tag <<< "$(read_state PREVIOUS)"
     read -r live_color live_tag <<< "$(read_state ACTIVE)"
     [[ -n "${prev_color:-}" ]] || die "no previous release recorded"
-    log "rolling back to $prev_tag on $prev_color (the database schema is NOT rolled back)"
-    promote "$prev_color" "$prev_tag" "$live_color"
+    [[ "$prev_tag" != "$live_tag" ]] || die "the previous release is the live one ($live_tag): nothing to roll back to"
+    # Always the colour that is not live: after a restart PREVIOUS may name the live colour.
+    target="$(other "$live_color")"
+    log "rolling back to $prev_tag on $target (the database schema is NOT rolled back)"
+    promote "$target" "$prev_tag" "$live_color"
     echo "$live_color $live_tag" > "$STATE/PREVIOUS"
-    echo "$prev_color $prev_tag" > "$STATE/ACTIVE"
-    log "release $prev_tag is live on $prev_color"
+    echo "$target $prev_tag" > "$STATE/ACTIVE"
+    log "release $prev_tag is live on $target"
     ;;
   restart)
     read -r live_color live_tag <<< "$(read_state ACTIVE)"
