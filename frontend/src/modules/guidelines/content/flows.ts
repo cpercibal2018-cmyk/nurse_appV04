@@ -114,7 +114,7 @@ export const FLOWS: Flow[] = [
     id: 'credential-new',
     title: 'Adding a credential',
     nodes: [
-      { kind: 'start', label: 'My Credentials → Add credential: type + details', role: 'EMPLOYEE' },
+      { kind: 'start', label: 'My Credentials → Add credential (or HR: Records → Record credential for a nurse): type + details', role: 'EMPLOYEE' },
       { kind: 'step', label: 'Evidence → upload the document (scanned for viruses)', role: 'EMPLOYEE' },
       { kind: 'state', label: 'Pending verification — in the HR review queue', role: 'SYSTEM' },
       { kind: 'step', label: 'HR opens the evidence and clicks Verify', role: 'HR_ADMIN' },

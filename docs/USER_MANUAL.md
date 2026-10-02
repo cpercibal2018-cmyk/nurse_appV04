@@ -744,7 +744,7 @@ Licences, certificates and documents (SCFHS licence, BLS, ACLS, Iqama …) with 
 
 > **Important:** Nobody verifies, approves, rejects, suspends or revokes their own credential.
 
-> **Note:** Recording a credential for a nurse is done by the nurse on My Credentials. HR recording it on the nurse's behalf exists in the API but not yet on this screen.
+> **Note:** A credential is recorded either by the nurse on My Credentials or by HR on the nurse's behalf (Records → Record credential for a nurse). Either way it starts Pending verification and counts only after HR verifies it.
 
 ![Adding a credential](generated/flows/credential-new.svg)
 
@@ -809,7 +809,42 @@ Licences, certificates and documents (SCFHS licence, BLS, ACLS, Iqama …) with 
 
 **Related.** [Eligibility](#8-eligibility) · [Employee self-service](#16-employee-self-service)
 
-### 7.2 Work the review queue
+### 7.2 Record a credential for a nurse
+
+**Status:** Implemented  
+**Roles:** HR Admin, System Admin
+
+**Purpose.** Put a nurse's licence or certificate on record when the nurse cannot do it themselves (for example when loading a unit's staff).
+
+**Who can perform it.** HR Admin and System Admin, for nurses in their scope.
+
+**Before you start.**
+
+- The nurse's staff record exists.
+- The document (PDF, JPEG, PNG or WebP, at most 10 MB) and its details.
+
+**Steps.**
+
+1. Open Credentials → Records and click Record credential for a nurse.
+2. Search the nurse by job number or name, choose the credential type, fill in the fields the type asks for (with the expiry date for a type that expires) and Submit.
+3. The Evidence panel opens for the new credential: Upload evidence and choose the file.
+
+**System result.** "Recorded — now upload the evidence". The credential is Pending verification and appears in the Review queue; it does not count for eligibility yet.
+
+**Approval.** HR verifies it on the Review queue (Verify). Nobody verifies their own credential.
+
+**Next step.** Review queue → Evidence → Verify.
+
+**Common problems.**
+
+- *The nurse is not offered* — The nurse is outside your HR scope, or the search needs more of the job number or name.
+- *"This credential type expires: record its expiry date before verifying"* — The expiry date was left empty. Record the credential again with its expiry date.
+
+**Related.** [Employee self-service](#16-employee-self-service) · [Eligibility](#8-eligibility)
+
+![Adding a credential](generated/flows/credential-new.svg)
+
+### 7.3 Work the review queue
 
 **Status:** Implemented  
 **Roles:** HR Admin, System Admin
@@ -832,7 +867,7 @@ Licences, certificates and documents (SCFHS licence, BLS, ACLS, Iqama …) with 
 
 **Related.** [Eligibility](#8-eligibility)
 
-### 7.3 B. Open, review and upload evidence
+### 7.4 B. Open, review and upload evidence
 
 **Status:** Implemented  
 **Roles:** HR Admin, System Admin, Employee
@@ -861,7 +896,7 @@ Licences, certificates and documents (SCFHS licence, BLS, ACLS, Iqama …) with 
 
 **Related.** [Employee self-service](#16-employee-self-service)
 
-### 7.4 C. Verify a credential
+### 7.5 C. Verify a credential
 
 **Status:** Implemented  
 **Roles:** HR Admin, System Admin
@@ -897,7 +932,7 @@ Licences, certificates and documents (SCFHS licence, BLS, ACLS, Iqama …) with 
 
 ![Adding a credential](generated/flows/credential-new.svg)
 
-### 7.5 D. Check a licence with SCFHS
+### 7.6 D. Check a licence with SCFHS
 
 **Status:** Implemented — Answers come from a simulated registry until the hospital has access to the SCFHS verification service; the screen says so.  
 **Roles:** HR Admin, System Admin
@@ -928,7 +963,7 @@ Licences, certificates and documents (SCFHS licence, BLS, ACLS, Iqama …) with 
 
 *For credential types set to "Check with SCFHS": on submission, nightly at 05:00, and on demand. SCFHS never overwrites the record.*
 
-### 7.6 E. Renew a credential
+### 7.7 E. Renew a credential
 
 **Status:** Implemented  
 **Roles:** Employee, HR Admin, System Admin
@@ -969,7 +1004,7 @@ Licences, certificates and documents (SCFHS licence, BLS, ACLS, Iqama …) with 
 
 *The current credential stays usable until its own expiry while the renewal is reviewed.*
 
-### 7.7 F. Suspend a credential
+### 7.8 F. Suspend a credential
 
 **Status:** Partially implemented — Suspending works. Lifting a suspension is not available in V04: the nurse records a new credential, which HR verifies.  
 **Roles:** HR Admin, System Admin
@@ -993,7 +1028,7 @@ Licences, certificates and documents (SCFHS licence, BLS, ACLS, Iqama …) with 
 
 ![Suspending or revoking a credential](generated/flows/credential-suspend.svg)
 
-### 7.8 G. Revoke a credential
+### 7.9 G. Revoke a credential
 
 **Status:** Implemented  
 **Roles:** HR Admin, System Admin
@@ -1017,7 +1052,7 @@ Licences, certificates and documents (SCFHS licence, BLS, ACLS, Iqama …) with 
 
 ![Suspending or revoking a credential](generated/flows/credential-suspend.svg)
 
-### 7.9 H. Configure credential requirements
+### 7.10 H. Configure credential requirements
 
 **Status:** Implemented  
 **Roles:** HR Admin, System Admin
@@ -1053,7 +1088,7 @@ Licences, certificates and documents (SCFHS licence, BLS, ACLS, Iqama …) with 
 
 ![Configuring a credential requirement](generated/flows/requirement.svg)
 
-### 7.10 I. Manage credential categories
+### 7.11 I. Manage credential categories
 
 **Status:** Implemented  
 **Roles:** HR Admin, System Admin
@@ -1079,7 +1114,7 @@ Licences, certificates and documents (SCFHS licence, BLS, ACLS, Iqama …) with 
 
 ![Changing the credential catalogue](generated/flows/catalog-change.svg)
 
-### 7.11 J. Manage the credential catalogue (types)
+### 7.12 J. Manage the credential catalogue (types)
 
 **Status:** Implemented  
 **Roles:** HR Admin, System Admin
@@ -1111,7 +1146,7 @@ Licences, certificates and documents (SCFHS licence, BLS, ACLS, Iqama …) with 
 
 ![Changing the credential catalogue](generated/flows/catalog-change.svg)
 
-### 7.12 HR records a credential for a nurse
+### 7.13 HR records a credential for a nurse
 
 **Status:** Partially implemented — Available in the API (POST /credentials) but not on the Credentials screen yet.  
 **Roles:** HR Admin, System Admin
