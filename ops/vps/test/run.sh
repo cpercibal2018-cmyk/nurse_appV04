@@ -118,6 +118,9 @@ echo "== 4. restart (settings changed): the live release again, in the other col
 echo "LOGIN_THROTTLE_MAX_PER_CLIENT=25" >> "$CONF/app.env"
 "$DEPLOY" restart
 [[ "$(live)" == green ]] || { echo "expected green after restart" >&2; exit 1; }
+# A restart is the same release again: the rollback target (and its images) must survive it.
+[[ "$(cut -d' ' -f2 "$STATE/PREVIOUS")" == "$SHA" ]] || { echo "restart overwrote the previous release: $(cat "$STATE/PREVIOUS")" >&2; exit 1; }
+for image in api migrate web; do docker image inspect "nurseapp/$image:$SHA" >/dev/null || { echo "restart removed the previous release's $image image" >&2; exit 1; }; done
 
 touch "$WORK/stop"; wait "$POLL_PID"; POLL_PID=""
 read -r ok fails < "$WORK/poll"
