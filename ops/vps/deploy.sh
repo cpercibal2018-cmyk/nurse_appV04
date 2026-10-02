@@ -50,6 +50,11 @@ app() { local color="$1" tag="$2"; shift 2; COLOR="$color" TAG="$tag" docker com
 other() { [[ "$1" == blue ]] && echo green || echo blue; }
 read_state() { cat "$STATE/$1" 2>/dev/null || true; }   # "<colour> <tag>"
 
+# While colours switch, ACTIVE still names the old colour whose containers are being
+# stopped; monitor.sh would report them as failed and e-mail a false alarm. The marker
+# tells it a switch is in progress; it is removed on every exit (and ignored if stale).
+mark_deploying() { mkdir -p "$STATE"; date +%s > "$STATE/DEPLOYING"; trap 'rm -f "$STATE/DEPLOYING"' EXIT; }
+
 # Every release loads three images (~1 GB); without this they piled up until the
 # disk filled. Keeps the tags given (the live and the previous release, which a
 # rollback needs) and removes every other nurseapp image. An image a container
@@ -165,6 +170,7 @@ case "$CMD" in
     ;;
   release)
     need_tag "$ARG"
+    mark_deploying
     for image in api migrate web; do docker image inspect "nurseapp/$image:$ARG" >/dev/null 2>&1 || die "nurseapp/$image:$ARG is not loaded (deploy.sh load)"; done
     mkdir -p "$STATE/storage" && chown 1000:1000 "$STATE/storage"   # the node user in the api image
     "$0" edge
@@ -181,6 +187,7 @@ case "$CMD" in
     prune_images "$ARG" "${prev_tag:-}"
     ;;
   rollback)
+    mark_deploying
     read -r prev_color prev_tag <<< "$(read_state PREVIOUS)"
     read -r live_color live_tag <<< "$(read_state ACTIVE)"
     [[ -n "${prev_color:-}" ]] || die "no previous release recorded"

@@ -43,6 +43,12 @@ check_containers() {
   for p in "nurseapp-$color:worker" "nurseapp-edge:caddy" "nurseapp-edge:clamav"; do
     [[ "$(docker ps --filter "label=com.docker.compose.project=${p%%:*}" --filter "label=com.docker.compose.service=${p##*:}" -q | wc -l)" -ge 1 ]] || bad+=("${p##*:}")
   done
+  # deploy.sh is switching colours (marker younger than 30 min): the old colour's
+  # containers are stopping on purpose. The site check still catches a real outage.
+  local since; since="$(cat "$STATE/DEPLOYING" 2>/dev/null || true)"
+  if (( ${#bad[@]} > 0 )) && [[ "$since" =~ ^[0-9]+$ ]] && (( $(date +%s) - since < 1800 )); then
+    echo "release in progress since $(date -u -d "@$since" +%H:%M) UTC — containers not checked"; return 0
+  fi
   (( ${#bad[@]} == 0 )) || { echo "live colour $color: not running or not healthy: ${bad[*]}"; return 1; }
   echo "live: $live — api, web healthy; worker, caddy, clamav running"
 }
