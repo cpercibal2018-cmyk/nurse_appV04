@@ -50,6 +50,19 @@ app() { local color="$1" tag="$2"; shift 2; COLOR="$color" TAG="$tag" docker com
 other() { [[ "$1" == blue ]] && echo green || echo blue; }
 read_state() { cat "$STATE/$1" 2>/dev/null || true; }   # "<colour> <tag>"
 
+# Every release loads three images (~1 GB); without this they piled up until the
+# disk filled. Keeps the tags given (the live and the previous release, which a
+# rollback needs) and removes every other nurseapp image. An image a container
+# still uses is refused by Docker and kept.
+prune_images() {
+  local keep=" $* " img
+  while IFS= read -r img; do
+    [[ "$keep" == *" ${img##*:} "* ]] && continue
+    docker image rm "$img" >/dev/null 2>&1 && log "removed old image $img"
+  done < <(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -E '^nurseapp/(api|migrate|web):')
+  docker image prune -f >/dev/null 2>&1 || true
+}
+
 # The container of a service in a colour, once it reports healthy (Docker HEALTHCHECK).
 wait_healthy() {
   local color="$1" service="$2" id status
@@ -162,6 +175,7 @@ case "$CMD" in
     [[ -n "${live_color:-}" ]] && echo "$live_color $live_tag" > "$STATE/PREVIOUS"
     echo "$next $ARG" > "$STATE/ACTIVE"
     log "release $ARG is live on $next"
+    prune_images "$ARG" "${live_tag:-}"
     ;;
   rollback)
     read -r prev_color prev_tag <<< "$(read_state PREVIOUS)"
