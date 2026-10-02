@@ -162,6 +162,8 @@ ALERT_WEBHOOK_URL=
 # SMTP_HOST=…  SMTP_PORT=587  SMTP_USER=…  SMTP_PASS=…  SMTP_FROM=NurseApp monitor <nurseapp@hospital.sa>
 ```
 
+After creating or changing it, send a test: `sudo /opt/nurseapp/vps/monitor.sh --test-alert` (exit 1 and the reason if nothing could be sent).
+
 Until e-mail works (the hospital relay, D-47), use the webhook — or at least an **outside** uptime check on `https://<host>/api/v1/health` (it answers 503 when the database is down), since a monitor on the VPS cannot report the VPS itself being down.
 
 ### Exit package (moving to another provider)

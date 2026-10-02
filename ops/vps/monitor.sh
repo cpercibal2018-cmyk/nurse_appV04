@@ -5,6 +5,8 @@
 #   monitor.sh --notify         the same, and alert on changes — run every 5 minutes by
 #                               nurseapp-monitor.timer (setup-host.sh)
 #   monitor.sh --only a,b       only those checks
+#   monitor.sh --test-alert     send one test alert to the recipients below, run no
+#                               check; exit 1 if nothing could be sent
 #
 # Checks: site (HTTPS health through Caddy), containers (live colour, Caddy,
 # ClamAV), database, wal (archiving current), backup (base backup < 26 h),
@@ -25,27 +27,28 @@ OPS_DIR="$(cd "$HERE/.." && pwd)"
 # shellcheck source=lib-checks.sh
 source "$HERE/lib-checks.sh"
 
-NOTIFY=0; ONLY=""
+NOTIFY=0; ONLY=""; TEST=0
 while (( $# )); do
   case "$1" in
     --notify) NOTIFY=1 ;;
     --only) ONLY="$2"; shift ;;
-    *) echo "usage: $0 [--notify] [--only check,check]" >&2; exit 2 ;;
+    --test-alert) TEST=1; NOTIFY=1 ;;
+    *) echo "usage: $0 [--notify] [--only check,check] | --test-alert" >&2; exit 2 ;;
   esac
   shift
 done
 CHECKS=(site containers database wal backup offsite disk cert reboot)
 [[ -n "$ONLY" ]] && IFS=, read -r -a CHECKS <<< "$ONLY"
 
-RESULTS=()
-run_checks "${CHECKS[@]}"; status=$?
+RESULTS=(); status=0
+(( TEST )) || { run_checks "${CHECKS[@]}"; status=$?; }
 
 (( NOTIFY )) || exit $status
 
 MON="$CONF/monitor.env"
 cfg() { local v; v="$(setting "$MON" "$1")"; [[ -n "$v" ]] || v="$(setting "$CONF/app.env" "$1")"; echo "$v"; }
 send_alert() {   # send_alert <subject> <body>
-  local subject="$1" body="$2" to from envelope host port url mail rcpt=()
+  local subject="$1" body="$2" to from envelope host port url mail rcpt=() sent=0
   to="$(setting "$MON" ALERT_EMAILS)"; host="$(cfg SMTP_HOST)"
   if [[ -n "$to" && -n "$host" ]]; then
     port="$(cfg SMTP_PORT)"; port="${port:-587}"; from="$(cfg SMTP_FROM)"; from="${from:-nurseapp-monitor@$SITE_HOST}"
@@ -58,16 +61,24 @@ send_alert() {   # send_alert <subject> <body>
     for r in "${rcpt[@]}"; do mail+=(--mail-rcpt "$(echo "$r" | xargs)"); done
     printf 'From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s\r\n' \
       "$from" "$to" "$subject" "$(date -R)" "$body" | "${mail[@]}" --upload-file - \
-      || echo "monitor: e-mail alert could not be sent" >&2
+      && sent=1 || echo "monitor: e-mail alert could not be sent" >&2
   fi
   url="$(setting "$MON" ALERT_WEBHOOK_URL)"
   if [[ -n "$url" ]]; then
     jq -n --arg t "$subject"$'\n'"$body" '{text: $t}' | curl -sS --max-time 15 -H 'Content-Type: application/json' -d @- "$url" >/dev/null \
-      || echo "monitor: webhook alert could not be sent" >&2
+      && sent=1 || echo "monitor: webhook alert could not be sent" >&2
   fi
   [[ -z "$to" && -z "$url" ]] && echo "monitor: no alert recipients configured ($MON) — $subject" >&2
+  SENT=$sent
   return 0
 }
+
+if (( TEST )); then
+  send_alert "[nurseapp $SITE_HOST] TEST alert" "TEST alert from monitor.sh on $(hostname) at $(date -u '+%Y-%m-%d %H:%M UTC').
+If you received this, server alerts reach you. No action is needed."
+  (( SENT )) && { echo "test alert sent"; exit 0; }
+  echo "test alert NOT sent — check $MON and the SMTP settings" >&2; exit 1
+fi
 
 mkdir -p "$STATE/monitor"
 now=$(date +%s)
