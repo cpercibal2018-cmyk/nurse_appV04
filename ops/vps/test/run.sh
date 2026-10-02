@@ -137,6 +137,9 @@ export CERT_WARN_DAYS=0 CERT_FAIL_DAYS=0   # Caddy's local test CA issues 12-hou
 MON=("$HERE/monitor.sh" --notify --only "site,containers,database,disk,cert")
 mails() { curl -s --noproxy '*' http://172.30.0.60:8025/api/v1/messages | jq -r '.messages[].Subject'; }
 until curl -s --noproxy '*' -o /dev/null http://172.30.0.60:8025/api/v1/messages; do sleep 1; done
+"$HERE/monitor.sh" --test-alert >/dev/null || { echo "monitor --test-alert failed" >&2; exit 1; }
+mails | grep -q "TEST alert" || { echo "no TEST alert e-mail: $(mails)" >&2; exit 1; }
+curl -s --noproxy '*' -X DELETE http://172.30.0.60:8025/api/v1/messages >/dev/null   # the checks below count alerts from zero
 "${MON[@]}" || { echo "monitor: expected all checks to pass" >&2; exit 1; }
 [[ -z "$(mails)" ]] || { echo "monitor sent an alert while everything passed" >&2; exit 1; }
 docker stop nurseapp-edge-caddy-1 >/dev/null
