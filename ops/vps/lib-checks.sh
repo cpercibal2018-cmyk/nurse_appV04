@@ -132,7 +132,8 @@ check_firewall() {
   local s ports
   s="$(ufw status 2>/dev/null)" || { echo "ufw not available"; return 1; }
   grep -q 'Status: active' <<< "$s" || { echo "the firewall is off"; return 1; }
-  ports="$(grep -E 'ALLOW' <<< "$s" | awk '{print $1}' | sed 's#/.*##' | sort -u | tr '\n' ' ')"
+  # The "To" column is "<port>" or "<address> <port>" (the containers' rule: 172.17.0.1 5432/tcp).
+  ports="$(grep -E 'ALLOW' <<< "$s" | awk '{ print ($1 ~ /^[0-9a-f.:]+$/ && $2 != "ALLOW") ? $2 : $1 }' | sed 's#/.*##' | sort -u | tr '\n' ' ')"
   for p in $ports; do
     [[ "$p" =~ ^(22|80|443|OpenSSH|5432)$ ]] || { echo "unexpected open port: $p (open: $ports)"; return 1; }
   done
