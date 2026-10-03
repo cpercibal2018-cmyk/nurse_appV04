@@ -7,6 +7,7 @@ import type { Db } from '../../lib/prisma.js';
 import { authOf, authorize } from '../../middleware/authorize.js';
 import { idempotent } from '../../middleware/idempotency.js';
 import { KpiQuery, nurseToBed } from './kpi.js';
+import { listNationalities } from './nationalities.js';
 import {
   BedCountBody, BulkBedsBody, CoverageBody, CoverageQuery, DepartmentCreateBody, DepartmentUpdateBody, ImportBody,
   PositionCreateBody, PositionUpdateBody, UnitCreateBody, UnitsQuery, UnitUpdateBody, type OrgService,
@@ -52,6 +53,9 @@ export function createWorkforceRouter(db: Db, org: OrgService) {
   r.get('/units/:id/bed-history', authorize('workforce.bedHistory'), async (req, res) => {
     res.json(await org.bedHistory(authOf(res), IdParam.parse(req.params).id));
   });
+
+  // ── Nationalities (owner decision 2026-10-03): fixed reference list ──
+  r.get('/nationalities', authorize('workforce.read'), async (_req, res) => { res.json(await listNationalities(db)); });
 
   // ── Positions (§3.1.1, W6, W7) ──
   r.get('/positions', authorize('workforce.read'), async (req, res) => {

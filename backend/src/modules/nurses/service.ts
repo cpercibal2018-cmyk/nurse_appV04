@@ -20,6 +20,7 @@ import { refreshEligibility } from '../eligibility/state.service.js';
 import { HR_ROLES, inScope, viewerOf, type Viewer } from '../credentials/access.js';
 import { unitScope, type AuthContext } from '../users/access.js';
 import { assertActiveContractType, ContractTypeCode } from '../contracts/contract-types.js';
+import { assertNationality, NationalityCode } from '../workforce/nationalities.js';
 
 const Text = (max: number) => z.string().trim().max(max);
 const Req = (max: number) => z.string().trim().min(1).max(max);
@@ -41,7 +42,7 @@ const SourceFields = {
   jobTitle: Text(120).nullable(),
   fileNo: Text(40).nullable(), // E8: not unique, may be blank
   rankGrade: Text(40).nullable(),
-  nationality: Text(60).nullable(),
+  nationalityCode: NationalityCode, // owner decision 2026-10-03: a listed code (ISO 3166-1 alpha-3), required
   jobPostLocation: Text(120).nullable(),
   actualWorkPlace: Text(120).nullable(),
   specialty: Text(120).nullable(),
@@ -60,7 +61,6 @@ export const OnboardBody = z.strictObject({
   jobTitle: SourceFields.jobTitle.default(null),
   fileNo: SourceFields.fileNo.default(null),
   rankGrade: SourceFields.rankGrade.default(null),
-  nationality: SourceFields.nationality.default(null),
   jobPostLocation: SourceFields.jobPostLocation.default(null),
   actualWorkPlace: SourceFields.actualWorkPlace.default(null),
   specialty: SourceFields.specialty.default(null),
@@ -84,7 +84,7 @@ export const UpdateBody = z.strictObject({
   jobTitle: SourceFields.jobTitle.optional(),
   fileNo: SourceFields.fileNo.optional(),
   rankGrade: SourceFields.rankGrade.optional(),
-  nationality: SourceFields.nationality.optional(),
+  nationalityCode: SourceFields.nationalityCode.optional(), // can be changed, never cleared
   jobPostLocation: SourceFields.jobPostLocation.optional(),
   actualWorkPlace: SourceFields.actualWorkPlace.optional(),
   specialty: SourceFields.specialty.optional(),
@@ -115,13 +115,18 @@ export const ListQuery = z.object({
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });
 
-type WithRefs = Employee & { unit: { code: string; name: string } | null; position: { code: string; title: string } };
-const INCLUDE = { unit: { select: { code: true, name: true } }, position: { select: { code: true, title: true } } } as const;
+type WithRefs = Employee & { unit: { code: string; name: string } | null; position: { code: string; title: string }; nationalityRef: { name: string; nameAr: string | null } | null };
+const INCLUDE = {
+  unit: { select: { code: true, name: true } }, position: { select: { code: true, title: true } },
+  nationalityRef: { select: { name: true, nameAr: true } },
+} as const;
 
 /** Every field (HR, own profile). Dates as YYYY-MM-DD, salary as a string. */
-function fullView(e: WithRefs) {
+function fullView({ nationalityRef, ...e }: WithRefs) {
   return {
     ...e,
+    // `nationality` is free text from before the list, kept only when it matched no listed nationality.
+    nationalityName: nationalityRef?.name ?? null, nationalityNameAr: nationalityRef?.nameAr ?? null,
     salary: e.salary === null ? null : e.salary.toFixed(2),
     hireDate: e.hireDate ? dbDate(e.hireDate) : null,
     view: 'FULL' as const,
@@ -250,6 +255,7 @@ export function createNurseService(db: Db) {
         await assertPlaceable(tx, auth, body.unitId);
         await assertPosition(tx, body.positionCode);
         await assertJobNumberFree(tx, body.jobNumber);
+        await assertNationality(tx, body.nationalityCode);
         const { contractStart, contractEnd, contractTypeCode, hireDate, ...fields } = body;
         await assertActiveContractType(tx, contractTypeCode);
         const emp = await tx.employee.create({
@@ -279,8 +285,13 @@ export function createNurseService(db: Db) {
         const before = await loadForHr(tx, auth, id);
         if (body.unitId !== undefined && body.unitId !== before.unitId) await assertPlaceable(tx, auth, body.unitId);
         if (body.jobNumber !== undefined && body.jobNumber !== before.jobNumber) await assertJobNumberFree(tx, body.jobNumber, id);
+        if (body.nationalityCode !== undefined) await assertNationality(tx, body.nationalityCode);
         const { hireDate, ...rest } = body;
-        const data = { ...rest, ...(hireDate !== undefined ? { hireDate: hireDate ? toDbDate(hireDate) : null } : {}) };
+        const data = {
+          ...rest, ...(hireDate !== undefined ? { hireDate: hireDate ? toDbDate(hireDate) : null } : {}),
+          // A listed nationality replaces any unmatched free text from before the list.
+          ...(body.nationalityCode !== undefined ? { nationality: null } : {}),
+        };
         await tx.employee.update({ where: { id }, data });
         const changed = Object.fromEntries(Object.keys(body).map((k) => [k, { from: (before as Record<string, unknown>)[k] ?? null, to: (body as Record<string, unknown>)[k] }]));
         redact(changed);

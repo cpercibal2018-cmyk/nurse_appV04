@@ -3,6 +3,8 @@
 // (onboarding, views, position), C1–C11 and owner decisions D-3, D-29, D-30.
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Express } from 'express';
 import { findChainBreaks } from '../src/lib/audit.js';
@@ -158,7 +160,7 @@ describeDb('workforce, employees and contracts', () => {
     const onboardBody = (over: object = {}) => ({
       jobNumber: uniq('OB'), firstName: ' Mona ', middleName: '', lastName: 'Saleh', contactEmail: 'Mona@Example.SA',
       unitId: org.unitA.id, salary: '12500.50', maritalStatus: 'Single',
-      contractStart: today(), contractEnd: addDays(today(), 364), contractTypeCode: 'DIRECT_HOSPITAL', ...over,
+      contractStart: today(), contractEnd: addDays(today(), 364), contractTypeCode: 'DIRECT_HOSPITAL', nationalityCode: 'SAU', ...over,
     });
 
     it('rule E6: the server supplies the default position; omitting it at onboarding uses it (P4)', async () => {
@@ -169,6 +171,53 @@ describeDb('workforce, employees and contracts', () => {
       const res = await idem(scoped.post('/employees/onboard', body));
       expect(res.status).toBe(201);
       expect((await db.employee.findUniqueOrThrow({ where: { id: res.body.employeeId } })).positionCode).toBe('SN');
+    });
+
+    it('nationality comes from the fixed list: required, validated on the server, returned by name, hidden from supervisors (owner decision 2026-10-03)', async () => {
+      const list = (await scoped.get('/nationalities')).body.items as Array<{ code: string; name: string; nameAr: string | null }>;
+      expect(list).toHaveLength(200);
+      expect(list.map((n) => n.name)).toEqual([...list.map((n) => n.name)].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())));
+      expect(new Set(list.map((n) => n.code)).size).toBe(200);
+      expect(list.find((n) => n.code === 'SAU')).toMatchObject({ name: 'Saudi', nameAr: 'سعودي' });
+
+      const { nationalityCode: _omit, ...withoutNationality } = onboardBody();
+      const missing = await idem(scoped.post('/employees/onboard', withoutNationality));
+      expect(missing.body.error.code).toBe('VALIDATION_FAILED');
+      expect(JSON.stringify(missing.body)).toContain('Nationality is required.');
+      expect((await idem(scoped.post('/employees/onboard', onboardBody({ nationalityCode: 'XYZ' })))).body.error.code).toBe('NATIONALITY_INVALID');
+      expect((await idem(scoped.post('/employees/onboard', onboardBody({ nationality: 'Martian' })))).body.error.code).toBe('VALIDATION_FAILED');
+
+      const made = await idem(scoped.post('/employees/onboard', onboardBody({ nationalityCode: 'phl' })));
+      expect(made.status).toBe(201);
+      const id = made.body.employeeId as number;
+      expect((await scoped.get(`/employees/${id}`)).body).toMatchObject({ nationalityCode: 'PHL', nationalityName: 'Filipino', nationalityNameAr: 'فلبيني', nationality: null });
+      // An edit without the field keeps it; it can be changed but never cleared.
+      await scoped.patch(`/employees/${id}`, { jobTitle: 'Staff Nurse II' });
+      expect((await db.employee.findUniqueOrThrow({ where: { id } })).nationalityCode).toBe('PHL');
+      expect((await scoped.patch(`/employees/${id}`, { nationalityCode: null })).body.error.code).toBe('VALIDATION_FAILED');
+      expect((await scoped.patch(`/employees/${id}`, { nationalityCode: 'IND' })).body.nationalityName).toBe('Indian');
+
+      const sup = await signIn(app, (await makeUser(db, { roles: [{ role: 'SUPERVISOR', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
+      const seen = (await sup.get(`/employees/${id}`)).body;
+      expect(seen.view).toBe('BASELINE');
+      expect(seen).not.toHaveProperty('nationalityCode');
+      expect(seen).not.toHaveProperty('nationalityName');
+    });
+
+    it('the migration maps old free-text nationalities to codes and keeps what it cannot match', async () => {
+      const sql = readFileSync(resolve(__dirname, '../prisma/migrations/20261017090000_nationalities/migration.sql'), 'utf8');
+      const normalise = sql.slice(sql.indexOf('WITH alias'));
+      const make = async (nationality: string) => (await db.employee.update({ where: { id: (await makeEmployee(db, org.unitA.id)).id }, data: { nationality, nationalityCode: null } })).id;
+      const ids = { saudi: await make('  saudi '), country: await make('Egypt'), code: await make('jor'), arabic: await make('هندي'), alias: await make('UAE'), unknown: await make('Kanadian') };
+      await db.$executeRawUnsafe(normalise);
+      const after = async (id: number) => db.employee.findUniqueOrThrow({ where: { id }, select: { nationality: true, nationalityCode: true } });
+      expect(await after(ids.saudi)).toEqual({ nationality: null, nationalityCode: 'SAU' });
+      expect(await after(ids.country)).toEqual({ nationality: null, nationalityCode: 'EGY' });
+      expect(await after(ids.code)).toEqual({ nationality: null, nationalityCode: 'JOR' });
+      expect(await after(ids.arabic)).toEqual({ nationality: null, nationalityCode: 'IND' });
+      expect(await after(ids.alias)).toEqual({ nationality: null, nationalityCode: 'ARE' });
+      expect(await after(ids.unknown)).toEqual({ nationality: 'Kanadian', nationalityCode: null }); // kept for HR, never guessed
+      expect((await scoped.get(`/employees/${ids.unknown}`)).body).toMatchObject({ nationality: 'Kanadian', nationalityCode: null, nationalityName: null });
     });
 
     it('creates the employee, a Draft contract with Hijri dates, an audit row and an INELIGIBLE state atomically', async () => {

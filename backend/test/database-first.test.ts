@@ -72,7 +72,7 @@ describeDb('A. an empty database works through the API alone', () => {
 
     // HR onboards a nurse: with no SN position in this hospital, a position must be chosen (E6).
     const today = riyadhDate();
-    const base = { jobNumber: 'N-1', firstName: 'Noor', lastName: 'Ali', contactEmail: 'noor@fresh.example', unitId: unit.body.id, contractStart: today, contractEnd: addDays(today, 365), contractTypeCode: 'DIRECT_HOSPITAL' };
+    const base = { jobNumber: 'N-1', firstName: 'Noor', lastName: 'Ali', contactEmail: 'noor@fresh.example', unitId: unit.body.id, contractStart: today, contractEnd: addDays(today, 365), contractTypeCode: 'DIRECT_HOSPITAL', nationalityCode: 'SAU' };
     expect((await hr.get('/employees/onboarding-defaults')).body.positionCode).toBeNull();
     expect((await hr.post('/employees/onboard', base).set('Idempotency-Key', randomUUID())).body.error.code).toBe('POSITION_REQUIRED');
     const onboard = await hr.post('/employees/onboard', { ...base, positionCode: 'RN' }).set('Idempotency-Key', randomUUID());

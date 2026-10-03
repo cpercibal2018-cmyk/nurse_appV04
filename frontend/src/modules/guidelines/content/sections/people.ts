@@ -17,7 +17,8 @@ export const PEOPLE: GuideSection[] = [
         rows: [
           ['First, middle, last name', 'HR / System Admin', 'Full name is built by the system, never typed'],
           ['Job number', 'HR / System Admin', 'Unique (case does not matter); no format rule'],
-          ['Job title, file no., rank / grade, nationality, job post (city), actual work place, specialty, marital status, salary (SAR), hire date', 'HR / System Admin', 'Hidden from supervisors: salary, marital status, nationality, rank, file number, job post location, emergency contact'],
+          ['Job title, file no., rank / grade, job post (city), actual work place, specialty, marital status, salary (SAR), hire date', 'HR / System Admin', 'Hidden from supervisors: salary, marital status, nationality, rank, file number, job post location, emergency contact'],
+          ['Nationality', 'HR / System Admin', 'Required. Chosen from the standard list (type to search by nationality, country or code); free text is not accepted. Hidden from supervisors'],
           ['Unit', 'HR / System Admin', 'Moving a nurse re-checks eligibility and returns invalid future shifts to Draft'],
           ['Position', 'HR Admin only (Change position)', 'Needs a reason; recorded from → to; a position never gives a login role'],
           ['Contact e-mail', 'HR / System Admin', 'Used for the login invitation'],
@@ -49,7 +50,7 @@ export const PEOPLE: GuideSection[] = [
         purpose: 'Create the employee and the first contract in one step.',
         who: 'HR Admin or System Admin, for a unit in scope (or Unassigned).',
         roles: ['HR_ADMIN', 'SYSTEM_ADMIN'],
-        before: ['Name, job number, contact e-mail; the employment contract type and the contract start and end dates.', 'Unit and position if known — the defaults are Unassigned and SN.'],
+        before: ['Name, job number, contact e-mail, nationality; the employment contract type and the contract start and end dates.', 'Unit and position if known — the defaults are Unassigned and SN.'],
         steps: [
           'Open Nurses and click Onboard employee.',
           'Fill in the details and choose the Employment Contract Type. The Hijri date is shown under each contract date.',
@@ -62,6 +63,7 @@ export const PEOPLE: GuideSection[] = [
         problems: [
           { problem: 'The job number is refused as a duplicate', fix: 'Job numbers are unique regardless of case. Search for the existing record.' },
           { problem: 'The form asks for a position', fix: 'The hospital has no active SN position to default to; choose one.' },
+          { problem: '"Nationality is required."', fix: 'Choose it from the list: type a few letters of the nationality (Filipino), the country (Philippines) or the code (PHL).' },
         ],
         related: ['contracts', 'credentials', 'eligibility'],
         flow: 'onboarding',
@@ -78,9 +80,12 @@ export const PEOPLE: GuideSection[] = [
         result: 'Saved and audited. A unit change re-evaluates eligibility; future published shifts that are no longer valid return to Draft and the supervisors are told.',
         approval: 'None.',
         next: 'Check Eligibility if the unit changed.',
-        problems: [{ problem: 'Phone refused', fix: 'Use the international format: + then country code and number, e.g. +966500000000.' }],
+        problems: [
+          { problem: 'Phone refused', fix: 'Use the international format: + then country code and number, e.g. +966500000000.' },
+          { problem: 'Nationality shows "not on the nationality list"', fix: 'It was typed in before the list existed and matched no listed nationality. Edit the record: the old text is shown under the field; choose the matching nationality and save.' },
+        ],
         related: ['eligibility', 'scheduling'],
-        keywords: ['update nurse', 'change unit', 'move nurse', 'transfer'],
+        keywords: ['update nurse', 'change unit', 'move nurse', 'transfer', 'nationality'],
       },
       {
         id: 'change-position',

@@ -330,7 +330,10 @@ model Employee {
   jobTitle              String?        @map("job_title")
   fileNo                String?        @map("file_no") // not unique (E8)
   rankGrade             String?        @map("rank_grade")
+  /// Free text from before the nationality list (owner decision 2026-10-03): kept only where it
+  /// could not be matched to a listed nationality, so HR can choose the right one. New values never.
   nationality           String?
+  nationalityCode       String?        @map("nationality_code") @db.VarChar(3)
   jobPostLocation       String?        @map("job_post_location")
   actualWorkPlace       String?        @map("actual_work_place")
   specialty             String?
@@ -353,6 +356,7 @@ model Employee {
 
   unit             Unit?                  @relation(fields: [unitId], references: [id])
   position         Position               @relation(fields: [positionCode], references: [code])
+  nationalityRef   Nationality?           @relation(fields: [nationalityCode], references: [code], onDelete: Restrict)
   user             User?
   driftFindings    ConsistencyAuditLog[]
   shadowFindings   EligibilityShadowLog[]
@@ -370,6 +374,7 @@ model Employee {
   @@index([unitId])
   @@index([positionCode])
   @@index([nationality])
+  @@index([nationalityCode])
   @@index([specialty])
   @@index([fileNo])
   @@map("employees")
@@ -421,6 +426,22 @@ model Contract {
   @@index([endDate])
   @@index([contractTypeCode])
   @@map("contracts")
+}
+
+/// Nationalities (owner decision 2026-10-03): a fixed, standard list (ISO 3166-1 alpha-3, as on
+/// passports) loaded by its migration; name is the nationality ("Saudi"), countryName the country.
+model Nationality {
+  code        String   @id @db.VarChar(3)
+  name        String   @unique @db.VarChar(80)
+  nameAr      String?  @map("name_ar") @db.VarChar(80)
+  countryName String   @map("country_name") @db.VarChar(80)
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  employees Employee[]
+
+  @@map("nationalities")
 }
 
 /// Employment contract types (owner decision 2026-10-03): a hospital-wide list that HR and System
