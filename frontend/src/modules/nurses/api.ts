@@ -13,7 +13,9 @@ export interface EmployeeRow {
   /** The listed nationality (ISO 3166-1 alpha-3); `nationality` is only unmatched free text from before the list. */
   nationalityCode?: string | null; nationalityName?: string | null; nationalityNameAr?: string | null;
   /** The SCFHS classification from the Rank/Grade master; `rankGrade` is only unmatched free text from before it. */
-  rankGradeCode?: string | null; rankGradeName?: string | null; rankGradeActive?: boolean | null; jobPostLocation?: string | null; emergencyContactPhone?: string | null;
+  rankGradeCode?: string | null; rankGradeName?: string | null; rankGradeActive?: boolean | null;
+  /** From the Nursing Specialty master; `specialty` is only unmatched free text from before it. */
+  specialtyCode?: string | null; specialtyName?: string | null; specialtyNameAr?: string | null; specialtyActive?: boolean | null; jobPostLocation?: string | null; emergencyContactPhone?: string | null;
   maritalStatus?: 'Single' | 'Married' | 'Others' | null; salary?: string | null;
 }
 

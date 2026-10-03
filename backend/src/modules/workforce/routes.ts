@@ -9,6 +9,7 @@ import { idempotent } from '../../middleware/idempotency.js';
 import { KpiQuery, nurseToBed } from './kpi.js';
 import { listNationalities } from './nationalities.js';
 import { createRankGradeService, RankGradeCreateBody, RankGradeQuery, RankGradeUpdateBody } from './rank-grades.js';
+import { createSpecialtyService, SpecialtyCreateBody, SpecialtyQuery, SpecialtyUpdateBody } from './specialties.js';
 import {
   BedCountBody, BulkBedsBody, CoverageBody, CoverageQuery, DepartmentCreateBody, DepartmentUpdateBody, ImportBody,
   PositionCreateBody, PositionUpdateBody, UnitCreateBody, UnitsQuery, UnitUpdateBody, type OrgService,
@@ -69,6 +70,19 @@ export function createWorkforceRouter(db: Db, org: OrgService) {
   });
   r.delete('/rank-grades/:code', authorize('workforce.write'), async (req, res) => {
     res.json(await rankGrades.remove(authOf(res), CodeParam.parse(req.params).code.toUpperCase(), rid(res)));
+  });
+
+  // ── Nursing Specialty master (owner decision 2026-10-03): read by everyone, changed by system-wide HR/SA ──
+  const specialties = createSpecialtyService(db);
+  r.get('/nursing-specialties', authorize('workforce.read'), async (req, res) => { res.json(await specialties.list(SpecialtyQuery.parse(req.query))); });
+  r.post('/nursing-specialties', authorize('workforce.write'), async (req, res) => {
+    res.status(201).json(await specialties.create(authOf(res), SpecialtyCreateBody.parse(req.body), rid(res)));
+  });
+  r.patch('/nursing-specialties/:code', authorize('workforce.write'), async (req, res) => {
+    res.json(await specialties.update(authOf(res), CodeParam.parse(req.params).code.toUpperCase(), SpecialtyUpdateBody.parse(req.body), rid(res)));
+  });
+  r.delete('/nursing-specialties/:code', authorize('workforce.write'), async (req, res) => {
+    res.json(await specialties.remove(authOf(res), CodeParam.parse(req.params).code.toUpperCase(), rid(res)));
   });
 
   // ── Positions (§3.1.1, W6, W7) ──

@@ -160,7 +160,7 @@ describeDb('workforce, employees and contracts', () => {
     const onboardBody = (over: object = {}) => ({
       jobNumber: uniq('OB'), firstName: ' Mona ', middleName: '', lastName: 'Saleh', contactEmail: 'Mona@Example.SA',
       unitId: org.unitA.id, salary: '12500.50', maritalStatus: 'Single',
-      contractStart: today(), contractEnd: addDays(today(), 364), contractTypeCode: 'DIRECT_HOSPITAL', nationalityCode: 'SAU', rankGradeCode: 'N03', ...over,
+      contractStart: today(), contractEnd: addDays(today(), 364), contractTypeCode: 'DIRECT_HOSPITAL', nationalityCode: 'SAU', rankGradeCode: 'N03', specialtyCode: 'NS003', ...over,
     });
 
     it('rule E6: the server supplies the default position; omitting it at onboarding uses it (P4)', async () => {
@@ -276,6 +276,95 @@ describeDb('workforce, employees and contracts', () => {
       await hr.post('/rank-grades', { code, name: 'Licence classification' });
       expect((await hr.post('/credentials', body(code))).status).toBe(201);
       expect((await hr.del(`/rank-grades/${code}`)).body.error).toMatchObject({ code: 'RANK_GRADE_IN_USE', details: { employees: 0, credentials: 1 } });
+    });
+
+    it('Specialty comes from the Nursing Specialty master: sort order, search, required, active, visible to supervisors (owner decision 2026-10-03)', async () => {
+      const list = (await scoped.get('/nursing-specialties')).body.items as Array<{ code: string; name: string; sortOrder: number }>;
+      const start = list.filter((s) => /^NS0\d\d$/.test(s.code));
+      expect(start).toHaveLength(34);
+      expect(start.map((s) => s.sortOrder)).toEqual(Array.from({ length: 34 }, (_, i) => i + 1));
+      expect(start[0]).toMatchObject({ code: 'NS001', name: 'Clinical Nursing' });
+      expect(start[33]).toMatchObject({ code: 'NS034', name: 'General / Unspecified' });
+      const search = async (q: string) => (await scoped.get(`/nursing-specialties?q=${encodeURIComponent(q)}`)).body.items.map((s: { code: string }) => s.code);
+      expect(await search('ICU')).toEqual(expect.arrayContaining(['NS003', 'NS006'])); // "NICU" contains "ICU"
+      expect(await search('NICU')).toEqual(['NS006']);
+      expect(await search('cardiac')).toEqual(['NS010']);
+      expect(await search('ns032')).toEqual(['NS032']);
+
+      const { specialtyCode: _omit, ...without } = onboardBody();
+      expect(JSON.stringify((await idem(scoped.post('/employees/onboard', without))).body)).toContain('Specialty is required.');
+      expect((await idem(scoped.post('/employees/onboard', onboardBody({ specialtyCode: 'ICU' })))).body.error.code).toBe('SPECIALTY_INVALID');
+      expect((await idem(scoped.post('/employees/onboard', onboardBody({ specialty: 'Critical Care' })))).body.error.code).toBe('VALIDATION_FAILED');
+
+      const code = uniq('SP').toUpperCase().slice(0, 20);
+      await hr.post('/nursing-specialties', { code, name: `Test specialty ${code}`, sortOrder: 99 });
+      const made = await idem(scoped.post('/employees/onboard', onboardBody({ specialtyCode: code.toLowerCase() })));
+      expect(made.status).toBe(201);
+      const id = made.body.employeeId as number;
+      expect((await scoped.get(`/employees/${id}`)).body).toMatchObject({ specialtyCode: code, specialtyName: `Test specialty ${code}`, specialtyActive: true, specialty: null });
+
+      // Deactivated later: kept on the employee and editable; refused as a new choice; gone from the active list.
+      await hr.patch(`/nursing-specialties/${code}`, { isActive: false });
+      expect((await scoped.patch(`/employees/${id}`, { specialtyCode: code, jobTitle: 'Staff Nurse II' })).body).toMatchObject({ specialtyCode: code, specialtyActive: false });
+      expect((await idem(scoped.post('/employees/onboard', onboardBody({ specialtyCode: code })))).body.error.code).toBe('SPECIALTY_INACTIVE');
+      expect(await search(code)).toEqual([]);
+      expect((await scoped.patch(`/employees/${id}`, { specialtyCode: null })).body.error.code).toBe('VALIDATION_FAILED');
+      expect((await scoped.patch(`/employees/${id}`, { specialtyCode: 'NS034' })).body.specialtyName).toBe('General / Unspecified');
+
+      // Supervisors see the specialty (as before), not the private fields.
+      const sup = await signIn(app, (await makeUser(db, { roles: [{ role: 'SUPERVISOR', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
+      const seen = (await sup.get(`/employees/${id}`)).body;
+      expect(seen).toMatchObject({ view: 'BASELINE', specialtyCode: 'NS034', specialtyName: 'General / Unspecified' });
+      expect(seen).not.toHaveProperty('rankGradeCode');
+    });
+
+    it('Nursing Specialty master: add, edit, deactivate, reactivate, delete; codes and names unique; in-use cannot be deleted; audited', async () => {
+      const code = uniq('SM').toUpperCase().slice(0, 20);
+      const nurse = await signIn(app, (await makeUser(db)).email);
+      expect((await nurse.post('/nursing-specialties', { code, name: 'x' })).status).toBe(403);
+      expect((await scoped.post('/nursing-specialties', { code, name: 'Scoped try' })).body.error.code).toBe('SCOPE_NOT_COVERED');
+      expect((await hr.post('/nursing-specialties', { code, name: ' ' })).body.error.code).toBe('VALIDATION_FAILED');
+      expect((await hr.post('/nursing-specialties', { code, name: 'critical care nursing / icu' })).body.error.code).toBe('SPECIALTY_NAME_EXISTS');
+      const name = `Advanced Practice ${code}`;
+      expect((await hr.post('/nursing-specialties', { code: ` ${code.toLowerCase()} `, name, nameAr: 'تمريض متقدم', description: 'Test', sortOrder: 35 })).body).toMatchObject({ code, name, isActive: true });
+      expect((await hr.post('/nursing-specialties', { code, name: 'Another' })).body.error.code).toBe('SPECIALTY_EXISTS');
+      expect((await hr.patch(`/nursing-specialties/${code}`, { name: 'Emergency Nursing' })).body.error.code).toBe('SPECIALTY_NAME_EXISTS');
+      expect((await hr.patch(`/nursing-specialties/${code}`, { code: 'X1' })).body.error.code).toBe('VALIDATION_FAILED'); // the code never changes
+      expect((await hr.patch(`/nursing-specialties/${code}`, { name: `${name} II`, sortOrder: 36 })).body).toMatchObject({ name: `${name} II`, sortOrder: 36 });
+      await hr.patch(`/nursing-specialties/${code}`, { isActive: false });
+      await hr.patch(`/nursing-specialties/${code}`, { isActive: true });
+
+      const emp = await makeEmployee(db, org.unitA.id);
+      await db.employee.update({ where: { id: emp.id }, data: { specialtyCode: code } });
+      const refused = await hr.del(`/nursing-specialties/${code}`);
+      expect(refused.status).toBe(409);
+      expect(refused.body.error).toMatchObject({ code: 'SPECIALTY_IN_USE', details: { employees: 1 } });
+      await db.employee.update({ where: { id: emp.id }, data: { specialtyCode: 'NS001' } });
+      expect((await hr.del(`/nursing-specialties/${code}`)).body).toEqual({ code, deleted: true });
+
+      const actions = (await db.auditEntry.findMany({ where: { resource: 'nursing_specialty', resourceId: code }, orderBy: { id: 'asc' } })).map((a) => a.action);
+      expect(actions).toEqual(['SPECIALTY_CREATED', 'SPECIALTY_UPDATED', 'SPECIALTY_DEACTIVATED', 'SPECIALTY_REACTIVATED', 'SPECIALTY_DELETED']);
+    });
+
+    it('the migration maps clear free-text specialties to codes and keeps ambiguous ones for review', async () => {
+      const sql = readFileSync(resolve(__dirname, '../prisma/migrations/20261019090000_nursing_specialties/migration.sql'), 'utf8');
+      const normalise = sql.slice(sql.indexOf('WITH alias'));
+      const make = async (specialty: string) => (await db.employee.update({ where: { id: (await makeEmployee(db, org.unitA.id)).id }, data: { specialty, specialtyCode: null } })).id;
+      const ids = {
+        name: await make(' midwifery '), code: await make('ns020'), icu: await make('ICU'), cc: await make('Critical Care'), medsurg: await make('Medical-Surgical'),
+        obs: await make('Obstetrics'), surgical: await make('Surgical'), management: await make('Management'), general: await make('General'),
+      };
+      await db.$executeRawUnsafe(normalise);
+      const code = async (id: number) => (await db.employee.findUniqueOrThrow({ where: { id }, select: { specialtyCode: true } })).specialtyCode;
+      expect(await code(ids.name)).toBe('NS032');
+      expect(await code(ids.code)).toBe('NS020');
+      expect(await code(ids.icu)).toBe('NS003');
+      expect(await code(ids.cc)).toBe('NS003');
+      expect(await code(ids.medsurg)).toBe('NS002');
+      expect(await code(ids.obs)).toBe('NS008');
+      for (const [id, text] of [[ids.surgical, 'Surgical'], [ids.management, 'Management'], [ids.general, 'General']] as const) {
+        expect(await db.employee.findUniqueOrThrow({ where: { id }, select: { specialty: true, specialtyCode: true } })).toEqual({ specialty: text, specialtyCode: null });
+      }
     });
 
     it('the migration maps old free-text Rank/Grade to codes and keeps what it cannot match', async () => {

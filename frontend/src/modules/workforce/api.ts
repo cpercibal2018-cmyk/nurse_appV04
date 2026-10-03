@@ -83,3 +83,27 @@ export function useRankGradeAction() {
     onSuccess: () => Promise.all(['rank-grades', 'employees'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
   });
 }
+
+/** Nursing Specialty master (owner decision 2026-10-03); employeeCount = employees holding the specialty. */
+export interface NursingSpecialty { code: string; name: string; nameAr: string | null; description: string | null; isActive: boolean; sortOrder: number; employeeCount: number }
+export const useSpecialties = (includeInactive: boolean, enabled = true) => useQuery({
+  queryKey: ['nursing-specialties', includeInactive], enabled,
+  queryFn: () => http.get<{ items: NursingSpecialty[] }>(`/nursing-specialties${includeInactive ? '?includeInactive=true' : ''}`),
+});
+type SpecialtyAction =
+  | { kind: 'create'; body: { code: string; name: string; nameAr?: string; description?: string; isActive: boolean; sortOrder: number } }
+  | { kind: 'update'; code: string; body: { name?: string; nameAr?: string | null; description?: string | null; isActive?: boolean; sortOrder?: number } }
+  | { kind: 'remove'; code: string };
+export function useSpecialtyAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (a: SpecialtyAction): Promise<unknown> => {
+      switch (a.kind) {
+        case 'create': return http.post('/nursing-specialties', a.body);
+        case 'update': return http.patch(`/nursing-specialties/${encodeURIComponent(a.code)}`, a.body);
+        case 'remove': return http.delete(`/nursing-specialties/${encodeURIComponent(a.code)}`);
+      }
+    },
+    onSuccess: () => Promise.all(['nursing-specialties', 'employees'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+  });
+}
