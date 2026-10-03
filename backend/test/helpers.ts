@@ -123,10 +123,11 @@ export async function makeNurse(db: Db, unitId: number, opts: { account?: boolea
   return { emp, user };
 }
 
-/** A valid Job Post (City) for onboarding: Qassim Region - Buraydah from the location master. */
+/** Valid master-data references for onboarding: Qassim Region - Buraydah and the first facility. */
 export async function jobPost(db: Db) {
   const city = await db.saudiCity.findFirstOrThrow({ where: { regionCode: 'SA-05', name: 'Buraydah' }, select: { id: true } });
-  return { jobPostRegionCode: 'SA-05', jobPostCityId: city.id };
+  const facility = await db.facility.findFirstOrThrow({ where: { name: 'Al Iman General Hospital' }, select: { id: true } });
+  return { jobPostRegionCode: 'SA-05', jobPostCityId: city.id, facilityId: facility.id };
 }
 
 /** A credential template with one number field and issue/expiry date fields (spec §5.1.3 shape). */

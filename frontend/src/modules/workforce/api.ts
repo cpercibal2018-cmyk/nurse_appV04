@@ -148,3 +148,27 @@ export function useLocationAction() {
     onSuccess: () => Promise.all(['saudi-regions', 'saudi-cities', 'employees'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
   });
 }
+
+/** Facility master (owner decision 2026-10-03): the hospitals an employee actually works in; employeeCount = employees there. */
+export interface Facility { id: number; name: string; nameAr: string | null; isActive: boolean; sortOrder: number; employeeCount: number }
+export const useFacilities = (includeInactive: boolean, enabled = true) => useQuery({
+  queryKey: ['facilities', includeInactive], enabled,
+  queryFn: () => http.get<{ items: Facility[] }>(`/facilities${includeInactive ? '?includeInactive=true' : ''}`),
+});
+type FacilityAction =
+  | { kind: 'create'; body: { name: string; nameAr?: string } }
+  | { kind: 'update'; id: number; body: { name?: string; nameAr?: string | null; isActive?: boolean } }
+  | { kind: 'remove'; id: number };
+export function useFacilityAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (a: FacilityAction): Promise<unknown> => {
+      switch (a.kind) {
+        case 'create': return http.post<Facility>('/facilities', a.body);
+        case 'update': return http.patch<Facility>(`/facilities/${a.id}`, a.body);
+        case 'remove': return http.delete(`/facilities/${a.id}`);
+      }
+    },
+    onSuccess: () => Promise.all(['facilities', 'employees'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+  });
+}

@@ -168,7 +168,7 @@ export function createDataSubjectService({ db, protection, vault, backupRetentio
   /** Everything the application holds about one employee, sensitive values opened (spec §8.3.3 access / portability). */
   async function buildPackage(tx: DbClient, r: Row) {
     const employeeId = r.employeeId;
-    const e = await tx.employee.findUniqueOrThrow({ where: { id: employeeId }, include: { unit: { select: { code: true, name: true } }, position: { select: { code: true, title: true } }, nationalityRef: { select: { code: true, name: true } }, specialtyRef: { select: { name: true } }, jobPostRegion: { select: { name: true } }, jobPostCity: { select: { name: true } } } });
+    const e = await tx.employee.findUniqueOrThrow({ where: { id: employeeId }, include: { unit: { select: { code: true, name: true } }, position: { select: { code: true, title: true } }, nationalityRef: { select: { code: true, name: true } }, specialtyRef: { select: { name: true } }, jobPostRegion: { select: { name: true } }, jobPostCity: { select: { name: true } }, facility: { select: { name: true } } } });
     const user = await tx.user.findUnique({
       where: { employeeId },
       select: {
@@ -209,7 +209,7 @@ export function createDataSubjectService({ db, protection, vault, backupRetentio
       employee: {
         jobNumber: e.jobNumber, firstName: e.firstName, middleName: e.middleName, lastName: e.lastName, fullName: e.fullName,
         jobTitle: e.jobTitle, fileNo: e.fileNo, rankGrade: e.rankGradeCode ?? e.rankGrade, nationality: e.nationalityRef?.name ?? e.nationality, nationalityCode: e.nationalityCode, jobPostLocation: e.jobPostCity && e.jobPostRegion ? `${e.jobPostRegion.name} - ${e.jobPostCity.name}` : e.jobPostLocation,
-        actualWorkPlace: e.actualWorkPlace, specialty: e.specialtyRef?.name ?? e.specialty, specialtyCode: e.specialtyCode, maritalStatus: e.maritalStatus, salary: e.salary === null ? null : e.salary.toFixed(2),
+        actualWorkPlace: e.facility?.name ?? e.actualWorkPlace, facilityId: e.facilityId, specialty: e.specialtyRef?.name ?? e.specialty, specialtyCode: e.specialtyCode, maritalStatus: e.maritalStatus, salary: e.salary === null ? null : e.salary.toFixed(2),
         contactEmail: e.contactEmail, primaryPhone: e.primaryPhone, emergencyContactPhone: e.emergencyContactPhone,
         unit: e.unit, position: e.position, status: e.status, hireDate: e.hireDate ? dbDate(e.hireDate) : null, createdAt: e.createdAt, updatedAt: e.updatedAt,
       },

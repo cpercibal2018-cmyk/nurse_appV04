@@ -10,6 +10,7 @@ import { GuideHelp } from '../guidelines/GuideHelp';
 import { RankGradesTab } from './RankGradesTab';
 import { SpecialtiesTab } from './SpecialtiesTab';
 import { LocationsTab } from './LocationsTab';
+import { FacilitiesManager } from './FacilitiesManager';
 import {
   SHIFTS, TIERS, useAllDepartments, useAllUnits, useBedHistory, useCoverage, usePositions, useSummary, useWorkforceAction,
   type DepartmentRow, type ImportResult, type PositionRow, type ShiftType, type UnitRow,
@@ -269,6 +270,7 @@ export default function WorkforcePage() {
         { key: 'rankGrades', label: t('rankGrades'), children: <RankGradesTab canWrite={canWrite} /> },
         { key: 'specialties', label: t('specialties'), children: <SpecialtiesTab canWrite={canWrite} /> },
         { key: 'locations', label: t('locations'), children: <LocationsTab canWrite={canWrite} /> },
+        { key: 'facilities', label: t('facilities'), children: <><Alert type="info" showIcon title={t('facilitiesHint')} style={{ marginBottom: 12 }} /><FacilitiesManager canWrite={canWrite} /></> },
         { key: 'coverage', label: t('coverageTargets'), children: <CoverageTab canWrite={canWrite} /> },
       ]} />
     </Card>

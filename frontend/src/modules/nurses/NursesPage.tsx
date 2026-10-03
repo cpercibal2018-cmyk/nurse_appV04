@@ -19,10 +19,11 @@ import { NationalitySelect } from '../../components/NationalitySelect';
 import { RankGradePicker, rankGradeLabel } from '../../components/RankGradePicker';
 import { SpecialtySelect, specialtyLabel } from '../../components/SpecialtySelect';
 import { JobPostPicker, jobPostLabel, type JobPostValue } from '../../components/JobPostPicker';
+import { FacilityField, facilityLabel } from '../../components/FacilityField';
 import { useEmployee, useEmployeeAction, useEmployees, useInvitations, useInviteEmployee, useOnboardingDefaults, type EmployeeRow } from './api';
 
 import { GuideHelp } from '../guidelines/GuideHelp';
-const OPTIONAL_TEXT = ['middleName', 'jobTitle', 'fileNo', 'actualWorkPlace', 'primaryPhone', 'emergencyContactPhone'] as const;
+const OPTIONAL_TEXT = ['middleName', 'jobTitle', 'fileNo', 'primaryPhone', 'emergencyContactPhone'] as const;
 
 /** Form values → API body: empty strings become null, dates YYYY-MM-DD. */
 function toBody(v: Record<string, unknown>) {
@@ -39,7 +40,12 @@ function toBody(v: Record<string, unknown>) {
 }
 
 /** Fields 4–15 in the order of spec §3.1, plus placement. */
-function EmployeeFields({ units, positions, onboarding, legacyNationality, legacyRankGrade, legacySpecialty, legacyJobPost }: { units: Array<{ value: number | null; label: string }>; positions: Array<{ value: string; label: string }>; onboarding: boolean; legacyNationality?: string | null; legacyRankGrade?: string | null; legacySpecialty?: string | null; legacyJobPost?: string | null }) {
+function EmployeeFields({ units, positions, onboarding, legacyNationality, legacyRankGrade, legacySpecialty, legacyJobPost, legacyFacility, savedFacilityId }: {
+  units: Array<{ value: number | null; label: string }>; positions: Array<{ value: string; label: string }>; onboarding: boolean;
+  legacyNationality?: string | null; legacyRankGrade?: string | null; legacySpecialty?: string | null; legacyJobPost?: string | null;
+  legacyFacility?: string | null; savedFacilityId?: number | null;
+}) {
+  const { systemWideAdmin } = usePermissions();
   const { t, i18n } = useTranslation();
   const types = useContractTypes(false, onboarding); // owner decision 2026-10-03: the Draft contract's type
   const start = Form.useWatch('contractStart');
@@ -66,7 +72,10 @@ function EmployeeFields({ units, positions, onboarding, legacyNationality, legac
         extra={legacyJobPost ? t('jobPostLegacy', { value: legacyJobPost }) : undefined}>
         <JobPostPicker />
       </Form.Item>
-      <Form.Item name="actualWorkPlace" label={t('actualWorkPlace')}><Input maxLength={120} /></Form.Item>
+      <Form.Item name="facilityId" label={t('actualWorkPlace')} rules={[{ required: true, message: t('facilityRequired') }]}
+        extra={legacyFacility ? t('facilityLegacy', { value: legacyFacility }) : undefined}>
+        <FacilityField canManage={systemWideAdmin} savedId={savedFacilityId ?? null} />
+      </Form.Item>
       <Form.Item name="specialtyCode" label={t('specialty')} rules={[{ required: true, message: t('specialtyRequired') }]}
         extra={legacySpecialty ? t('specialtyLegacy', { value: legacySpecialty }) : undefined}>
         <SpecialtySelect />
@@ -186,7 +195,8 @@ export default function NursesPage() {
               ['jobNumber', e.jobNumber], ['name', e.fullName], ['unit', e.unit ? `${e.unit.code} — ${e.unit.name}` : t('unassigned')],
               ['position', `${e.position.code} — ${e.position.title}`], ['jobTitle', e.jobTitle], ['specialty', e.specialtyName ? specialtyLabel({ name: e.specialtyName, nameAr: e.specialtyNameAr }, i18n.language === 'ar')
                 : e.specialty ? `${e.specialty} — ${t('specialtyUnmatched')}` : null], ['hireDate', e.hireDate],
-              ['actualWorkPlace', e.actualWorkPlace], ['contactEmail', e.contactEmail], ['primaryPhone', e.primaryPhone],
+              ['actualWorkPlace', e.facilityName ? facilityLabel({ name: e.facilityName, nameAr: e.facilityNameAr ?? null }, i18n.language === 'ar')
+                : e.actualWorkPlace ? `${e.actualWorkPlace} — ${t('facilityUnmatched')}` : null], ['contactEmail', e.contactEmail], ['primaryPhone', e.primaryPhone],
               ...(e.view === 'FULL' ? [
                 ['emergencyContactPhone', e.emergencyContactPhone],
                 ['fileNo', e.fileNo], ['rankGrade', e.rankGradeCode ? rankGradeLabel(e.rankGradeCode, e.rankGradeName) : e.rankGrade ? `${e.rankGrade} — ${t('rankGradeUnmatched')}` : null],
@@ -205,7 +215,8 @@ export default function NursesPage() {
           <Form form={editForm} layout="vertical" onFinish={async (v) => {
             if (await run({ kind: 'update', id: e.id, body: toBody(v) }, t('saved')) !== undefined) setEditing(false);
           }}>
-            <EmployeeFields units={unitOptions} positions={positionOptions} onboarding={false} legacyNationality={e.nationalityCode ? null : e.nationality} legacyRankGrade={e.rankGradeCode ? null : e.rankGrade} legacySpecialty={e.specialtyCode ? null : e.specialty} legacyJobPost={e.jobPostCityId ? null : e.jobPostLocation} />
+            <EmployeeFields units={unitOptions} positions={positionOptions} onboarding={false} legacyNationality={e.nationalityCode ? null : e.nationality} legacyRankGrade={e.rankGradeCode ? null : e.rankGrade} legacySpecialty={e.specialtyCode ? null : e.specialty} legacyJobPost={e.jobPostCityId ? null : e.jobPostLocation}
+              legacyFacility={e.facilityId ? null : e.actualWorkPlace} savedFacilityId={e.facilityId ?? null} />
             <Space><Button type="primary" htmlType="submit" loading={action.isPending}>{t('submit')}</Button><Button onClick={() => setEditing(false)}>{t('cancel')}</Button></Space>
           </Form>
         )}

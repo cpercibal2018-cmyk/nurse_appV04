@@ -11,6 +11,7 @@ import { listNationalities } from './nationalities.js';
 import { createRankGradeService, RankGradeCreateBody, RankGradeQuery, RankGradeUpdateBody } from './rank-grades.js';
 import { createSpecialtyService, SpecialtyCreateBody, SpecialtyQuery, SpecialtyUpdateBody } from './specialties.js';
 import { CityCreateBody, CityUpdateBody, createLocationService, LocationQuery, RegionCreateBody, RegionUpdateBody } from './locations.js';
+import { createFacilityService, FacilityCreateBody, FacilityQuery, FacilityUpdateBody } from './facilities.js';
 import {
   BedCountBody, BulkBedsBody, CoverageBody, CoverageQuery, DepartmentCreateBody, DepartmentUpdateBody, ImportBody,
   PositionCreateBody, PositionUpdateBody, UnitCreateBody, UnitsQuery, UnitUpdateBody, type OrgService,
@@ -108,6 +109,20 @@ export function createWorkforceRouter(db: Db, org: OrgService) {
   });
   r.delete('/saudi-cities/:id', authorize('workforce.write'), async (req, res) => {
     res.json(await locations.removeCity(authOf(res), CityId.parse(req.params).id, rid(res)));
+  });
+
+  // ── Facility master (owner decision 2026-10-03): read by everyone, changed by system-wide HR/SA ──
+  const facilities = createFacilityService(db);
+  const FacilityParam = z.object({ id: z.coerce.number().int().positive() });
+  r.get('/facilities', authorize('workforce.read'), async (req, res) => { res.json(await facilities.list(FacilityQuery.parse(req.query))); });
+  r.post('/facilities', authorize('workforce.write'), async (req, res) => {
+    res.status(201).json(await facilities.create(authOf(res), FacilityCreateBody.parse(req.body), rid(res)));
+  });
+  r.patch('/facilities/:id', authorize('workforce.write'), async (req, res) => {
+    res.json(await facilities.update(authOf(res), FacilityParam.parse(req.params).id, FacilityUpdateBody.parse(req.body), rid(res)));
+  });
+  r.delete('/facilities/:id', authorize('workforce.write'), async (req, res) => {
+    res.json(await facilities.remove(authOf(res), FacilityParam.parse(req.params).id, rid(res)));
   });
 
   // ── Positions (§3.1.1, W6, W7) ──

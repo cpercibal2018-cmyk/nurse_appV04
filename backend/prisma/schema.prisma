@@ -343,7 +343,10 @@ model Employee {
   jobPostRegionCode     String?        @map("job_post_region_code") @db.VarChar(10)
   /// Always a city of jobPostRegionCode (checked by the service).
   jobPostCityId         Int?           @map("job_post_city_id")
+  /// Free text from before the Facility master (owner decision 2026-10-03): kept only where it
+  /// matched no facility (e.g. wards such as "ICU Main"), so HR can choose one. New values never.
   actualWorkPlace       String?        @map("actual_work_place")
+  facilityId            Int?           @map("facility_id")
   /// Free text from before the Nursing Specialty master (owner decision 2026-10-03): kept only
   /// where it matched no listed specialty, so HR can choose the right one. New values never.
   specialty             String?
@@ -372,6 +375,7 @@ model Employee {
   specialtyRef     NursingSpecialty?      @relation(fields: [specialtyCode], references: [code], onDelete: Restrict)
   jobPostRegion    SaudiRegion?           @relation(fields: [jobPostRegionCode], references: [code], onDelete: Restrict)
   jobPostCity      SaudiCity?             @relation(fields: [jobPostCityId], references: [id], onDelete: Restrict)
+  facility         Facility?              @relation(fields: [facilityId], references: [id], onDelete: Restrict)
   user             User?
   driftFindings    ConsistencyAuditLog[]
   shadowFindings   EligibilityShadowLog[]
@@ -394,6 +398,7 @@ model Employee {
   @@index([specialtyCode])
   @@index([jobPostRegionCode])
   @@index([jobPostCityId])
+  @@index([facilityId])
   @@index([specialty])
   @@index([fileNo])
   @@map("employees")
@@ -445,6 +450,23 @@ model Contract {
   @@index([endDate])
   @@index([contractTypeCode])
   @@map("contracts")
+}
+
+/// Facility master (owner decision 2026-10-03): the hospitals an employee actually works in,
+/// maintained by hospital-wide HR and System Admins. Names are stored trimmed with single spaces,
+/// unique ignoring case (checked by the service). A used facility is deactivated, never deleted.
+model Facility {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(150)
+  nameAr    String?  @map("name_ar") @db.VarChar(150)
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  employees Employee[]
+
+  @@map("facilities")
 }
 
 /// Saudi Arabia location master (owner decision 2026-10-03): regions (ISO 3166-2 codes, SA-01 …)

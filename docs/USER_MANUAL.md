@@ -347,8 +347,9 @@ The staff master record: one row per employee with job number, name, unit, posit
 | :--- | :--- | :--- |
 | First, middle, last name | HR / System Admin | Full name is built by the system, never typed |
 | Job number | HR / System Admin | Unique (case does not matter); no format rule |
-| Job title, file no., actual work place, marital status, salary (SAR), hire date | HR / System Admin | Hidden from supervisors: salary, marital status, nationality, rank, file number, job post location, emergency contact |
+| Job title, file no., marital status, salary (SAR), hire date | HR / System Admin | Hidden from supervisors: salary, marital status, nationality, rank, file number, job post location, emergency contact |
 | Nationality | HR / System Admin | Required. Chosen from the standard list (type to search by nationality, country or code); free text is not accepted. Hidden from supervisors |
+| Actual Work Place / Facility | HR / System Admin | Required. The hospital, chosen from the Facility master (type to search); hospital-wide administrators can open Manage Facilities beside the field. Supervisors see it |
 | Job Post (City) | HR / System Admin | Required. Region + City, chosen in the Select Job Post Location window (region first, then a city of that region) from Workforce → Locations; shown as "Qassim Region - Buraydah"; free text is not accepted. Hidden from supervisors |
 | Specialty | HR / System Admin | Required. Chosen from the Nursing Specialty master (Workforce → Specialty), in its sort order; type to search by code, name or description; free text is not accepted. Supervisors see it |
 | Rank/Grade (SCFHS classification) | HR / System Admin | Required. Chosen in the Select Rank/Grade window from the Rank/Grade master (Workforce → Rank/Grade); free text is not accepted. Hidden from supervisors |
@@ -395,7 +396,7 @@ The staff master record: one row per employee with job number, name, unit, posit
 
 **Before you start.**
 
-- Name, job number, contact e-mail, nationality, specialty, Rank/Grade (SCFHS classification), Job Post (City); the employment contract type and the contract start and end dates.
+- Name, job number, contact e-mail, nationality, specialty, Rank/Grade (SCFHS classification), Job Post (City), Actual Work Place / Facility; the employment contract type and the contract start and end dates.
 - Unit and position if known — the defaults are Unassigned and SN.
 
 **Steps.**
@@ -416,6 +417,7 @@ The staff master record: one row per employee with job number, name, unit, posit
 - *The job number is refused as a duplicate* — Job numbers are unique regardless of case. Search for the existing record.
 - *The form asks for a position* — The hospital has no active SN position to default to; choose one.
 - *"Nationality is required."* — Choose it from the list: type a few letters of the nationality (Filipino), the country (Philippines) or the code (PHL).
+- *"Actual Work Place / Facility is required."* — Choose the hospital from the list (type part of its name). If it is missing, a hospital-wide HR Admin adds it with Manage Facilities beside the field.
 - *"Job Post (City) is required."* — Click the field (or its search button): choose the Region / Province, then the City — Select becomes available once both are chosen.
 - *"Specialty is required."* — Choose it from the list: type part of the name or code (ICU, NICU, NS013). If the right one is missing, a hospital-wide HR Admin adds it under Workforce → Specialty; meanwhile Other Nursing Specialty or General / Unspecified can be chosen.
 - *"Rank/Grade is required."* — Click the Rank/Grade field (or its search button), find the classification by code, name or meaning, and double-click it or click Select.
@@ -449,6 +451,7 @@ The staff master record: one row per employee with job number, name, unit, posit
 
 - *Phone refused* — Use the international format: + then country code and number, e.g. +966500000000.
 - *Nationality shows "not on the nationality list"* — It was typed in before the list existed and matched no listed nationality. Edit the record: the old text is shown under the field; choose the matching nationality and save.
+- *Actual Work Place shows "not on the facility list" (e.g. "ICU Main")* — Text typed in before the facility list — often the ward, which the Unit already records. Edit the record: the old text is shown under the field; choose the hospital and save.
 - *Job Post (City) shows "not on the location list"* — Text typed in before the location list that is not exactly a listed city (e.g. "Riyadh - Al Iman Hospital"). Edit the record: the old text is shown under the field; choose the Region + City and save.
 - *Specialty shows "not on the specialty list" (e.g. "Surgical")* — Text typed in before the specialty list that could not be matched safely (Surgical could be Medical-Surgical or Operating Room). Edit the record: the old text is shown under the field; choose the specialty and save.
 - *Rank/Grade shows "not on the Rank/Grade list" (e.g. "Grade 7")* — A pay grade or other text typed in before the Rank/Grade master. Edit the record: the old text is shown under the field; choose the SCFHS classification and save.
@@ -1594,7 +1597,36 @@ The hospital's structure: departments, units and their beds, positions, and how 
 
 **Related.** [Nurses](#5-nurses)
 
-### 9.9 Set coverage targets
+### 9.9 Manage facilities
+
+**Status:** Implemented  
+**Roles:** HR Admin, System Admin
+
+**Purpose.** Keep the list of hospitals that HR chooses from for an employee's Actual Work Place / Facility.
+
+**Who can perform it.** Hospital-wide HR Admin or System Admin; everyone else can only select a facility.
+
+**Steps.**
+
+1. Open Manage Facilities beside the Actual Work Place / Facility field (Onboard employee or Edit), or Workforce → Facilities.
+2. Add Facility: type the Facility Name (and the Arabic name) and Save. From the form, the new facility is selected at once; what you typed in the form stays.
+3. Edit: change the name and Save — the facility keeps its identity, so every employee shows the new name.
+4. Delete: confirm. A facility employees use cannot be deleted — you are offered Deactivate instead. Reactivate brings an inactive facility back.
+
+**System result.** The dropdown changes at once. Names are stored trimmed with single spaces and must be unique (capitals and extra spaces do not count). An inactive facility disappears from new choices but stays on the employees who have it. If the facility you had just chosen (not yet saved) is deleted or deactivated, the choice is cleared and you are asked to pick another. Every change is in the audit log.
+
+**Approval.** None.
+
+**Next step.** None.
+
+**Common problems.**
+
+- *No Manage Facilities button* — Only hospital-wide HR Admins and System Admins maintain the list. Choose an existing facility, or ask one of them.
+- *"A facility with this name already exists"* — The same name is already on the list (perhaps with other capitals or spaces). Choose it, or reactivate it if inactive.
+
+**Related.** [Nurses](#5-nurses)
+
+### 9.10 Set coverage targets
 
 **Status:** Implemented  
 **Roles:** HR Admin, System Admin

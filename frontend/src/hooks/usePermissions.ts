@@ -14,6 +14,9 @@ export function usePermissions() {
     hasRole: (...wanted: EffectiveRole[]) => effectiveRoles.some((r) => wanted.includes(r)),
     /** Holds an assignment for one of these roles, dormant or not (e.g. to offer PAM elevation). */
     holdsAssignment: (...wanted: AppRole[]) => roles.some((r) => wanted.includes(r.role)),
+    /** Hospital-wide HR Admin or System Admin right now: may maintain master data such as facilities. */
+    systemWideAdmin: effectiveRoles.some((r) => r === 'HR_ADMIN' || r === 'SYSTEM_ADMIN')
+      && roles.some((r) => (r.role === 'HR_ADMIN' || r.role === 'SYSTEM_ADMIN') && r.scopeType === 'SYSTEM'),
     /** An account linked to an employee record can use self-service pages. */
     isEmployee: user?.employeeId != null,
   };
