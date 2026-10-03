@@ -51,7 +51,7 @@ describeDb('business scenarios, end to end', () => {
     for (const key of ['a', 'b'] as const) {
       const res = await idem(hr.post('/employees/onboard', {
         jobNumber: uniq('SCN'), firstName: key === 'a' ? 'Amal' : 'Basma', lastName: 'Nurse', contactEmail: `${key}@example.sa`,
-        unitId, contractStart: addDays(today(), -10), contractEnd: addDays(today(), 355), contractTypeCode: 'DIRECT_HOSPITAL',
+        unitId, contractStart: addDays(today(), -10), contractEnd: addDays(today(), 355), contractTypeCode: 'DIRECT_HOSPITAL', nationalityCode: 'SAU',
       }));
       expect(res.status).toBe(201);
       ids[key] = res.body.employeeId;

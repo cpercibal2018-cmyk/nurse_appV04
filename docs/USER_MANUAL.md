@@ -347,7 +347,8 @@ The staff master record: one row per employee with job number, name, unit, posit
 | :--- | :--- | :--- |
 | First, middle, last name | HR / System Admin | Full name is built by the system, never typed |
 | Job number | HR / System Admin | Unique (case does not matter); no format rule |
-| Job title, file no., rank / grade, nationality, job post (city), actual work place, specialty, marital status, salary (SAR), hire date | HR / System Admin | Hidden from supervisors: salary, marital status, nationality, rank, file number, job post location, emergency contact |
+| Job title, file no., rank / grade, job post (city), actual work place, specialty, marital status, salary (SAR), hire date | HR / System Admin | Hidden from supervisors: salary, marital status, nationality, rank, file number, job post location, emergency contact |
+| Nationality | HR / System Admin | Required. Chosen from the standard list (type to search by nationality, country or code); free text is not accepted. Hidden from supervisors |
 | Unit | HR / System Admin | Moving a nurse re-checks eligibility and returns invalid future shifts to Draft |
 | Position | HR Admin only (Change position) | Needs a reason; recorded from → to; a position never gives a login role |
 | Contact e-mail | HR / System Admin | Used for the login invitation |
@@ -391,7 +392,7 @@ The staff master record: one row per employee with job number, name, unit, posit
 
 **Before you start.**
 
-- Name, job number, contact e-mail; the employment contract type and the contract start and end dates.
+- Name, job number, contact e-mail, nationality; the employment contract type and the contract start and end dates.
 - Unit and position if known — the defaults are Unassigned and SN.
 
 **Steps.**
@@ -411,6 +412,7 @@ The staff master record: one row per employee with job number, name, unit, posit
 
 - *The job number is refused as a duplicate* — Job numbers are unique regardless of case. Search for the existing record.
 - *The form asks for a position* — The hospital has no active SN position to default to; choose one.
+- *"Nationality is required."* — Choose it from the list: type a few letters of the nationality (Filipino), the country (Philippines) or the code (PHL).
 
 **Related.** [Contracts](#6-contracts) · [Credentials](#7-credentials) · [Eligibility](#8-eligibility)
 
@@ -440,6 +442,7 @@ The staff master record: one row per employee with job number, name, unit, posit
 **Common problems.**
 
 - *Phone refused* — Use the international format: + then country code and number, e.g. +966500000000.
+- *Nationality shows "not on the nationality list"* — It was typed in before the list existed and matched no listed nationality. Edit the record: the old text is shown under the field; choose the matching nationality and save.
 
 **Related.** [Eligibility](#8-eligibility) · [Roster and scheduling](#11-roster-and-scheduling)
 

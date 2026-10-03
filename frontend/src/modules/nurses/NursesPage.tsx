@@ -15,10 +15,11 @@ import { phoneRule } from '../../lib/phone';
 import { useUnits } from '../administration/api';
 import { usePositions } from '../workforce/api';
 import { useContractTypes } from '../contracts/api';
+import { NationalitySelect } from '../../components/NationalitySelect';
 import { useEmployee, useEmployeeAction, useEmployees, useInvitations, useInviteEmployee, useOnboardingDefaults, type EmployeeRow } from './api';
 
 import { GuideHelp } from '../guidelines/GuideHelp';
-const OPTIONAL_TEXT = ['middleName', 'jobTitle', 'fileNo', 'rankGrade', 'nationality', 'jobPostLocation', 'actualWorkPlace', 'specialty', 'primaryPhone', 'emergencyContactPhone'] as const;
+const OPTIONAL_TEXT = ['middleName', 'jobTitle', 'fileNo', 'rankGrade', 'jobPostLocation', 'actualWorkPlace', 'specialty', 'primaryPhone', 'emergencyContactPhone'] as const;
 
 /** Form values → API body: empty strings become null, dates YYYY-MM-DD. */
 function toBody(v: Record<string, unknown>) {
@@ -33,7 +34,7 @@ function toBody(v: Record<string, unknown>) {
 }
 
 /** Fields 4–15 in the order of spec §3.1, plus placement. */
-function EmployeeFields({ units, positions, onboarding }: { units: Array<{ value: number | null; label: string }>; positions: Array<{ value: string; label: string }>; onboarding: boolean }) {
+function EmployeeFields({ units, positions, onboarding, legacyNationality }: { units: Array<{ value: number | null; label: string }>; positions: Array<{ value: string; label: string }>; onboarding: boolean; legacyNationality?: string | null }) {
   const { t, i18n } = useTranslation();
   const types = useContractTypes(false, onboarding); // owner decision 2026-10-03: the Draft contract's type
   const start = Form.useWatch('contractStart');
@@ -49,7 +50,10 @@ function EmployeeFields({ units, positions, onboarding }: { units: Array<{ value
       <Form.Item name="jobTitle" label={t('jobTitle')}><Input maxLength={120} /></Form.Item>
       <Form.Item name="fileNo" label={t('fileNo')}><Input maxLength={40} /></Form.Item>
       <Form.Item name="rankGrade" label={t('rankGrade')}><Input maxLength={40} /></Form.Item>
-      <Form.Item name="nationality" label={t('nationality')}><Input maxLength={60} /></Form.Item>
+      <Form.Item name="nationalityCode" label={t('nationality')} rules={[{ required: true, message: t('nationalityRequired') }]}
+        extra={legacyNationality ? t('nationalityLegacy', { value: legacyNationality }) : undefined}>
+        <NationalitySelect />
+      </Form.Item>
       <Form.Item name="jobPostLocation" label={t('jobPostLocation')}><Input maxLength={120} /></Form.Item>
       <Form.Item name="actualWorkPlace" label={t('actualWorkPlace')}><Input maxLength={120} /></Form.Item>
       <Form.Item name="specialty" label={t('specialty')}><Input maxLength={120} /></Form.Item>
@@ -82,7 +86,7 @@ function EmployeeFields({ units, positions, onboarding }: { units: Array<{ value
 }
 
 export default function NursesPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { message, modal } = App.useApp();
   const { hasRole } = usePermissions();
   const canWrite = hasRole('HR_ADMIN', 'SYSTEM_ADMIN');
@@ -167,7 +171,10 @@ export default function NursesPage() {
               ['actualWorkPlace', e.actualWorkPlace], ['contactEmail', e.contactEmail], ['primaryPhone', e.primaryPhone],
               ...(e.view === 'FULL' ? [
                 ['emergencyContactPhone', e.emergencyContactPhone],
-                ['fileNo', e.fileNo], ['rankGrade', e.rankGrade], ['nationality', e.nationality], ['jobPostLocation', e.jobPostLocation],
+                ['fileNo', e.fileNo], ['rankGrade', e.rankGrade],
+                ['nationality', e.nationalityName ? (i18n.language === 'ar' && e.nationalityNameAr ? e.nationalityNameAr : e.nationalityName)
+                  : e.nationality ? `${e.nationality} — ${t('nationalityUnmatched')}` : null],
+                ['jobPostLocation', e.jobPostLocation],
                 ['maritalStatus', e.maritalStatus ? t(`marital_${e.maritalStatus}`) : null], ['salarySar', e.salary],
               ] : []),
             ].map(([k, v]) => ({ key: k as string, label: t(k as string), children: (v as string | null | undefined) ?? '—' }))} />
@@ -178,7 +185,7 @@ export default function NursesPage() {
           <Form form={editForm} layout="vertical" onFinish={async (v) => {
             if (await run({ kind: 'update', id: e.id, body: toBody(v) }, t('saved')) !== undefined) setEditing(false);
           }}>
-            <EmployeeFields units={unitOptions} positions={positionOptions} onboarding={false} />
+            <EmployeeFields units={unitOptions} positions={positionOptions} onboarding={false} legacyNationality={e.nationalityCode ? null : e.nationality} />
             <Space><Button type="primary" htmlType="submit" loading={action.isPending}>{t('submit')}</Button><Button onClick={() => setEditing(false)}>{t('cancel')}</Button></Space>
           </Form>
         )}
