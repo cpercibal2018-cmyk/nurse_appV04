@@ -329,7 +329,10 @@ model Employee {
   fullName              String         @map("full_name") // derived by trigger — never supplied
   jobTitle              String?        @map("job_title")
   fileNo                String?        @map("file_no") // not unique (E8)
+  /// Free text from before the Rank/Grade master (owner decision 2026-10-03): kept only where it
+  /// matched no listed classification, so HR can choose the right one. New values never.
   rankGrade             String?        @map("rank_grade")
+  rankGradeCode         String?        @map("rank_grade_code") @db.VarChar(20)
   /// Free text from before the nationality list (owner decision 2026-10-03): kept only where it
   /// could not be matched to a listed nationality, so HR can choose the right one. New values never.
   nationality           String?
@@ -357,6 +360,7 @@ model Employee {
   unit             Unit?                  @relation(fields: [unitId], references: [id])
   position         Position               @relation(fields: [positionCode], references: [code])
   nationalityRef   Nationality?           @relation(fields: [nationalityCode], references: [code], onDelete: Restrict)
+  rankGradeRef     RankGrade?             @relation(fields: [rankGradeCode], references: [code], onDelete: Restrict)
   user             User?
   driftFindings    ConsistencyAuditLog[]
   shadowFindings   EligibilityShadowLog[]
@@ -375,6 +379,7 @@ model Employee {
   @@index([positionCode])
   @@index([nationality])
   @@index([nationalityCode])
+  @@index([rankGradeCode])
   @@index([specialty])
   @@index([fileNo])
   @@map("employees")
@@ -426,6 +431,23 @@ model Contract {
   @@index([endDate])
   @@index([contractTypeCode])
   @@map("contracts")
+}
+
+/// Rank/Grade master (owner decision 2026-10-03): the SCFHS nursing classification (N01…),
+/// maintained on screen by system-wide HR and System Admins. A used record is deactivated, never
+/// deleted. The SCFHS licence's "classification" field draws on the same list.
+model RankGrade {
+  code      String   @id @db.VarChar(20)
+  name      String   @db.VarChar(120)
+  meaning   String?  @db.VarChar(300)
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  employees Employee[]
+
+  @@map("rank_grades")
 }
 
 /// Nationalities (owner decision 2026-10-03): a fixed, standard list (ISO 3166-1 alpha-3, as on

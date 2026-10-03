@@ -24,6 +24,7 @@ import { unitScope, type AuthContext } from '../users/access.js';
 import { HR_ROLES, viewerOf, type Viewer } from './access.js';
 import type { FieldDef } from './catalog.js';
 import { presentTemplate, toFieldDefs, WITH_FIELDS } from './fields.js';
+import { assertActiveRankGrade, CLASSIFICATION_FIELD_KEY } from '../workforce/rank-grades.js';
 
 /** Spec §5.2: "Subject to Renew" = within 60 days of expiry (confirmed by the owner, D-39). Also the first credential reminder milestone. */
 export const RENEWAL_WINDOW_DAYS = 60;
@@ -69,6 +70,14 @@ export function lifecycleLabel(c: { status: string; expiryDate: Date | null; pen
 }
 
 /** Validates tracking data against the template's field definitions and extracts issue/expiry dates. */
+/** The SCFHS licence's classification (a `select` field keyed "classification") is a Rank/Grade code (owner decision 2026-10-03). */
+async function assertClassification(tx: DbClient, defs: FieldDef[], data: Record<string, string | number>) {
+  for (const d of defs) {
+    const v = data[d.key];
+    if (d.type === 'select' && d.key === CLASSIFICATION_FIELD_KEY && v !== undefined && v !== '') await assertActiveRankGrade(tx, String(v));
+  }
+}
+
 export function readTrackingData(tpl: { fieldDefs: FieldDef[]; hasExpiry: boolean }, data: Record<string, string | number>, explicit: { issueDate?: string; expiryDate?: string }) {
   const defs = tpl.fieldDefs;
   const known = new Set(defs.map((d) => d.key));
@@ -234,6 +243,7 @@ export function createRecordService(db: Db, documents: DocumentAccess, scanner: 
       if (!tpl.isActive) throw new HttpError(422, 'TEMPLATE_INACTIVE', 'The credential template is inactive');
       const dates = readTrackingData(tpl, body.trackingData, body);
       return db.$transaction(async (tx) => {
+        await assertClassification(tx, tpl.fieldDefs, body.trackingData);
         const sealed = await protection.seal(tx, body.employeeId, tpl.fieldDefs, body.trackingData);
         const c = await tx.credential.create({
           data: {
@@ -293,6 +303,7 @@ export function createRecordService(db: Db, documents: DocumentAccess, scanner: 
         const tpl = presentTemplate(await tx.credentialTemplate.findUniqueOrThrow({ where: { id: c.templateId }, include: WITH_FIELDS }));
         const dates = readTrackingData(tpl, body.trackingData, body);
         if (tpl.hasExpiry && !dates.expiryDate) throw new HttpError(422, 'EXPIRY_DATE_REQUIRED', 'A renewal must state the new expiry date');
+        await assertClassification(tx, tpl.fieldDefs, body.trackingData);
         const sealed = await protection.seal(tx, c.employeeId, tpl.fieldDefs, body.trackingData);
         const pendingData = { trackingData: sealed, ...dates, submittedById: auth.user.id, submittedAt: new Date().toISOString() };
         await tx.credential.update({ where: { id }, data: { pendingData } });

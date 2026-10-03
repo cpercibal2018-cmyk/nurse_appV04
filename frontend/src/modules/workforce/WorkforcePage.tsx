@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { usePermissions } from '../../hooks/usePermissions';
 import { describeApiError } from '../../lib/errors';
 import { GuideHelp } from '../guidelines/GuideHelp';
+import { RankGradesTab } from './RankGradesTab';
 import {
   SHIFTS, TIERS, useAllDepartments, useAllUnits, useBedHistory, useCoverage, usePositions, useSummary, useWorkforceAction,
   type DepartmentRow, type ImportResult, type PositionRow, type ShiftType, type UnitRow,
@@ -263,6 +264,7 @@ export default function WorkforcePage() {
         { key: 'units', label: t('units'), children: <UnitsTab canWrite={canWrite} /> },
         { key: 'departments', label: t('departments'), children: <DepartmentsTab canWrite={canWrite} /> },
         { key: 'positions', label: t('positions'), children: <PositionsTab canWrite={canWrite} /> },
+        { key: 'rankGrades', label: t('rankGrades'), children: <RankGradesTab canWrite={canWrite} /> },
         { key: 'coverage', label: t('coverageTargets'), children: <CoverageTab canWrite={canWrite} /> },
       ]} />
     </Card>

@@ -59,3 +59,27 @@ export function useWorkforceAction() {
     onSuccess: () => Promise.all(['departments', 'units', 'positions', 'coverage', 'bed-history', 'eligibility'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
   });
 }
+
+/** Rank/Grade master (owner decision 2026-10-03): the SCFHS nursing classification; employeeCount = employees holding it. */
+export interface RankGrade { code: string; name: string; meaning: string | null; isActive: boolean; sortOrder: number; employeeCount: number }
+export const useRankGrades = (includeInactive: boolean, enabled = true) => useQuery({
+  queryKey: ['rank-grades', includeInactive], enabled,
+  queryFn: () => http.get<{ items: RankGrade[] }>(`/rank-grades${includeInactive ? '?includeInactive=true' : ''}`),
+});
+type RankGradeAction =
+  | { kind: 'create'; body: { code: string; name: string; meaning?: string; isActive: boolean; sortOrder: number } }
+  | { kind: 'update'; code: string; body: { name?: string; meaning?: string | null; isActive?: boolean; sortOrder?: number } }
+  | { kind: 'remove'; code: string };
+export function useRankGradeAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (a: RankGradeAction): Promise<unknown> => {
+      switch (a.kind) {
+        case 'create': return http.post('/rank-grades', a.body);
+        case 'update': return http.patch(`/rank-grades/${encodeURIComponent(a.code)}`, a.body);
+        case 'remove': return http.delete(`/rank-grades/${encodeURIComponent(a.code)}`);
+      }
+    },
+    onSuccess: () => Promise.all(['rank-grades', 'employees'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+  });
+}

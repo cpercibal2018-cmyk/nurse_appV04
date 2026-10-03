@@ -160,7 +160,7 @@ describeDb('workforce, employees and contracts', () => {
     const onboardBody = (over: object = {}) => ({
       jobNumber: uniq('OB'), firstName: ' Mona ', middleName: '', lastName: 'Saleh', contactEmail: 'Mona@Example.SA',
       unitId: org.unitA.id, salary: '12500.50', maritalStatus: 'Single',
-      contractStart: today(), contractEnd: addDays(today(), 364), contractTypeCode: 'DIRECT_HOSPITAL', nationalityCode: 'SAU', ...over,
+      contractStart: today(), contractEnd: addDays(today(), 364), contractTypeCode: 'DIRECT_HOSPITAL', nationalityCode: 'SAU', rankGradeCode: 'N03', ...over,
     });
 
     it('rule E6: the server supplies the default position; omitting it at onboarding uses it (P4)', async () => {
@@ -202,6 +202,92 @@ describeDb('workforce, employees and contracts', () => {
       expect(seen.view).toBe('BASELINE');
       expect(seen).not.toHaveProperty('nationalityCode');
       expect(seen).not.toHaveProperty('nationalityName');
+    });
+
+    it('Rank/Grade comes from the master: required, active, validated on the server, kept when deactivated later (owner decision 2026-10-03)', async () => {
+      const list = (await scoped.get('/rank-grades')).body.items as Array<{ code: string; name: string }>;
+      // The starting records in their sort order (other tests add records of their own to the shared database).
+      const start = list.filter((r) => /^N0[1-5]$/.test(r.code));
+      expect(start.map((r) => r.code)).toEqual(['N01', 'N02', 'N03', 'N04', 'N05']);
+      expect(start[2]).toMatchObject({ code: 'N03', name: 'Specialist Nurse', meaning: 'Professional nurse classification' });
+      expect((await scoped.get('/rank-grades?q=technician')).body.items.map((r: { code: string }) => r.code)).toEqual(['N04']);
+
+      const { rankGradeCode: _omit, ...withoutRank } = onboardBody();
+      const missing = await idem(scoped.post('/employees/onboard', withoutRank));
+      expect(JSON.stringify(missing.body)).toContain('Rank/Grade is required.');
+      expect((await idem(scoped.post('/employees/onboard', onboardBody({ rankGradeCode: 'Grade 7' })))).body.error.code).toBe('RANK_GRADE_INVALID');
+      expect((await idem(scoped.post('/employees/onboard', onboardBody({ rankGrade: 'Grade 7' })))).body.error.code).toBe('VALIDATION_FAILED');
+
+      const code = uniq('RG').toUpperCase().slice(0, 20);
+      await hr.post('/rank-grades', { code, name: 'Test classification', sortOrder: 99 });
+      const made = await idem(scoped.post('/employees/onboard', onboardBody({ rankGradeCode: code.toLowerCase() })));
+      expect(made.status).toBe(201);
+      const id = made.body.employeeId as number;
+      expect((await scoped.get(`/employees/${id}`)).body).toMatchObject({ rankGradeCode: code, rankGradeName: 'Test classification', rankGradeActive: true, rankGrade: null });
+
+      // Deactivated later: existing employees keep it and can still be edited; new choices cannot take it.
+      await hr.patch(`/rank-grades/${code}`, { isActive: false });
+      expect((await scoped.patch(`/employees/${id}`, { rankGradeCode: code, jobTitle: 'Staff Nurse II' })).body).toMatchObject({ rankGradeCode: code, rankGradeActive: false });
+      expect((await idem(scoped.post('/employees/onboard', onboardBody({ rankGradeCode: code })))).body.error.code).toBe('RANK_GRADE_INACTIVE');
+      expect((await scoped.get('/rank-grades')).body.items.map((r: { code: string }) => r.code)).not.toContain(code);
+      expect((await scoped.patch(`/employees/${id}`, { rankGradeCode: null })).body.error.code).toBe('VALIDATION_FAILED');
+      expect((await scoped.patch(`/employees/${id}`, { rankGradeCode: 'N02' })).body.rankGradeName).toBe('Senior Specialist Nurse');
+
+      const sup = await signIn(app, (await makeUser(db, { roles: [{ role: 'SUPERVISOR', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
+      expect((await sup.get(`/employees/${id}`)).body).not.toHaveProperty('rankGradeCode');
+    });
+
+    it('Rank/Grade master: system-wide HR adds, edits, deactivates and reactivates; a record in use cannot be deleted; all audited', async () => {
+      const code = uniq('RM').toUpperCase().slice(0, 20);
+      const nurse = await signIn(app, (await makeUser(db)).email);
+      expect((await nurse.post('/rank-grades', { code, name: 'x' })).status).toBe(403);
+      expect((await scoped.post('/rank-grades', { code, name: 'Scoped try' })).body.error.code).toBe('SCOPE_NOT_COVERED');
+      expect((await hr.post('/rank-grades', { code, name: '   ' })).body.error.code).toBe('VALIDATION_FAILED');
+      expect((await hr.post('/rank-grades', { code: ` ${code.toLowerCase()} `, name: ' Charge Classification ', meaning: 'Test', sortOrder: 6 })).body).toMatchObject({ code, name: 'Charge Classification', isActive: true });
+      expect((await hr.post('/rank-grades', { code, name: 'Again' })).body.error.code).toBe('RANK_GRADE_EXISTS');
+      expect((await hr.patch(`/rank-grades/${code}`, { code: 'X1', name: 'y' })).body.error.code).toBe('VALIDATION_FAILED'); // the code never changes
+      expect((await hr.patch(`/rank-grades/${code}`, { name: 'Senior Charge Classification' })).body.name).toBe('Senior Charge Classification');
+      await hr.patch(`/rank-grades/${code}`, { isActive: false });
+      expect((await hr.get('/rank-grades?includeInactive=true')).body.items.find((r: { code: string }) => r.code === code)).toMatchObject({ isActive: false });
+      await hr.patch(`/rank-grades/${code}`, { isActive: true });
+
+      // In use by an employee: refused with the counts. Unused: deleted.
+      const emp = await makeEmployee(db, org.unitA.id);
+      await db.employee.update({ where: { id: emp.id }, data: { rankGradeCode: code } });
+      const refused = await hr.del(`/rank-grades/${code}`);
+      expect(refused.status).toBe(409);
+      expect(refused.body.error).toMatchObject({ code: 'RANK_GRADE_IN_USE', details: { employees: 1, credentials: 0 } });
+      await db.employee.update({ where: { id: emp.id }, data: { rankGradeCode: 'N03' } });
+      expect((await hr.del(`/rank-grades/${code}`)).body).toEqual({ code, deleted: true });
+
+      const actions = (await db.auditEntry.findMany({ where: { resource: 'rank_grade', resourceId: code }, orderBy: { id: 'asc' } })).map((a) => a.action);
+      expect(actions).toEqual(['RANK_GRADE_CREATED', 'RANK_GRADE_UPDATED', 'RANK_GRADE_DEACTIVATED', 'RANK_GRADE_REACTIVATED', 'RANK_GRADE_DELETED']);
+      const renamed = await db.auditEntry.findFirstOrThrow({ where: { resource: 'rank_grade', resourceId: code, action: 'RANK_GRADE_UPDATED' } });
+      expect(renamed.changes).toMatchObject({ name: { from: 'Charge Classification', to: 'Senior Charge Classification' } });
+    });
+
+    it('the SCFHS licence classification is a Rank/Grade code, and a licence using one keeps it from being deleted', async () => {
+      const tpl = await makeTemplate(db);
+      await db.credentialTemplateField.create({ data: { templateId: tpl.id, ordinal: 4, key: 'classification', label: 'Professional Classification', type: 'select', required: false, displayOrder: 4 } });
+      const emp = await makeEmployee(db, org.unitA.id);
+      const body = (classification: string) => ({ employeeId: emp.id, templateId: tpl.id, trackingData: { licence_number: 'DEMO-1', issue_date: addDays(today(), -10), expiry_date: addDays(today(), 400), classification } });
+      expect((await hr.post('/credentials', body('Nursing Specialist'))).body.error.code).toBe('RANK_GRADE_INVALID');
+      const code = uniq('RC').toUpperCase().slice(0, 20);
+      await hr.post('/rank-grades', { code, name: 'Licence classification' });
+      expect((await hr.post('/credentials', body(code))).status).toBe(201);
+      expect((await hr.del(`/rank-grades/${code}`)).body.error).toMatchObject({ code: 'RANK_GRADE_IN_USE', details: { employees: 0, credentials: 1 } });
+    });
+
+    it('the migration maps old free-text Rank/Grade to codes and keeps what it cannot match', async () => {
+      const sql = readFileSync(resolve(__dirname, '../prisma/migrations/20261018090000_rank_grades/migration.sql'), 'utf8');
+      const normalise = sql.slice(sql.lastIndexOf('UPDATE "employees"'));
+      const make = async (rankGrade: string) => (await db.employee.update({ where: { id: (await makeEmployee(db, org.unitA.id)).id }, data: { rankGrade, rankGradeCode: null } })).id;
+      const ids = { code: await make(' n04 '), name: await make('specialist nurse'), grade: await make('Grade 7') };
+      await db.$executeRawUnsafe(normalise);
+      const after = async (id: number) => db.employee.findUniqueOrThrow({ where: { id }, select: { rankGrade: true, rankGradeCode: true } });
+      expect(await after(ids.code)).toEqual({ rankGrade: null, rankGradeCode: 'N04' });
+      expect(await after(ids.name)).toEqual({ rankGrade: null, rankGradeCode: 'N03' });
+      expect(await after(ids.grade)).toEqual({ rankGrade: 'Grade 7', rankGradeCode: null }); // a pay grade is not a classification: kept for HR
     });
 
     it('the migration maps old free-text nationalities to codes and keeps what it cannot match', async () => {
