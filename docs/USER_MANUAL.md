@@ -347,8 +347,9 @@ The staff master record: one row per employee with job number, name, unit, posit
 | :--- | :--- | :--- |
 | First, middle, last name | HR / System Admin | Full name is built by the system, never typed |
 | Job number | HR / System Admin | Unique (case does not matter); no format rule |
-| Job title, file no., job post (city), actual work place, specialty, marital status, salary (SAR), hire date | HR / System Admin | Hidden from supervisors: salary, marital status, nationality, rank, file number, job post location, emergency contact |
+| Job title, file no., job post (city), actual work place, marital status, salary (SAR), hire date | HR / System Admin | Hidden from supervisors: salary, marital status, nationality, rank, file number, job post location, emergency contact |
 | Nationality | HR / System Admin | Required. Chosen from the standard list (type to search by nationality, country or code); free text is not accepted. Hidden from supervisors |
+| Specialty | HR / System Admin | Required. Chosen from the Nursing Specialty master (Workforce → Specialty), in its sort order; type to search by code, name or description; free text is not accepted. Supervisors see it |
 | Rank/Grade (SCFHS classification) | HR / System Admin | Required. Chosen in the Select Rank/Grade window from the Rank/Grade master (Workforce → Rank/Grade); free text is not accepted. Hidden from supervisors |
 | Unit | HR / System Admin | Moving a nurse re-checks eligibility and returns invalid future shifts to Draft |
 | Position | HR Admin only (Change position) | Needs a reason; recorded from → to; a position never gives a login role |
@@ -393,7 +394,7 @@ The staff master record: one row per employee with job number, name, unit, posit
 
 **Before you start.**
 
-- Name, job number, contact e-mail, nationality, Rank/Grade (SCFHS classification); the employment contract type and the contract start and end dates.
+- Name, job number, contact e-mail, nationality, specialty, Rank/Grade (SCFHS classification); the employment contract type and the contract start and end dates.
 - Unit and position if known — the defaults are Unassigned and SN.
 
 **Steps.**
@@ -414,6 +415,7 @@ The staff master record: one row per employee with job number, name, unit, posit
 - *The job number is refused as a duplicate* — Job numbers are unique regardless of case. Search for the existing record.
 - *The form asks for a position* — The hospital has no active SN position to default to; choose one.
 - *"Nationality is required."* — Choose it from the list: type a few letters of the nationality (Filipino), the country (Philippines) or the code (PHL).
+- *"Specialty is required."* — Choose it from the list: type part of the name or code (ICU, NICU, NS013). If the right one is missing, a hospital-wide HR Admin adds it under Workforce → Specialty; meanwhile Other Nursing Specialty or General / Unspecified can be chosen.
 - *"Rank/Grade is required."* — Click the Rank/Grade field (or its search button), find the classification by code, name or meaning, and double-click it or click Select.
 
 **Related.** [Contracts](#6-contracts) · [Credentials](#7-credentials) · [Eligibility](#8-eligibility)
@@ -445,6 +447,7 @@ The staff master record: one row per employee with job number, name, unit, posit
 
 - *Phone refused* — Use the international format: + then country code and number, e.g. +966500000000.
 - *Nationality shows "not on the nationality list"* — It was typed in before the list existed and matched no listed nationality. Edit the record: the old text is shown under the field; choose the matching nationality and save.
+- *Specialty shows "not on the specialty list" (e.g. "Surgical")* — Text typed in before the specialty list that could not be matched safely (Surgical could be Medical-Surgical or Operating Room). Edit the record: the old text is shown under the field; choose the specialty and save.
 - *Rank/Grade shows "not on the Rank/Grade list" (e.g. "Grade 7")* — A pay grade or other text typed in before the Rank/Grade master. Edit the record: the old text is shown under the field; choose the SCFHS classification and save.
 
 **Related.** [Eligibility](#8-eligibility) · [Roster and scheduling](#11-roster-and-scheduling)
@@ -1528,7 +1531,37 @@ The hospital's structure: departments, units and their beds, positions, and how 
 
 **Related.** [Nurses](#5-nurses) · [Credentials](#7-credentials)
 
-### 9.7 Set coverage targets
+### 9.7 Manage the Nursing Specialty master
+
+**Status:** Implemented  
+**Roles:** HR Admin, System Admin
+
+**Purpose.** Keep the list of nursing specialties (NS001 Clinical Nursing … NS034 General / Unspecified to start) that HR chooses from for an employee's Specialty.
+
+**Who can perform it.** Hospital-wide HR Admin or System Admin; everyone else can view the list.
+
+**Steps.**
+
+1. Workforce → Specialty. Search by code, name or description; filter All, Active or Inactive.
+2. + Add Specialty: specialty code (e.g. NS035 — it can never be changed later), name, Arabic name, description, status and sort order. Save.
+3. Edit: change the name, Arabic name, description, status or sort order. The dropdown follows the sort order, not the alphabet.
+4. Deactivate hides a specialty from new employees; Reactivate brings it back.
+5. Delete asks you to confirm. A specialty nobody holds is deleted; one held by employees cannot be deleted — you are offered Deactivate instead.
+
+**System result.** The Onboard employee and Edit dropdowns change at once. An inactive specialty still shows on the employees who hold it. Every change (created, updated, deactivated, reactivated, deleted) is in the audit log with the old and new values.
+
+**Approval.** None.
+
+**Next step.** None.
+
+**Common problems.**
+
+- *"Only system-wide administrators can change the Nursing Specialty master"* — Your HR role covers some units only. Ask a hospital-wide HR Admin or a System Admin.
+- *"A specialty with this name already exists"* — Names must be unique (capitals do not matter), so the dropdown never shows look-alikes. Edit or reactivate the existing one instead.
+
+**Related.** [Nurses](#5-nurses)
+
+### 9.8 Set coverage targets
 
 **Status:** Implemented  
 **Roles:** HR Admin, System Admin

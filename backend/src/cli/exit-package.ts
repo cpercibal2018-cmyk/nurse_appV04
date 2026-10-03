@@ -96,7 +96,7 @@ export async function writeExitPackage(db: Db, { protection, vault }: ExitPackag
   const empRows = employees.map((e) => ({
     id: e.id, jobNumber: e.jobNumber, firstName: e.firstName, middleName: e.middleName, lastName: e.lastName, fullName: e.fullName,
     jobTitle: e.jobTitle, fileNo: e.fileNo, rankGradeCode: e.rankGradeCode, rankGrade: e.rankGrade, nationalityCode: e.nationalityCode, nationality: e.nationality, jobPostLocation: e.jobPostLocation,
-    actualWorkPlace: e.actualWorkPlace, specialty: e.specialty, maritalStatus: e.maritalStatus, salary: e.salary?.toString() ?? null,
+    actualWorkPlace: e.actualWorkPlace, specialtyCode: e.specialtyCode, specialty: e.specialty, maritalStatus: e.maritalStatus, salary: e.salary?.toString() ?? null,
     contactEmail: e.contactEmail, primaryPhone: e.primaryPhone, emergencyContactPhone: e.emergencyContactPhone,
     unitCode: e.unit?.code ?? null, positionCode: e.positionCode, status: e.status, hireDate: day(e.hireDate),
     deletedAt: e.deletedAt, createdAt: e.createdAt, updatedAt: e.updatedAt,
