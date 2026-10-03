@@ -337,7 +337,12 @@ model Employee {
   /// could not be matched to a listed nationality, so HR can choose the right one. New values never.
   nationality           String?
   nationalityCode       String?        @map("nationality_code") @db.VarChar(3)
+  /// Free text from before the Saudi location master (owner decision 2026-10-03): kept only where it
+  /// matched no listed city, so HR can choose the right Region + City. New values never.
   jobPostLocation       String?        @map("job_post_location")
+  jobPostRegionCode     String?        @map("job_post_region_code") @db.VarChar(10)
+  /// Always a city of jobPostRegionCode (checked by the service).
+  jobPostCityId         Int?           @map("job_post_city_id")
   actualWorkPlace       String?        @map("actual_work_place")
   /// Free text from before the Nursing Specialty master (owner decision 2026-10-03): kept only
   /// where it matched no listed specialty, so HR can choose the right one. New values never.
@@ -365,6 +370,8 @@ model Employee {
   nationalityRef   Nationality?           @relation(fields: [nationalityCode], references: [code], onDelete: Restrict)
   rankGradeRef     RankGrade?             @relation(fields: [rankGradeCode], references: [code], onDelete: Restrict)
   specialtyRef     NursingSpecialty?      @relation(fields: [specialtyCode], references: [code], onDelete: Restrict)
+  jobPostRegion    SaudiRegion?           @relation(fields: [jobPostRegionCode], references: [code], onDelete: Restrict)
+  jobPostCity      SaudiCity?             @relation(fields: [jobPostCityId], references: [id], onDelete: Restrict)
   user             User?
   driftFindings    ConsistencyAuditLog[]
   shadowFindings   EligibilityShadowLog[]
@@ -385,6 +392,8 @@ model Employee {
   @@index([nationalityCode])
   @@index([rankGradeCode])
   @@index([specialtyCode])
+  @@index([jobPostRegionCode])
+  @@index([jobPostCityId])
   @@index([specialty])
   @@index([fileNo])
   @@map("employees")
@@ -436,6 +445,41 @@ model Contract {
   @@index([endDate])
   @@index([contractTypeCode])
   @@map("contracts")
+}
+
+/// Saudi Arabia location master (owner decision 2026-10-03): regions (ISO 3166-2 codes, SA-01 …)
+/// and their cities, maintained on screen by hospital-wide HR and System Admins. Job Post (City) is
+/// a region + one of its cities. Used records are deactivated, never deleted.
+model SaudiRegion {
+  code      String   @id @db.VarChar(10)
+  name      String   @unique @db.VarChar(80)
+  nameAr    String?  @map("name_ar") @db.VarChar(80)
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  cities    SaudiCity[]
+  employees Employee[]
+
+  @@map("saudi_regions")
+}
+
+model SaudiCity {
+  id         Int      @id @default(autoincrement())
+  regionCode String   @map("region_code") @db.VarChar(10)
+  name       String   @db.VarChar(80)
+  nameAr     String?  @map("name_ar") @db.VarChar(80)
+  isActive   Boolean  @default(true) @map("is_active")
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  region    SaudiRegion @relation(fields: [regionCode], references: [code], onDelete: Restrict)
+  employees Employee[]
+
+  @@unique([regionCode, name])
+  @@map("saudi_cities")
 }
 
 /// Nursing Specialty master (owner decision 2026-10-03): NS001 Clinical Nursing … NS034 General /

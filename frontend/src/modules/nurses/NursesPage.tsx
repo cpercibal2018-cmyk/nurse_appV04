@@ -18,16 +18,19 @@ import { useContractTypes } from '../contracts/api';
 import { NationalitySelect } from '../../components/NationalitySelect';
 import { RankGradePicker, rankGradeLabel } from '../../components/RankGradePicker';
 import { SpecialtySelect, specialtyLabel } from '../../components/SpecialtySelect';
+import { JobPostPicker, jobPostLabel, type JobPostValue } from '../../components/JobPostPicker';
 import { useEmployee, useEmployeeAction, useEmployees, useInvitations, useInviteEmployee, useOnboardingDefaults, type EmployeeRow } from './api';
 
 import { GuideHelp } from '../guidelines/GuideHelp';
-const OPTIONAL_TEXT = ['middleName', 'jobTitle', 'fileNo', 'jobPostLocation', 'actualWorkPlace', 'primaryPhone', 'emergencyContactPhone'] as const;
+const OPTIONAL_TEXT = ['middleName', 'jobTitle', 'fileNo', 'actualWorkPlace', 'primaryPhone', 'emergencyContactPhone'] as const;
 
 /** Form values → API body: empty strings become null, dates YYYY-MM-DD. */
 function toBody(v: Record<string, unknown>) {
   const out: Record<string, unknown> = {};
   for (const [k, val] of Object.entries(v)) {
     if (val === undefined) continue;
+    // Job Post (City): the picker's { regionCode, cityId } becomes the two API fields.
+    if (k === 'jobPost') { const j = val as JobPostValue | null; if (j) { out.jobPostRegionCode = j.regionCode; out.jobPostCityId = j.cityId; } continue; }
     if (dayjs.isDayjs(val)) out[k] = (val as Dayjs).format('YYYY-MM-DD');
     else if (val === '' && (OPTIONAL_TEXT as readonly string[]).includes(k)) out[k] = null;
     else out[k] = val;
@@ -36,7 +39,7 @@ function toBody(v: Record<string, unknown>) {
 }
 
 /** Fields 4–15 in the order of spec §3.1, plus placement. */
-function EmployeeFields({ units, positions, onboarding, legacyNationality, legacyRankGrade, legacySpecialty }: { units: Array<{ value: number | null; label: string }>; positions: Array<{ value: string; label: string }>; onboarding: boolean; legacyNationality?: string | null; legacyRankGrade?: string | null; legacySpecialty?: string | null }) {
+function EmployeeFields({ units, positions, onboarding, legacyNationality, legacyRankGrade, legacySpecialty, legacyJobPost }: { units: Array<{ value: number | null; label: string }>; positions: Array<{ value: string; label: string }>; onboarding: boolean; legacyNationality?: string | null; legacyRankGrade?: string | null; legacySpecialty?: string | null; legacyJobPost?: string | null }) {
   const { t, i18n } = useTranslation();
   const types = useContractTypes(false, onboarding); // owner decision 2026-10-03: the Draft contract's type
   const start = Form.useWatch('contractStart');
@@ -59,7 +62,10 @@ function EmployeeFields({ units, positions, onboarding, legacyNationality, legac
         extra={legacyNationality ? t('nationalityLegacy', { value: legacyNationality }) : undefined}>
         <NationalitySelect />
       </Form.Item>
-      <Form.Item name="jobPostLocation" label={t('jobPostLocation')}><Input maxLength={120} /></Form.Item>
+      <Form.Item name="jobPost" label={t('jobPostLocation')} rules={[{ required: true, message: t('jobPostRequired') }]}
+        extra={legacyJobPost ? t('jobPostLegacy', { value: legacyJobPost }) : undefined}>
+        <JobPostPicker />
+      </Form.Item>
       <Form.Item name="actualWorkPlace" label={t('actualWorkPlace')}><Input maxLength={120} /></Form.Item>
       <Form.Item name="specialtyCode" label={t('specialty')} rules={[{ required: true, message: t('specialtyRequired') }]}
         extra={legacySpecialty ? t('specialtyLegacy', { value: legacySpecialty }) : undefined}>
@@ -158,7 +164,10 @@ export default function NursesPage() {
       <Drawer title={e ? `${e.jobNumber} — ${e.fullName}` : ''} open={selected !== null} onClose={() => { setSelected(null); setEditing(false); }} size={640} destroyOnHidden
         extra={e?.view === 'FULL' && canWrite && !editing && (
           <Space>
-            <Button onClick={() => { editForm.setFieldsValue({ ...e, hireDate: e.hireDate ? dayjs(e.hireDate) : undefined }); setEditing(true); }}>{t('edit')}</Button>
+            <Button onClick={() => {
+              editForm.setFieldsValue({ ...e, hireDate: e.hireDate ? dayjs(e.hireDate) : undefined, jobPost: e.jobPostRegionCode && e.jobPostCityId ? { regionCode: e.jobPostRegionCode, cityId: e.jobPostCityId } : undefined });
+              setEditing(true);
+            }}>{t('edit')}</Button>
             {canAssignPosition && <Button onClick={() => { positionForm.setFieldsValue({ positionCode: e.positionCode, reason: '' }); setMoving(true); }}>{t('changePosition')}</Button>}
             <Button danger onClick={() => {
               let reason = '';
@@ -183,7 +192,9 @@ export default function NursesPage() {
                 ['fileNo', e.fileNo], ['rankGrade', e.rankGradeCode ? rankGradeLabel(e.rankGradeCode, e.rankGradeName) : e.rankGrade ? `${e.rankGrade} — ${t('rankGradeUnmatched')}` : null],
                 ['nationality', e.nationalityName ? (i18n.language === 'ar' && e.nationalityNameAr ? e.nationalityNameAr : e.nationalityName)
                   : e.nationality ? `${e.nationality} — ${t('nationalityUnmatched')}` : null],
-                ['jobPostLocation', e.jobPostLocation],
+                ['jobPostLocation', e.jobPostCityName && e.jobPostRegionName
+                  ? jobPostLabel({ name: e.jobPostRegionName, nameAr: e.jobPostRegionNameAr ?? null }, { name: e.jobPostCityName, nameAr: e.jobPostCityNameAr ?? null }, i18n.language === 'ar')
+                  : e.jobPostLocation ? `${e.jobPostLocation} — ${t('jobPostUnmatched')}` : null],
                 ['maritalStatus', e.maritalStatus ? t(`marital_${e.maritalStatus}`) : null], ['salarySar', e.salary],
               ] : []),
             ].map(([k, v]) => ({ key: k as string, label: t(k as string), children: (v as string | null | undefined) ?? '—' }))} />
@@ -194,7 +205,7 @@ export default function NursesPage() {
           <Form form={editForm} layout="vertical" onFinish={async (v) => {
             if (await run({ kind: 'update', id: e.id, body: toBody(v) }, t('saved')) !== undefined) setEditing(false);
           }}>
-            <EmployeeFields units={unitOptions} positions={positionOptions} onboarding={false} legacyNationality={e.nationalityCode ? null : e.nationality} legacyRankGrade={e.rankGradeCode ? null : e.rankGrade} legacySpecialty={e.specialtyCode ? null : e.specialty} />
+            <EmployeeFields units={unitOptions} positions={positionOptions} onboarding={false} legacyNationality={e.nationalityCode ? null : e.nationality} legacyRankGrade={e.rankGradeCode ? null : e.rankGrade} legacySpecialty={e.specialtyCode ? null : e.specialty} legacyJobPost={e.jobPostCityId ? null : e.jobPostLocation} />
             <Space><Button type="primary" htmlType="submit" loading={action.isPending}>{t('submit')}</Button><Button onClick={() => setEditing(false)}>{t('cancel')}</Button></Space>
           </Form>
         )}

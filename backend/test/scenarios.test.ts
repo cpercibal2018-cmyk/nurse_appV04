@@ -13,7 +13,7 @@ import { addDays, riyadhDate, toDbDate } from '../src/lib/dates.js';
 import type { Db } from '../src/lib/prisma.js';
 import { attendanceAlerts } from '../src/jobs/attendance-alerts.js';
 import { dailyTransition } from '../src/jobs/daily-transition.js';
-import { FILES, makeOrg, makeTemplate, makeUser, openDb, signIn, TEST_URL, testApp, uniq } from './helpers.js';
+import { FILES, makeOrg, makeTemplate, makeUser, openDb, signIn, TEST_URL, testApp, uniq, jobPost } from './helpers.js';
 
 const describeDb = TEST_URL ? describe : describe.skip;
 const today = () => riyadhDate();
@@ -51,7 +51,7 @@ describeDb('business scenarios, end to end', () => {
     for (const key of ['a', 'b'] as const) {
       const res = await idem(hr.post('/employees/onboard', {
         jobNumber: uniq('SCN'), firstName: key === 'a' ? 'Amal' : 'Basma', lastName: 'Nurse', contactEmail: `${key}@example.sa`,
-        unitId, contractStart: addDays(today(), -10), contractEnd: addDays(today(), 355), contractTypeCode: 'DIRECT_HOSPITAL', nationalityCode: 'SAU', rankGradeCode: 'N03', specialtyCode: 'NS002',
+        unitId, contractStart: addDays(today(), -10), contractEnd: addDays(today(), 355), contractTypeCode: 'DIRECT_HOSPITAL', nationalityCode: 'SAU', rankGradeCode: 'N03', specialtyCode: 'NS002', ...(await jobPost(db)),
       }));
       expect(res.status).toBe(201);
       ids[key] = res.body.employeeId;

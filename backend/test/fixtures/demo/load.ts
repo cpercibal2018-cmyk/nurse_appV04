@@ -60,8 +60,12 @@ export async function loadDemoFixtures(db: Db, password: string, passwords: Pass
       });
     }
 
-    for (const { unitCode, hireDate, middleName, ...e } of DEMO_EMPLOYEES) {
-      await tx.employee.create({ data: { ...e, middleName: middleName ?? null, fullName: '', unitId: unitId.get(unitCode)!, hireDate: toDbDate(hireDate) } });
+    // Job Post (City): the demo staff all work in Qassim cities of the location master.
+    const cityId = new Map((await tx.saudiCity.findMany({ where: { regionCode: 'SA-05' }, select: { id: true, name: true } })).map((c) => [c.name, c.id]));
+    for (const { unitCode, hireDate, middleName, jobPostCity, ...e } of DEMO_EMPLOYEES) {
+      await tx.employee.create({
+        data: { ...e, middleName: middleName ?? null, fullName: '', unitId: unitId.get(unitCode)!, hireDate: toDbDate(hireDate), jobPostRegionCode: 'SA-05', jobPostCityId: cityId.get(jobPostCity)! },
+      });
     }
     const employeeId = new Map((await tx.employee.findMany({ select: { id: true, jobNumber: true } })).map((e) => [e.jobNumber, e.id]));
     for (const u of DEMO_USERS) {

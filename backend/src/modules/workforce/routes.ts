@@ -10,6 +10,7 @@ import { KpiQuery, nurseToBed } from './kpi.js';
 import { listNationalities } from './nationalities.js';
 import { createRankGradeService, RankGradeCreateBody, RankGradeQuery, RankGradeUpdateBody } from './rank-grades.js';
 import { createSpecialtyService, SpecialtyCreateBody, SpecialtyQuery, SpecialtyUpdateBody } from './specialties.js';
+import { CityCreateBody, CityUpdateBody, createLocationService, LocationQuery, RegionCreateBody, RegionUpdateBody } from './locations.js';
 import {
   BedCountBody, BulkBedsBody, CoverageBody, CoverageQuery, DepartmentCreateBody, DepartmentUpdateBody, ImportBody,
   PositionCreateBody, PositionUpdateBody, UnitCreateBody, UnitsQuery, UnitUpdateBody, type OrgService,
@@ -83,6 +84,30 @@ export function createWorkforceRouter(db: Db, org: OrgService) {
   });
   r.delete('/nursing-specialties/:code', authorize('workforce.write'), async (req, res) => {
     res.json(await specialties.remove(authOf(res), CodeParam.parse(req.params).code.toUpperCase(), rid(res)));
+  });
+
+  // ── Saudi location master (owner decision 2026-10-03): regions and cities; read by everyone, changed by system-wide HR/SA ──
+  const locations = createLocationService(db);
+  const CityId = z.object({ id: z.coerce.number().int().positive() });
+  r.get('/saudi-regions', authorize('workforce.read'), async (req, res) => { res.json(await locations.listRegions(LocationQuery.parse(req.query))); });
+  r.post('/saudi-regions', authorize('workforce.write'), async (req, res) => {
+    res.status(201).json(await locations.createRegion(authOf(res), RegionCreateBody.parse(req.body), rid(res)));
+  });
+  r.patch('/saudi-regions/:code', authorize('workforce.write'), async (req, res) => {
+    res.json(await locations.updateRegion(authOf(res), CodeParam.parse(req.params).code.toUpperCase(), RegionUpdateBody.parse(req.body), rid(res)));
+  });
+  r.delete('/saudi-regions/:code', authorize('workforce.write'), async (req, res) => {
+    res.json(await locations.removeRegion(authOf(res), CodeParam.parse(req.params).code.toUpperCase(), rid(res)));
+  });
+  r.get('/saudi-cities', authorize('workforce.read'), async (req, res) => { res.json(await locations.listCities(LocationQuery.parse(req.query))); });
+  r.post('/saudi-cities', authorize('workforce.write'), async (req, res) => {
+    res.status(201).json(await locations.createCity(authOf(res), CityCreateBody.parse(req.body), rid(res)));
+  });
+  r.patch('/saudi-cities/:id', authorize('workforce.write'), async (req, res) => {
+    res.json(await locations.updateCity(authOf(res), CityId.parse(req.params).id, CityUpdateBody.parse(req.body), rid(res)));
+  });
+  r.delete('/saudi-cities/:id', authorize('workforce.write'), async (req, res) => {
+    res.json(await locations.removeCity(authOf(res), CityId.parse(req.params).id, rid(res)));
   });
 
   // ── Positions (§3.1.1, W6, W7) ──

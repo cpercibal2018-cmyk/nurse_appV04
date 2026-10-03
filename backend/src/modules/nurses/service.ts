@@ -23,6 +23,7 @@ import { assertActiveContractType, ContractTypeCode } from '../contracts/contrac
 import { assertNationality, NationalityCode } from '../workforce/nationalities.js';
 import { assertActiveRankGrade, RankGradeCode } from '../workforce/rank-grades.js';
 import { assertActiveSpecialty, SpecialtyCode } from '../workforce/specialties.js';
+import { assertJobPost, JobPostFields } from '../workforce/locations.js';
 
 const Text = (max: number) => z.string().trim().max(max);
 const Req = (max: number) => z.string().trim().min(1).max(max);
@@ -45,7 +46,7 @@ const SourceFields = {
   fileNo: Text(40).nullable(), // E8: not unique, may be blank
   rankGradeCode: RankGradeCode, // owner decision 2026-10-03: the SCFHS classification from the Rank/Grade master, required
   nationalityCode: NationalityCode, // owner decision 2026-10-03: a listed code (ISO 3166-1 alpha-3), required
-  jobPostLocation: Text(120).nullable(),
+  ...JobPostFields, // owner decision 2026-10-03: Job Post (City) = a Saudi region + one of its cities, required
   actualWorkPlace: Text(120).nullable(),
   specialtyCode: SpecialtyCode, // owner decision 2026-10-03: from the Nursing Specialty master, required
   maritalStatus: z.enum(['Single', 'Married', 'Others']).nullable(),
@@ -62,7 +63,6 @@ export const OnboardBody = z.strictObject({
   middleName: SourceFields.middleName.default(null),
   jobTitle: SourceFields.jobTitle.default(null),
   fileNo: SourceFields.fileNo.default(null),
-  jobPostLocation: SourceFields.jobPostLocation.default(null),
   actualWorkPlace: SourceFields.actualWorkPlace.default(null),
   maritalStatus: SourceFields.maritalStatus.default(null),
   salary: SourceFields.salary.default(null),
@@ -85,7 +85,8 @@ export const UpdateBody = z.strictObject({
   fileNo: SourceFields.fileNo.optional(),
   rankGradeCode: SourceFields.rankGradeCode.optional(), // can be changed, never cleared
   nationalityCode: SourceFields.nationalityCode.optional(), // can be changed, never cleared
-  jobPostLocation: SourceFields.jobPostLocation.optional(),
+  jobPostRegionCode: SourceFields.jobPostRegionCode.optional(), // both together; can be changed, never cleared
+  jobPostCityId: SourceFields.jobPostCityId.optional(),
   actualWorkPlace: SourceFields.actualWorkPlace.optional(),
   specialtyCode: SourceFields.specialtyCode.optional(), // can be changed, never cleared
   maritalStatus: SourceFields.maritalStatus.optional(),
@@ -119,12 +120,14 @@ type WithRefs = Employee & {
   unit: { code: string; name: string } | null; position: { code: string; title: string };
   nationalityRef: { name: string; nameAr: string | null } | null; rankGradeRef: { name: string; isActive: boolean } | null;
   specialtyRef: { name: string; nameAr: string | null; isActive: boolean } | null;
+  jobPostRegion: { name: string; nameAr: string | null } | null; jobPostCity: { name: string; nameAr: string | null } | null;
 };
 const INCLUDE = {
   unit: { select: { code: true, name: true } }, position: { select: { code: true, title: true } },
   nationalityRef: { select: { name: true, nameAr: true } },
   rankGradeRef: { select: { name: true, isActive: true } },
   specialtyRef: { select: { name: true, nameAr: true, isActive: true } },
+  jobPostRegion: { select: { name: true, nameAr: true } }, jobPostCity: { select: { name: true, nameAr: true } },
 } as const;
 
 /** The specialty as every view shows it; `specialty` is free text from before the master, kept only when unmatched. */
@@ -137,9 +140,12 @@ function specialtyFields(e: WithRefs) {
 
 /** Every field (HR, own profile). Dates as YYYY-MM-DD, salary as a string. */
 function fullView(full: WithRefs) {
-  const { nationalityRef, rankGradeRef, specialtyRef: _specialtyRef, ...e } = full;
+  const { nationalityRef, rankGradeRef, specialtyRef: _specialtyRef, jobPostRegion, jobPostCity, ...e } = full;
   return {
     ...e,
+    // Job Post (City) as "Region - City"; `jobPostLocation` is free text from before the location master, kept only when unmatched.
+    jobPostRegionName: jobPostRegion?.name ?? null, jobPostRegionNameAr: jobPostRegion?.nameAr ?? null,
+    jobPostCityName: jobPostCity?.name ?? null, jobPostCityNameAr: jobPostCity?.nameAr ?? null,
     ...specialtyFields(full),
     // Likewise `rankGrade` is free text from before the Rank/Grade master, kept only when unmatched.
     rankGradeName: rankGradeRef?.name ?? null, rankGradeActive: rankGradeRef?.isActive ?? null,
@@ -276,6 +282,7 @@ export function createNurseService(db: Db) {
         await assertNationality(tx, body.nationalityCode);
         await assertActiveRankGrade(tx, body.rankGradeCode);
         await assertActiveSpecialty(tx, body.specialtyCode);
+        await assertJobPost(tx, body.jobPostRegionCode, body.jobPostCityId);
         const { contractStart, contractEnd, contractTypeCode, hireDate, ...fields } = body;
         await assertActiveContractType(tx, contractTypeCode);
         const emp = await tx.employee.create({
@@ -309,6 +316,12 @@ export function createNurseService(db: Db) {
         // An unchanged Rank/Grade may have been deactivated since; only a new choice must be active.
         if (body.rankGradeCode !== undefined && body.rankGradeCode !== before.rankGradeCode) await assertActiveRankGrade(tx, body.rankGradeCode);
         if (body.specialtyCode !== undefined && body.specialtyCode !== before.specialtyCode) await assertActiveSpecialty(tx, body.specialtyCode);
+        if ((body.jobPostRegionCode === undefined) !== (body.jobPostCityId === undefined)) {
+          throw unprocessable('JOB_POST_INCOMPLETE', 'Job Post (City) needs both the region and the city');
+        }
+        if (body.jobPostRegionCode !== undefined && body.jobPostCityId !== undefined) {
+          await assertJobPost(tx, body.jobPostRegionCode, body.jobPostCityId, body.jobPostRegionCode === before.jobPostRegionCode && body.jobPostCityId === before.jobPostCityId);
+        }
         const { hireDate, ...rest } = body;
         const data = {
           ...rest, ...(hireDate !== undefined ? { hireDate: hireDate ? toDbDate(hireDate) : null } : {}),
@@ -316,6 +329,7 @@ export function createNurseService(db: Db) {
           ...(body.nationalityCode !== undefined ? { nationality: null } : {}),
           ...(body.rankGradeCode !== undefined ? { rankGrade: null } : {}),
           ...(body.specialtyCode !== undefined ? { specialty: null } : {}),
+          ...(body.jobPostCityId !== undefined ? { jobPostLocation: null } : {}),
         };
         await tx.employee.update({ where: { id }, data });
         const changed = Object.fromEntries(Object.keys(body).map((k) => [k, { from: (before as Record<string, unknown>)[k] ?? null, to: (body as Record<string, unknown>)[k] }]));

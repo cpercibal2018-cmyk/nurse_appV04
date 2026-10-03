@@ -347,8 +347,9 @@ The staff master record: one row per employee with job number, name, unit, posit
 | :--- | :--- | :--- |
 | First, middle, last name | HR / System Admin | Full name is built by the system, never typed |
 | Job number | HR / System Admin | Unique (case does not matter); no format rule |
-| Job title, file no., job post (city), actual work place, marital status, salary (SAR), hire date | HR / System Admin | Hidden from supervisors: salary, marital status, nationality, rank, file number, job post location, emergency contact |
+| Job title, file no., actual work place, marital status, salary (SAR), hire date | HR / System Admin | Hidden from supervisors: salary, marital status, nationality, rank, file number, job post location, emergency contact |
 | Nationality | HR / System Admin | Required. Chosen from the standard list (type to search by nationality, country or code); free text is not accepted. Hidden from supervisors |
+| Job Post (City) | HR / System Admin | Required. Region + City, chosen in the Select Job Post Location window (region first, then a city of that region) from Workforce → Locations; shown as "Qassim Region - Buraydah"; free text is not accepted. Hidden from supervisors |
 | Specialty | HR / System Admin | Required. Chosen from the Nursing Specialty master (Workforce → Specialty), in its sort order; type to search by code, name or description; free text is not accepted. Supervisors see it |
 | Rank/Grade (SCFHS classification) | HR / System Admin | Required. Chosen in the Select Rank/Grade window from the Rank/Grade master (Workforce → Rank/Grade); free text is not accepted. Hidden from supervisors |
 | Unit | HR / System Admin | Moving a nurse re-checks eligibility and returns invalid future shifts to Draft |
@@ -394,7 +395,7 @@ The staff master record: one row per employee with job number, name, unit, posit
 
 **Before you start.**
 
-- Name, job number, contact e-mail, nationality, specialty, Rank/Grade (SCFHS classification); the employment contract type and the contract start and end dates.
+- Name, job number, contact e-mail, nationality, specialty, Rank/Grade (SCFHS classification), Job Post (City); the employment contract type and the contract start and end dates.
 - Unit and position if known — the defaults are Unassigned and SN.
 
 **Steps.**
@@ -415,6 +416,7 @@ The staff master record: one row per employee with job number, name, unit, posit
 - *The job number is refused as a duplicate* — Job numbers are unique regardless of case. Search for the existing record.
 - *The form asks for a position* — The hospital has no active SN position to default to; choose one.
 - *"Nationality is required."* — Choose it from the list: type a few letters of the nationality (Filipino), the country (Philippines) or the code (PHL).
+- *"Job Post (City) is required."* — Click the field (or its search button): choose the Region / Province, then the City — Select becomes available once both are chosen.
 - *"Specialty is required."* — Choose it from the list: type part of the name or code (ICU, NICU, NS013). If the right one is missing, a hospital-wide HR Admin adds it under Workforce → Specialty; meanwhile Other Nursing Specialty or General / Unspecified can be chosen.
 - *"Rank/Grade is required."* — Click the Rank/Grade field (or its search button), find the classification by code, name or meaning, and double-click it or click Select.
 
@@ -447,6 +449,7 @@ The staff master record: one row per employee with job number, name, unit, posit
 
 - *Phone refused* — Use the international format: + then country code and number, e.g. +966500000000.
 - *Nationality shows "not on the nationality list"* — It was typed in before the list existed and matched no listed nationality. Edit the record: the old text is shown under the field; choose the matching nationality and save.
+- *Job Post (City) shows "not on the location list"* — Text typed in before the location list that is not exactly a listed city (e.g. "Riyadh - Al Iman Hospital"). Edit the record: the old text is shown under the field; choose the Region + City and save.
 - *Specialty shows "not on the specialty list" (e.g. "Surgical")* — Text typed in before the specialty list that could not be matched safely (Surgical could be Medical-Surgical or Operating Room). Edit the record: the old text is shown under the field; choose the specialty and save.
 - *Rank/Grade shows "not on the Rank/Grade list" (e.g. "Grade 7")* — A pay grade or other text typed in before the Rank/Grade master. Edit the record: the old text is shown under the field; choose the SCFHS classification and save.
 
@@ -1561,7 +1564,37 @@ The hospital's structure: departments, units and their beds, positions, and how 
 
 **Related.** [Nurses](#5-nurses)
 
-### 9.8 Set coverage targets
+### 9.8 Manage Saudi regions and cities
+
+**Status:** Implemented  
+**Roles:** HR Admin, System Admin
+
+**Purpose.** Keep the list of Saudi Arabia regions (ISO codes SA-01 …) and their cities that HR chooses from for an employee's Job Post (City).
+
+**Who can perform it.** Hospital-wide HR Admin or System Admin; everyone else can view the list.
+
+**Steps.**
+
+1. Workforce → Locations, then Regions or Cities. Search, and filter by status (and by region for cities).
+2. Add Region: code (e.g. SA-15 — it can never be changed later), name, Arabic name, status and sort order.
+3. Add City: its region, name, Arabic name, status and sort order. It appears under that region in the Job Post window at once.
+4. Edit, Deactivate or Reactivate a region or city. A city held by employees cannot move to another region — add it to that region instead.
+5. Delete asks you to confirm. A region with cities or employees, or a city employees hold, cannot be deleted — you are offered Deactivate instead.
+
+**System result.** The Job Post window changes at once. An inactive region hides its cities from new choices; an inactive city disappears from new choices. Both stay on the employees who already have them. Every change is in the audit log with the old and new values.
+
+**Approval.** None.
+
+**Next step.** None.
+
+**Common problems.**
+
+- *"Only system-wide administrators can change the Saudi location master"* — Your HR role covers some units only. Ask a hospital-wide HR Admin or a System Admin.
+- *"This region already has a city with this name"* — City names are unique within a region (capitals do not matter). The same name in another region is allowed.
+
+**Related.** [Nurses](#5-nurses)
+
+### 9.9 Set coverage targets
 
 **Status:** Implemented  
 **Roles:** HR Admin, System Admin

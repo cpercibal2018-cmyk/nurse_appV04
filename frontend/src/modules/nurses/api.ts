@@ -15,7 +15,10 @@ export interface EmployeeRow {
   /** The SCFHS classification from the Rank/Grade master; `rankGrade` is only unmatched free text from before it. */
   rankGradeCode?: string | null; rankGradeName?: string | null; rankGradeActive?: boolean | null;
   /** From the Nursing Specialty master; `specialty` is only unmatched free text from before it. */
-  specialtyCode?: string | null; specialtyName?: string | null; specialtyNameAr?: string | null; specialtyActive?: boolean | null; jobPostLocation?: string | null; emergencyContactPhone?: string | null;
+  specialtyCode?: string | null; specialtyName?: string | null; specialtyNameAr?: string | null; specialtyActive?: boolean | null;
+  /** Job Post (City) = region + city of the location master; `jobPostLocation` is only unmatched free text from before it. */
+  jobPostRegionCode?: string | null; jobPostCityId?: number | null; jobPostRegionName?: string | null; jobPostRegionNameAr?: string | null;
+  jobPostCityName?: string | null; jobPostCityNameAr?: string | null; jobPostLocation?: string | null; emergencyContactPhone?: string | null;
   maritalStatus?: 'Single' | 'Married' | 'Others' | null; salary?: string | null;
 }
 

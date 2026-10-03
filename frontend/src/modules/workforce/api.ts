@@ -107,3 +107,44 @@ export function useSpecialtyAction() {
     onSuccess: () => Promise.all(['nursing-specialties', 'employees'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
   });
 }
+
+/** Saudi location master (owner decision 2026-10-03): regions (ISO 3166-2 codes) and their cities. */
+export interface SaudiRegion { code: string; name: string; nameAr: string | null; isActive: boolean; sortOrder: number; cityCount: number; employeeCount: number }
+export interface SaudiCity { id: number; regionCode: string; name: string; nameAr: string | null; isActive: boolean; sortOrder: number; employeeCount: number }
+export const useRegions = (includeInactive: boolean, enabled = true) => useQuery({
+  queryKey: ['saudi-regions', includeInactive], enabled,
+  queryFn: () => http.get<{ items: SaudiRegion[] }>(`/saudi-regions${includeInactive ? '?includeInactive=true' : ''}`),
+});
+/** Cities of one region (or all with regionCode null). */
+export const useCities = (regionCode: string | null, includeInactive: boolean, enabled = true) => useQuery({
+  queryKey: ['saudi-cities', regionCode, includeInactive], enabled,
+  queryFn: () => {
+    const p = new URLSearchParams();
+    if (regionCode) p.set('regionCode', regionCode);
+    if (includeInactive) p.set('includeInactive', 'true');
+    return http.get<{ items: SaudiCity[] }>(`/saudi-cities${p.size ? `?${p}` : ''}`);
+  },
+});
+type LocationAction =
+  | { kind: 'createRegion'; body: { code: string; name: string; nameAr?: string; isActive: boolean; sortOrder: number } }
+  | { kind: 'updateRegion'; code: string; body: { name?: string; nameAr?: string | null; isActive?: boolean; sortOrder?: number } }
+  | { kind: 'removeRegion'; code: string }
+  | { kind: 'createCity'; body: { regionCode: string; name: string; nameAr?: string; isActive: boolean; sortOrder: number } }
+  | { kind: 'updateCity'; id: number; body: { regionCode?: string; name?: string; nameAr?: string | null; isActive?: boolean; sortOrder?: number } }
+  | { kind: 'removeCity'; id: number };
+export function useLocationAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (a: LocationAction): Promise<unknown> => {
+      switch (a.kind) {
+        case 'createRegion': return http.post('/saudi-regions', a.body);
+        case 'updateRegion': return http.patch(`/saudi-regions/${encodeURIComponent(a.code)}`, a.body);
+        case 'removeRegion': return http.delete(`/saudi-regions/${encodeURIComponent(a.code)}`);
+        case 'createCity': return http.post('/saudi-cities', a.body);
+        case 'updateCity': return http.patch(`/saudi-cities/${a.id}`, a.body);
+        case 'removeCity': return http.delete(`/saudi-cities/${a.id}`);
+      }
+    },
+    onSuccess: () => Promise.all(['saudi-regions', 'saudi-cities', 'employees'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+  });
+}
