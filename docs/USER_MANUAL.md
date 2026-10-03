@@ -347,8 +347,9 @@ The staff master record: one row per employee with job number, name, unit, posit
 | :--- | :--- | :--- |
 | First, middle, last name | HR / System Admin | Full name is built by the system, never typed |
 | Job number | HR / System Admin | Unique (case does not matter); no format rule |
-| Job title, file no., rank / grade, job post (city), actual work place, specialty, marital status, salary (SAR), hire date | HR / System Admin | Hidden from supervisors: salary, marital status, nationality, rank, file number, job post location, emergency contact |
+| Job title, file no., job post (city), actual work place, specialty, marital status, salary (SAR), hire date | HR / System Admin | Hidden from supervisors: salary, marital status, nationality, rank, file number, job post location, emergency contact |
 | Nationality | HR / System Admin | Required. Chosen from the standard list (type to search by nationality, country or code); free text is not accepted. Hidden from supervisors |
+| Rank/Grade (SCFHS classification) | HR / System Admin | Required. Chosen in the Select Rank/Grade window from the Rank/Grade master (Workforce → Rank/Grade); free text is not accepted. Hidden from supervisors |
 | Unit | HR / System Admin | Moving a nurse re-checks eligibility and returns invalid future shifts to Draft |
 | Position | HR Admin only (Change position) | Needs a reason; recorded from → to; a position never gives a login role |
 | Contact e-mail | HR / System Admin | Used for the login invitation |
@@ -392,7 +393,7 @@ The staff master record: one row per employee with job number, name, unit, posit
 
 **Before you start.**
 
-- Name, job number, contact e-mail, nationality; the employment contract type and the contract start and end dates.
+- Name, job number, contact e-mail, nationality, Rank/Grade (SCFHS classification); the employment contract type and the contract start and end dates.
 - Unit and position if known — the defaults are Unassigned and SN.
 
 **Steps.**
@@ -413,6 +414,7 @@ The staff master record: one row per employee with job number, name, unit, posit
 - *The job number is refused as a duplicate* — Job numbers are unique regardless of case. Search for the existing record.
 - *The form asks for a position* — The hospital has no active SN position to default to; choose one.
 - *"Nationality is required."* — Choose it from the list: type a few letters of the nationality (Filipino), the country (Philippines) or the code (PHL).
+- *"Rank/Grade is required."* — Click the Rank/Grade field (or its search button), find the classification by code, name or meaning, and double-click it or click Select.
 
 **Related.** [Contracts](#6-contracts) · [Credentials](#7-credentials) · [Eligibility](#8-eligibility)
 
@@ -443,6 +445,7 @@ The staff master record: one row per employee with job number, name, unit, posit
 
 - *Phone refused* — Use the international format: + then country code and number, e.g. +966500000000.
 - *Nationality shows "not on the nationality list"* — It was typed in before the list existed and matched no listed nationality. Edit the record: the old text is shown under the field; choose the matching nationality and save.
+- *Rank/Grade shows "not on the Rank/Grade list" (e.g. "Grade 7")* — A pay grade or other text typed in before the Rank/Grade master. Edit the record: the old text is shown under the field; choose the SCFHS classification and save.
 
 **Related.** [Eligibility](#8-eligibility) · [Roster and scheduling](#11-roster-and-scheduling)
 
@@ -1495,7 +1498,37 @@ The hospital's structure: departments, units and their beds, positions, and how 
 
 **Related.** [Nurses](#5-nurses) · [Eligibility](#8-eligibility)
 
-### 9.6 Set coverage targets
+### 9.6 Manage the Rank/Grade master
+
+**Status:** Implemented  
+**Roles:** HR Admin, System Admin
+
+**Purpose.** Keep the list of SCFHS nursing classifications (N01 Senior Specialist Consultant Nurse … N05 Health Assistant Nurse to start) that HR chooses from for an employee's Rank/Grade and for the SCFHS licence's Professional Classification.
+
+**Who can perform it.** Hospital-wide HR Admin or System Admin; everyone else can view the list.
+
+**Steps.**
+
+1. Workforce → Rank/Grade. Search by code, classification or meaning; filter All, Active or Inactive.
+2. Add Rank/Grade: code (e.g. N06 — it can never be changed later), SCFHS Nursing Classification, typical meaning, status and sort order. Save.
+3. Edit: change the classification, the meaning, the status or the sort order.
+4. Delete: a record nobody uses is deleted. One assigned to employees or licences cannot be deleted — you are offered Deactivate instead. Reactivate brings an inactive record back.
+
+**System result.** The list changes at once, sorted by sort order. An inactive record disappears from new choices but still shows on the employees and licences that use it. Every change (created, updated, deactivated, reactivated, deleted) is in the audit log with the old and new values.
+
+**Approval.** None.
+
+**Next step.** None.
+
+**Common problems.**
+
+- *"Only system-wide administrators can change the Rank/Grade master"* — Your HR role covers some units only. Ask a hospital-wide HR Admin or a System Admin.
+- *A code is refused as existing* — Codes are unique, including inactive records. Reactivate the existing one instead.
+- *Staff with no nursing classification (e.g. administrators)* — Rank/Grade is required for everyone. Add a record for them, for example N00 — Not applicable (non-nursing), if the hospital agrees.
+
+**Related.** [Nurses](#5-nurses) · [Credentials](#7-credentials)
+
+### 9.7 Set coverage targets
 
 **Status:** Implemented  
 **Roles:** HR Admin, System Admin

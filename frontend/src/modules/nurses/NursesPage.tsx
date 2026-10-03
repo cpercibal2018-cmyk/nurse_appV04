@@ -16,10 +16,11 @@ import { useUnits } from '../administration/api';
 import { usePositions } from '../workforce/api';
 import { useContractTypes } from '../contracts/api';
 import { NationalitySelect } from '../../components/NationalitySelect';
+import { RankGradePicker, rankGradeLabel } from '../../components/RankGradePicker';
 import { useEmployee, useEmployeeAction, useEmployees, useInvitations, useInviteEmployee, useOnboardingDefaults, type EmployeeRow } from './api';
 
 import { GuideHelp } from '../guidelines/GuideHelp';
-const OPTIONAL_TEXT = ['middleName', 'jobTitle', 'fileNo', 'rankGrade', 'jobPostLocation', 'actualWorkPlace', 'specialty', 'primaryPhone', 'emergencyContactPhone'] as const;
+const OPTIONAL_TEXT = ['middleName', 'jobTitle', 'fileNo', 'jobPostLocation', 'actualWorkPlace', 'specialty', 'primaryPhone', 'emergencyContactPhone'] as const;
 
 /** Form values → API body: empty strings become null, dates YYYY-MM-DD. */
 function toBody(v: Record<string, unknown>) {
@@ -34,7 +35,7 @@ function toBody(v: Record<string, unknown>) {
 }
 
 /** Fields 4–15 in the order of spec §3.1, plus placement. */
-function EmployeeFields({ units, positions, onboarding, legacyNationality }: { units: Array<{ value: number | null; label: string }>; positions: Array<{ value: string; label: string }>; onboarding: boolean; legacyNationality?: string | null }) {
+function EmployeeFields({ units, positions, onboarding, legacyNationality, legacyRankGrade }: { units: Array<{ value: number | null; label: string }>; positions: Array<{ value: string; label: string }>; onboarding: boolean; legacyNationality?: string | null; legacyRankGrade?: string | null }) {
   const { t, i18n } = useTranslation();
   const types = useContractTypes(false, onboarding); // owner decision 2026-10-03: the Draft contract's type
   const start = Form.useWatch('contractStart');
@@ -49,7 +50,10 @@ function EmployeeFields({ units, positions, onboarding, legacyNationality }: { u
       <Form.Item name="jobNumber" label={t('jobNumber')} extra={t('jobNumberHint')} rules={[{ required: true, whitespace: true }]}><Input maxLength={40} /></Form.Item>
       <Form.Item name="jobTitle" label={t('jobTitle')}><Input maxLength={120} /></Form.Item>
       <Form.Item name="fileNo" label={t('fileNo')}><Input maxLength={40} /></Form.Item>
-      <Form.Item name="rankGrade" label={t('rankGrade')}><Input maxLength={40} /></Form.Item>
+      <Form.Item name="rankGradeCode" label={t('rankGrade')} rules={[{ required: true, message: t('rankGradeRequired') }]}
+        extra={legacyRankGrade ? t('rankGradeLegacy', { value: legacyRankGrade }) : undefined}>
+        <RankGradePicker />
+      </Form.Item>
       <Form.Item name="nationalityCode" label={t('nationality')} rules={[{ required: true, message: t('nationalityRequired') }]}
         extra={legacyNationality ? t('nationalityLegacy', { value: legacyNationality }) : undefined}>
         <NationalitySelect />
@@ -171,7 +175,7 @@ export default function NursesPage() {
               ['actualWorkPlace', e.actualWorkPlace], ['contactEmail', e.contactEmail], ['primaryPhone', e.primaryPhone],
               ...(e.view === 'FULL' ? [
                 ['emergencyContactPhone', e.emergencyContactPhone],
-                ['fileNo', e.fileNo], ['rankGrade', e.rankGrade],
+                ['fileNo', e.fileNo], ['rankGrade', e.rankGradeCode ? rankGradeLabel(e.rankGradeCode, e.rankGradeName) : e.rankGrade ? `${e.rankGrade} — ${t('rankGradeUnmatched')}` : null],
                 ['nationality', e.nationalityName ? (i18n.language === 'ar' && e.nationalityNameAr ? e.nationalityNameAr : e.nationalityName)
                   : e.nationality ? `${e.nationality} — ${t('nationalityUnmatched')}` : null],
                 ['jobPostLocation', e.jobPostLocation],
@@ -185,7 +189,7 @@ export default function NursesPage() {
           <Form form={editForm} layout="vertical" onFinish={async (v) => {
             if (await run({ kind: 'update', id: e.id, body: toBody(v) }, t('saved')) !== undefined) setEditing(false);
           }}>
-            <EmployeeFields units={unitOptions} positions={positionOptions} onboarding={false} legacyNationality={e.nationalityCode ? null : e.nationality} />
+            <EmployeeFields units={unitOptions} positions={positionOptions} onboarding={false} legacyNationality={e.nationalityCode ? null : e.nationality} legacyRankGrade={e.rankGradeCode ? null : e.rankGrade} />
             <Space><Button type="primary" htmlType="submit" loading={action.isPending}>{t('submit')}</Button><Button onClick={() => setEditing(false)}>{t('cancel')}</Button></Space>
           </Form>
         )}

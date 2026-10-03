@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { describeApiError } from '../../lib/errors';
 import { http } from '../../services/http';
 import { useCredentialAction, useDocuments, type CredentialStatus, type EligibilityStatus, type FieldDef, type Lifecycle, type Reason } from './api';
+import { RankGradePicker } from '../../components/RankGradePicker';
 
 const CRED_COLOR: Record<CredentialStatus, string> = {
   PendingVerification: 'blue', Valid: 'green', ExpiringSoon: 'gold', Expired: 'red', Suspended: 'volcano', Revoked: 'magenta',
@@ -53,7 +54,9 @@ export function TrackingFields({ defs }: { defs: FieldDef[] }) {
     <>
       {[...defs].sort((a, b) => a.displayOrder - b.displayOrder).map((d) => (
         <Form.Item key={d.key} name={['trackingData', d.key]} label={d.label} rules={[{ required: d.required }]}>
-          {d.type === 'date' ? <DatePicker style={{ width: '100%' }} /> : d.type === 'number' ? <InputNumber style={{ width: '100%' }} /> : <Input maxLength={500} />}
+          {d.type === 'date' ? <DatePicker style={{ width: '100%' }} /> : d.type === 'number' ? <InputNumber style={{ width: '100%' }} />
+            // The SCFHS licence's classification is a Rank/Grade code (owner decision 2026-10-03).
+            : d.type === 'select' && d.key === 'classification' ? <RankGradePicker /> : <Input maxLength={500} />}
         </Form.Item>
       ))}
     </>

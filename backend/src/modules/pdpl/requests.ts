@@ -208,7 +208,7 @@ export function createDataSubjectService({ db, protection, vault, backupRetentio
       note: 'Your personal data held by the AIGH Nursing Workforce system. Stored document files are listed, not attached: open them from the application or ask HR for copies.',
       employee: {
         jobNumber: e.jobNumber, firstName: e.firstName, middleName: e.middleName, lastName: e.lastName, fullName: e.fullName,
-        jobTitle: e.jobTitle, fileNo: e.fileNo, rankGrade: e.rankGrade, nationality: e.nationalityRef?.name ?? e.nationality, nationalityCode: e.nationalityCode, jobPostLocation: e.jobPostLocation,
+        jobTitle: e.jobTitle, fileNo: e.fileNo, rankGrade: e.rankGradeCode ?? e.rankGrade, nationality: e.nationalityRef?.name ?? e.nationality, nationalityCode: e.nationalityCode, jobPostLocation: e.jobPostLocation,
         actualWorkPlace: e.actualWorkPlace, specialty: e.specialty, maritalStatus: e.maritalStatus, salary: e.salary === null ? null : e.salary.toFixed(2),
         contactEmail: e.contactEmail, primaryPhone: e.primaryPhone, emergencyContactPhone: e.emergencyContactPhone,
         unit: e.unit, position: e.position, status: e.status, hireDate: e.hireDate ? dbDate(e.hireDate) : null, createdAt: e.createdAt, updatedAt: e.updatedAt,

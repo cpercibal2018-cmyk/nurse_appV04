@@ -8,6 +8,7 @@ import { authOf, authorize } from '../../middleware/authorize.js';
 import { idempotent } from '../../middleware/idempotency.js';
 import { KpiQuery, nurseToBed } from './kpi.js';
 import { listNationalities } from './nationalities.js';
+import { createRankGradeService, RankGradeCreateBody, RankGradeQuery, RankGradeUpdateBody } from './rank-grades.js';
 import {
   BedCountBody, BulkBedsBody, CoverageBody, CoverageQuery, DepartmentCreateBody, DepartmentUpdateBody, ImportBody,
   PositionCreateBody, PositionUpdateBody, UnitCreateBody, UnitsQuery, UnitUpdateBody, type OrgService,
@@ -56,6 +57,19 @@ export function createWorkforceRouter(db: Db, org: OrgService) {
 
   // ── Nationalities (owner decision 2026-10-03): fixed reference list ──
   r.get('/nationalities', authorize('workforce.read'), async (_req, res) => { res.json(await listNationalities(db)); });
+
+  // ── Rank/Grade master (owner decision 2026-10-03): read by everyone, changed by system-wide HR/SA ──
+  const rankGrades = createRankGradeService(db);
+  r.get('/rank-grades', authorize('workforce.read'), async (req, res) => { res.json(await rankGrades.list(RankGradeQuery.parse(req.query))); });
+  r.post('/rank-grades', authorize('workforce.write'), async (req, res) => {
+    res.status(201).json(await rankGrades.create(authOf(res), RankGradeCreateBody.parse(req.body), rid(res)));
+  });
+  r.patch('/rank-grades/:code', authorize('workforce.write'), async (req, res) => {
+    res.json(await rankGrades.update(authOf(res), CodeParam.parse(req.params).code.toUpperCase(), RankGradeUpdateBody.parse(req.body), rid(res)));
+  });
+  r.delete('/rank-grades/:code', authorize('workforce.write'), async (req, res) => {
+    res.json(await rankGrades.remove(authOf(res), CodeParam.parse(req.params).code.toUpperCase(), rid(res)));
+  });
 
   // ── Positions (§3.1.1, W6, W7) ──
   r.get('/positions', authorize('workforce.read'), async (req, res) => {

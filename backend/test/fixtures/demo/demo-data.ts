@@ -9,21 +9,21 @@
 
 export interface DemoEmployee {
   jobNumber: string; firstName: string; middleName?: string; lastName: string;
-  jobTitle: string; fileNo: string; rankGrade: string; nationalityCode: string; // ISO 3166-1 alpha-3 (the nationality list)
+  jobTitle: string; fileNo: string; rankGradeCode: string; nationalityCode: string; // ISO 3166-1 alpha-3 (the nationality list)
   jobPostLocation: string; actualWorkPlace: string; specialty: string;
   maritalStatus: 'Single' | 'Married' | 'Others'; salary: number;
   positionCode: string; unitCode: string; contactEmail: string; hireDate: string;
 }
 
 export const DEMO_EMPLOYEES: DemoEmployee[] = [
-  { jobNumber: '1001', firstName: 'Sarah', middleName: 'Ahmed', lastName: 'Al-Harbi', jobTitle: 'Registered Nurse', fileNo: '1001', rankGrade: 'Grade 7', nationalityCode: 'SAU', jobPostLocation: 'Buraydah', actualWorkPlace: 'ICU Main', specialty: 'Critical Care', maritalStatus: 'Single', salary: 8500, positionCode: 'SN', unitCode: 'ICU_MAIN', contactEmail: 'sarah.ahmed@aigh.sa', hireDate: '2023-01-15' },
-  { jobNumber: '1002', firstName: 'Mohammed', middleName: 'Al-Rashid', lastName: 'Al-Qahtani', jobTitle: 'Head Nurse', fileNo: '1002', rankGrade: 'Grade 9', nationalityCode: 'SAU', jobPostLocation: 'Buraydah', actualWorkPlace: 'Inpatient Wards', specialty: 'Medical-Surgical', maritalStatus: 'Married', salary: 12000, positionCode: 'HN', unitCode: 'INP_WARDS', contactEmail: 'm.alrashid@aigh.sa', hireDate: '2022-06-01' },
-  { jobNumber: '2003', firstName: 'Fatima', lastName: 'Zahra', jobTitle: 'Charge Nurse', fileNo: '2003', rankGrade: 'Grade 8', nationalityCode: 'EGY', jobPostLocation: 'Unaizah', actualWorkPlace: 'NICU', specialty: 'Neonatal', maritalStatus: 'Married', salary: 9500, positionCode: 'CN', unitCode: 'NICU', contactEmail: 'fatima.z@aigh.sa', hireDate: '2023-03-10' },
-  { jobNumber: '2004', firstName: 'John', middleName: 'Michael', lastName: 'Smith', jobTitle: 'Staff Nurse', fileNo: '2004', rankGrade: 'Grade 7', nationalityCode: 'USA', jobPostLocation: 'Buraydah', actualWorkPlace: 'ER Main', specialty: 'Emergency', maritalStatus: 'Single', salary: 9000, positionCode: 'SN', unitCode: 'ER_MAIN', contactEmail: 'john.smith@aigh.sa', hireDate: '2024-01-20' },
-  { jobNumber: '3005', firstName: 'Aisha', middleName: 'Khan', lastName: 'Al-Otaibi', jobTitle: 'Nurse Practitioner', fileNo: '3005', rankGrade: 'Grade 10', nationalityCode: 'PAK', jobPostLocation: 'Buraydah', actualWorkPlace: 'ICU Main', specialty: 'Critical Care', maritalStatus: 'Married', salary: 14000, positionCode: 'PRACTITIONER', unitCode: 'ICU_MAIN', contactEmail: 'aisha.khan@aigh.sa', hireDate: '2021-11-05' },
-  { jobNumber: '3006', firstName: 'Omar', middleName: 'Hassan', lastName: 'Al-Dosari', jobTitle: 'Staff Nurse', fileNo: '3006', rankGrade: 'Grade 7', nationalityCode: 'SAU', jobPostLocation: 'Ar Rass', actualWorkPlace: 'Operating Room', specialty: 'Surgical', maritalStatus: 'Single', salary: 8500, positionCode: 'SN', unitCode: 'OR', contactEmail: 'omar.hassan@aigh.sa', hireDate: '2023-07-12' },
-  { jobNumber: '4007', firstName: 'Layla', lastName: 'Mahmoud', jobTitle: 'Midwife', fileNo: '4007', rankGrade: 'Grade 8', nationalityCode: 'JOR', jobPostLocation: 'Buraydah', actualWorkPlace: 'Labor and Delivery', specialty: 'Obstetrics', maritalStatus: 'Married', salary: 10000, positionCode: 'MW', unitCode: 'LND', contactEmail: 'layla.m@aigh.sa', hireDate: '2022-09-18' },
-  { jobNumber: '4008', firstName: 'David', lastName: 'Lee', jobTitle: 'Nursing Supervisor', fileNo: '4008', rankGrade: 'Grade 11', nationalityCode: 'GBR', jobPostLocation: 'Buraydah', actualWorkPlace: 'Nursing Admin', specialty: 'Management', maritalStatus: 'Married', salary: 15000, positionCode: 'NS', unitCode: 'INP_WARDS', contactEmail: 'david.lee@aigh.sa', hireDate: '2020-05-22' },
+  { jobNumber: '1001', firstName: 'Sarah', middleName: 'Ahmed', lastName: 'Al-Harbi', jobTitle: 'Registered Nurse', fileNo: '1001', rankGradeCode: 'N03', nationalityCode: 'SAU', jobPostLocation: 'Buraydah', actualWorkPlace: 'ICU Main', specialty: 'Critical Care', maritalStatus: 'Single', salary: 8500, positionCode: 'SN', unitCode: 'ICU_MAIN', contactEmail: 'sarah.ahmed@aigh.sa', hireDate: '2023-01-15' },
+  { jobNumber: '1002', firstName: 'Mohammed', middleName: 'Al-Rashid', lastName: 'Al-Qahtani', jobTitle: 'Head Nurse', fileNo: '1002', rankGradeCode: 'N02', nationalityCode: 'SAU', jobPostLocation: 'Buraydah', actualWorkPlace: 'Inpatient Wards', specialty: 'Medical-Surgical', maritalStatus: 'Married', salary: 12000, positionCode: 'HN', unitCode: 'INP_WARDS', contactEmail: 'm.alrashid@aigh.sa', hireDate: '2022-06-01' },
+  { jobNumber: '2003', firstName: 'Fatima', lastName: 'Zahra', jobTitle: 'Charge Nurse', fileNo: '2003', rankGradeCode: 'N03', nationalityCode: 'EGY', jobPostLocation: 'Unaizah', actualWorkPlace: 'NICU', specialty: 'Neonatal', maritalStatus: 'Married', salary: 9500, positionCode: 'CN', unitCode: 'NICU', contactEmail: 'fatima.z@aigh.sa', hireDate: '2023-03-10' },
+  { jobNumber: '2004', firstName: 'John', middleName: 'Michael', lastName: 'Smith', jobTitle: 'Staff Nurse', fileNo: '2004', rankGradeCode: 'N03', nationalityCode: 'USA', jobPostLocation: 'Buraydah', actualWorkPlace: 'ER Main', specialty: 'Emergency', maritalStatus: 'Single', salary: 9000, positionCode: 'SN', unitCode: 'ER_MAIN', contactEmail: 'john.smith@aigh.sa', hireDate: '2024-01-20' },
+  { jobNumber: '3005', firstName: 'Aisha', middleName: 'Khan', lastName: 'Al-Otaibi', jobTitle: 'Nurse Practitioner', fileNo: '3005', rankGradeCode: 'N02', nationalityCode: 'PAK', jobPostLocation: 'Buraydah', actualWorkPlace: 'ICU Main', specialty: 'Critical Care', maritalStatus: 'Married', salary: 14000, positionCode: 'PRACTITIONER', unitCode: 'ICU_MAIN', contactEmail: 'aisha.khan@aigh.sa', hireDate: '2021-11-05' },
+  { jobNumber: '3006', firstName: 'Omar', middleName: 'Hassan', lastName: 'Al-Dosari', jobTitle: 'Staff Nurse', fileNo: '3006', rankGradeCode: 'N03', nationalityCode: 'SAU', jobPostLocation: 'Ar Rass', actualWorkPlace: 'Operating Room', specialty: 'Surgical', maritalStatus: 'Single', salary: 8500, positionCode: 'SN', unitCode: 'OR', contactEmail: 'omar.hassan@aigh.sa', hireDate: '2023-07-12' },
+  { jobNumber: '4007', firstName: 'Layla', lastName: 'Mahmoud', jobTitle: 'Midwife', fileNo: '4007', rankGradeCode: 'N03', nationalityCode: 'JOR', jobPostLocation: 'Buraydah', actualWorkPlace: 'Labor and Delivery', specialty: 'Obstetrics', maritalStatus: 'Married', salary: 10000, positionCode: 'MW', unitCode: 'LND', contactEmail: 'layla.m@aigh.sa', hireDate: '2022-09-18' },
+  { jobNumber: '4008', firstName: 'David', lastName: 'Lee', jobTitle: 'Nursing Supervisor', fileNo: '4008', rankGradeCode: 'N02', nationalityCode: 'GBR', jobPostLocation: 'Buraydah', actualWorkPlace: 'Nursing Admin', specialty: 'Management', maritalStatus: 'Married', salary: 15000, positionCode: 'NS', unitCode: 'INP_WARDS', contactEmail: 'david.lee@aigh.sa', hireDate: '2020-05-22' },
 ];
 
 export const DEMO_CONTRACTS = [
@@ -48,7 +48,7 @@ export const DEMO_REQUIREMENTS = [
 ] as const;
 
 const lifeSupport = (n: string, issue: string, expiry: string) => ({ certificate_number: n, training_provider: 'Demo Training Centre', issue_date: issue, expiry_date: expiry });
-const scfhs = (n: string, issue: string, expiry: string) => ({ scfhs_number: n, classification: 'Nursing Specialist (demo)', issue_date: issue, expiry_date: expiry });
+const scfhs = (n: string, issue: string, expiry: string) => ({ scfhs_number: n, classification: 'N03', issue_date: issue, expiry_date: expiry });
 
 /**
  * Verified credentials: the loader stores Valid / ExpiringSoon / Expired from
