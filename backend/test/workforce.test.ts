@@ -25,6 +25,7 @@ describeDb('workforce, employees and contracts', () => {
   let hr2: Client; // a second system-wide HR (approver)
   let scoped: Client; // HR for unit A only
   let buraydah = 0; // Qassim Region - Buraydah (location master)
+  let alIman = 0; // Al Iman General Hospital (facility master)
 
   beforeAll(async () => {
     db = openDb();
@@ -33,7 +34,7 @@ describeDb('workforce, employees and contracts', () => {
     hr = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] })).email);
     hr2 = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] })).email);
     scoped = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
-    buraydah = (await jobPost(db)).jobPostCityId;
+    ({ jobPostCityId: buraydah, facilityId: alIman } = await jobPost(db));
   });
   afterAll(async () => { await db.$disconnect(); });
 
@@ -162,7 +163,7 @@ describeDb('workforce, employees and contracts', () => {
     const onboardBody = (over: object = {}) => ({
       jobNumber: uniq('OB'), firstName: ' Mona ', middleName: '', lastName: 'Saleh', contactEmail: 'Mona@Example.SA',
       unitId: org.unitA.id, salary: '12500.50', maritalStatus: 'Single',
-      contractStart: today(), contractEnd: addDays(today(), 364), contractTypeCode: 'DIRECT_HOSPITAL', nationalityCode: 'SAU', rankGradeCode: 'N03', specialtyCode: 'NS003', jobPostRegionCode: 'SA-05', jobPostCityId: buraydah, ...over,
+      contractStart: today(), contractEnd: addDays(today(), 364), contractTypeCode: 'DIRECT_HOSPITAL', nationalityCode: 'SAU', rankGradeCode: 'N03', specialtyCode: 'NS003', jobPostRegionCode: 'SA-05', jobPostCityId: buraydah, facilityId: alIman, ...over,
     });
 
     it('rule E6: the server supplies the default position; omitting it at onboarding uses it (P4)', async () => {
@@ -466,6 +467,81 @@ describeDb('workforce, employees and contracts', () => {
       expect(await loc(ids.pair)).toEqual({ jobPostLocation: null, jobPostRegionCode: 'SA-02', jobPostCity: { name: 'Jeddah' } });
       expect(await loc(ids.arabic)).toEqual({ jobPostLocation: null, jobPostRegionCode: 'SA-05', jobPostCity: { name: 'Unaizah' } });
       expect(await loc(ids.other)).toEqual({ jobPostLocation: 'Riyadh - Al Iman Hospital', jobPostRegionCode: null, jobPostCity: null });
+    });
+
+    it('Actual Work Place / Facility comes from the Facility master: required, active, shown to supervisors (owner decision 2026-10-03)', async () => {
+      const list = (await scoped.get('/facilities')).body.items as Array<{ id: number; name: string }>;
+      const start = ['Al Iman General Hospital', 'King Saud Medical City', 'King Salman Hospital', 'Imam Abdulrahman Alfaisal Hospital', 'King Fahd Hospital',
+        'King Faisal Specialist Hospital & Research Centre', 'Security Forces Hospital - Main Building', 'National Guard Hospital',
+        'Prince Sultan Military Medical City', 'King Abdullah bin Abdulaziz University Hospital'];
+      expect(list.filter((f) => start.includes(f.name)).map((f) => f.name)).toEqual(start);
+      expect((await scoped.get('/facilities?q=guard')).body.items.map((f: { name: string }) => f.name)).toContain('National Guard Hospital');
+
+      const { facilityId: _f, ...without } = onboardBody();
+      expect(JSON.stringify((await idem(scoped.post('/employees/onboard', without))).body)).toContain('Actual Work Place / Facility is required.');
+      expect((await idem(scoped.post('/employees/onboard', onboardBody({ facilityId: 999999 })))).body.error.code).toBe('FACILITY_INVALID');
+      expect((await idem(scoped.post('/employees/onboard', onboardBody({ actualWorkPlace: 'ICU Main' })))).body.error.code).toBe('VALIDATION_FAILED');
+
+      const temp = await hr.post('/facilities', { name: `Test Clinic ${uniq('F')}` });
+      const made = await idem(scoped.post('/employees/onboard', onboardBody({ facilityId: temp.body.id })));
+      expect(made.status).toBe(201);
+      const id = made.body.employeeId as number;
+      expect((await scoped.get(`/employees/${id}`)).body).toMatchObject({ facilityId: temp.body.id, facilityName: temp.body.name, facilityActive: true, actualWorkPlace: null });
+
+      // Renamed: the employee shows the new name (same id). Deactivated: kept and editable; refused as a new choice.
+      await hr.patch(`/facilities/${temp.body.id}`, { name: `${temp.body.name} North` });
+      expect((await scoped.get(`/employees/${id}`)).body.facilityName).toBe(`${temp.body.name} North`);
+      await hr.patch(`/facilities/${temp.body.id}`, { isActive: false });
+      expect((await scoped.patch(`/employees/${id}`, { facilityId: temp.body.id, jobTitle: 'Staff Nurse II' })).body).toMatchObject({ facilityId: temp.body.id, facilityActive: false });
+      expect((await idem(scoped.post('/employees/onboard', onboardBody({ facilityId: temp.body.id })))).body.error.code).toBe('FACILITY_INACTIVE');
+      expect((await scoped.get('/facilities')).body.items.map((f: { id: number }) => f.id)).not.toContain(temp.body.id);
+      expect((await scoped.patch(`/employees/${id}`, { facilityId: null })).body.error.code).toBe('VALIDATION_FAILED');
+      expect((await scoped.patch(`/employees/${id}`, { facilityId: alIman })).body.facilityName).toBe('Al Iman General Hospital');
+
+      const sup = await signIn(app, (await makeUser(db, { roles: [{ role: 'SUPERVISOR', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
+      expect((await sup.get(`/employees/${id}`)).body).toMatchObject({ view: 'BASELINE', facilityId: alIman, facilityName: 'Al Iman General Hospital' });
+    });
+
+    it('Facility master: names trimmed and unique ignoring case and spaces; edit keeps the id; delete only when unused; permissions; audited', async () => {
+      const nurse = await signIn(app, (await makeUser(db)).email);
+      const name = `Riyadh Care ${uniq('F')}`;
+      expect((await nurse.post('/facilities', { name })).status).toBe(403);
+      expect((await scoped.post('/facilities', { name })).body.error.code).toBe('SCOPE_NOT_COVERED');
+      expect((await hr.post('/facilities', { name: '   ' })).body.error.code).toBe('VALIDATION_FAILED');
+      expect((await hr.post('/facilities', { name: '  king   saud  MEDICAL city ' })).body.error.code).toBe('FACILITY_NAME_EXISTS');
+      const made = await hr.post('/facilities', { name: `  ${name.replace(' ', '   ')}  `, nameAr: ' مستشفى  تجريبي ' });
+      expect(made.body).toMatchObject({ name, nameAr: 'مستشفى تجريبي', isActive: true });
+      expect(made.body.sortOrder).toBeGreaterThanOrEqual(11); // appended after the starting list
+      expect((await hr.patch(`/facilities/${made.body.id}`, { name: 'National Guard Hospital' })).body.error.code).toBe('FACILITY_NAME_EXISTS');
+      const renamed = await hr.patch(`/facilities/${made.body.id}`, { name: `${name} East` });
+      expect(renamed.body).toMatchObject({ id: made.body.id, name: `${name} East` });
+      await hr.patch(`/facilities/${made.body.id}`, { isActive: false });
+      await hr.patch(`/facilities/${made.body.id}`, { isActive: true });
+
+      const emp = await makeEmployee(db, org.unitA.id);
+      await db.employee.update({ where: { id: emp.id }, data: { facilityId: made.body.id } });
+      const refused = await hr.del(`/facilities/${made.body.id}`);
+      expect(refused.status).toBe(409);
+      expect(refused.body.error).toMatchObject({ code: 'FACILITY_IN_USE', details: { employees: 1 } });
+      expect(refused.body.error.message).toContain(`${name} East`);
+      await db.employee.update({ where: { id: emp.id }, data: { facilityId: alIman } });
+      expect((await hr.del(`/facilities/${made.body.id}`)).body).toEqual({ id: made.body.id, deleted: true });
+
+      const actions = (await db.auditEntry.findMany({ where: { resource: 'facility', resourceId: String(made.body.id) }, orderBy: { id: 'asc' } })).map((a) => a.action);
+      expect(actions).toEqual(['FACILITY_CREATED', 'FACILITY_UPDATED', 'FACILITY_DEACTIVATED', 'FACILITY_REACTIVATED', 'FACILITY_DELETED']);
+    });
+
+    it('the migration maps old free-text work places that are a listed facility and keeps everything else', async () => {
+      const sql = readFileSync(resolve(__dirname, '../prisma/migrations/20261021090000_facilities/migration.sql'), 'utf8');
+      const normalise = sql.slice(sql.lastIndexOf('UPDATE "employees"'));
+      const make = async (actualWorkPlace: string) => (await db.employee.update({ where: { id: (await makeEmployee(db, org.unitA.id)).id }, data: { actualWorkPlace, facilityId: null } })).id;
+      const ids = { exact: await make('  king  fahd hospital '), arabic: await make('مستشفى الحرس الوطني'), ward: await make('ICU Main'), near: await make('Riyadh - Al Iman Hospital') };
+      await db.$executeRawUnsafe(normalise);
+      const fac = async (id: number) => db.employee.findUniqueOrThrow({ where: { id }, select: { actualWorkPlace: true, facility: { select: { name: true } } } });
+      expect(await fac(ids.exact)).toEqual({ actualWorkPlace: null, facility: { name: 'King Fahd Hospital' } });
+      expect(await fac(ids.arabic)).toEqual({ actualWorkPlace: null, facility: { name: 'National Guard Hospital' } });
+      expect(await fac(ids.ward)).toEqual({ actualWorkPlace: 'ICU Main', facility: null });
+      expect(await fac(ids.near)).toEqual({ actualWorkPlace: 'Riyadh - Al Iman Hospital', facility: null });
     });
 
     it('the migration maps old free-text Rank/Grade to codes and keeps what it cannot match', async () => {

@@ -18,7 +18,9 @@ export interface EmployeeRow {
   specialtyCode?: string | null; specialtyName?: string | null; specialtyNameAr?: string | null; specialtyActive?: boolean | null;
   /** Job Post (City) = region + city of the location master; `jobPostLocation` is only unmatched free text from before it. */
   jobPostRegionCode?: string | null; jobPostCityId?: number | null; jobPostRegionName?: string | null; jobPostRegionNameAr?: string | null;
-  jobPostCityName?: string | null; jobPostCityNameAr?: string | null; jobPostLocation?: string | null; emergencyContactPhone?: string | null;
+  jobPostCityName?: string | null; jobPostCityNameAr?: string | null;
+  /** Actual Work Place / Facility from the Facility master (supervisors see it); `actualWorkPlace` is only unmatched free text from before it. */
+  facilityId?: number | null; facilityName?: string | null; facilityNameAr?: string | null; facilityActive?: boolean | null; jobPostLocation?: string | null; emergencyContactPhone?: string | null;
   maritalStatus?: 'Single' | 'Married' | 'Others' | null; salary?: string | null;
 }
 

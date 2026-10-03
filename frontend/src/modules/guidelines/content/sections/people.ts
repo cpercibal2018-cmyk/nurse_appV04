@@ -17,8 +17,9 @@ export const PEOPLE: GuideSection[] = [
         rows: [
           ['First, middle, last name', 'HR / System Admin', 'Full name is built by the system, never typed'],
           ['Job number', 'HR / System Admin', 'Unique (case does not matter); no format rule'],
-          ['Job title, file no., actual work place, marital status, salary (SAR), hire date', 'HR / System Admin', 'Hidden from supervisors: salary, marital status, nationality, rank, file number, job post location, emergency contact'],
+          ['Job title, file no., marital status, salary (SAR), hire date', 'HR / System Admin', 'Hidden from supervisors: salary, marital status, nationality, rank, file number, job post location, emergency contact'],
           ['Nationality', 'HR / System Admin', 'Required. Chosen from the standard list (type to search by nationality, country or code); free text is not accepted. Hidden from supervisors'],
+          ['Actual Work Place / Facility', 'HR / System Admin', 'Required. The hospital, chosen from the Facility master (type to search); hospital-wide administrators can open Manage Facilities beside the field. Supervisors see it'],
           ['Job Post (City)', 'HR / System Admin', 'Required. Region + City, chosen in the Select Job Post Location window (region first, then a city of that region) from Workforce → Locations; shown as "Qassim Region - Buraydah"; free text is not accepted. Hidden from supervisors'],
           ['Specialty', 'HR / System Admin', 'Required. Chosen from the Nursing Specialty master (Workforce → Specialty), in its sort order; type to search by code, name or description; free text is not accepted. Supervisors see it'],
           ['Rank/Grade (SCFHS classification)', 'HR / System Admin', 'Required. Chosen in the Select Rank/Grade window from the Rank/Grade master (Workforce → Rank/Grade); free text is not accepted. Hidden from supervisors'],
@@ -53,7 +54,7 @@ export const PEOPLE: GuideSection[] = [
         purpose: 'Create the employee and the first contract in one step.',
         who: 'HR Admin or System Admin, for a unit in scope (or Unassigned).',
         roles: ['HR_ADMIN', 'SYSTEM_ADMIN'],
-        before: ['Name, job number, contact e-mail, nationality, specialty, Rank/Grade (SCFHS classification), Job Post (City); the employment contract type and the contract start and end dates.', 'Unit and position if known — the defaults are Unassigned and SN.'],
+        before: ['Name, job number, contact e-mail, nationality, specialty, Rank/Grade (SCFHS classification), Job Post (City), Actual Work Place / Facility; the employment contract type and the contract start and end dates.', 'Unit and position if known — the defaults are Unassigned and SN.'],
         steps: [
           'Open Nurses and click Onboard employee.',
           'Fill in the details and choose the Employment Contract Type. The Hijri date is shown under each contract date.',
@@ -67,6 +68,7 @@ export const PEOPLE: GuideSection[] = [
           { problem: 'The job number is refused as a duplicate', fix: 'Job numbers are unique regardless of case. Search for the existing record.' },
           { problem: 'The form asks for a position', fix: 'The hospital has no active SN position to default to; choose one.' },
           { problem: '"Nationality is required."', fix: 'Choose it from the list: type a few letters of the nationality (Filipino), the country (Philippines) or the code (PHL).' },
+          { problem: '"Actual Work Place / Facility is required."', fix: 'Choose the hospital from the list (type part of its name). If it is missing, a hospital-wide HR Admin adds it with Manage Facilities beside the field.' },
           { problem: '"Job Post (City) is required."', fix: 'Click the field (or its search button): choose the Region / Province, then the City — Select becomes available once both are chosen.' },
           { problem: '"Specialty is required."', fix: 'Choose it from the list: type part of the name or code (ICU, NICU, NS013). If the right one is missing, a hospital-wide HR Admin adds it under Workforce → Specialty; meanwhile Other Nursing Specialty or General / Unspecified can be chosen.' },
           { problem: '"Rank/Grade is required."', fix: 'Click the Rank/Grade field (or its search button), find the classification by code, name or meaning, and double-click it or click Select.' },
@@ -89,6 +91,7 @@ export const PEOPLE: GuideSection[] = [
         problems: [
           { problem: 'Phone refused', fix: 'Use the international format: + then country code and number, e.g. +966500000000.' },
           { problem: 'Nationality shows "not on the nationality list"', fix: 'It was typed in before the list existed and matched no listed nationality. Edit the record: the old text is shown under the field; choose the matching nationality and save.' },
+          { problem: 'Actual Work Place shows "not on the facility list" (e.g. "ICU Main")', fix: 'Text typed in before the facility list — often the ward, which the Unit already records. Edit the record: the old text is shown under the field; choose the hospital and save.' },
           { problem: 'Job Post (City) shows "not on the location list"', fix: 'Text typed in before the location list that is not exactly a listed city (e.g. "Riyadh - Al Iman Hospital"). Edit the record: the old text is shown under the field; choose the Region + City and save.' },
           { problem: 'Specialty shows "not on the specialty list" (e.g. "Surgical")', fix: 'Text typed in before the specialty list that could not be matched safely (Surgical could be Medical-Surgical or Operating Room). Edit the record: the old text is shown under the field; choose the specialty and save.' },
           { problem: 'Rank/Grade shows "not on the Rank/Grade list" (e.g. "Grade 7")', fix: 'A pay grade or other text typed in before the Rank/Grade master. Edit the record: the old text is shown under the field; choose the SCFHS classification and save.' },
