@@ -10,7 +10,7 @@ import type { Express } from 'express';
 import { findChainBreaks } from '../src/lib/audit.js';
 import { addDays, riyadhDate, toDbDate } from '../src/lib/dates.js';
 import type { Db } from '../src/lib/prisma.js';
-import { FILES, makeEmployee, makeNurse, makeOrg, makeTemplate, makeUser, openDb, signIn, TEST_URL, testApp, uniq } from './helpers.js';
+import { FILES, makeEmployee, makeNurse, makeOrg, makeTemplate, makeUser, openDb, signIn, TEST_URL, testApp, uniq, jobPost } from './helpers.js';
 
 const describeDb = TEST_URL ? describe : describe.skip;
 const today = () => riyadhDate();
@@ -24,6 +24,7 @@ describeDb('workforce, employees and contracts', () => {
   let hr: Client; // system-wide HR
   let hr2: Client; // a second system-wide HR (approver)
   let scoped: Client; // HR for unit A only
+  let buraydah = 0; // Qassim Region - Buraydah (location master)
 
   beforeAll(async () => {
     db = openDb();
@@ -32,6 +33,7 @@ describeDb('workforce, employees and contracts', () => {
     hr = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] })).email);
     hr2 = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] })).email);
     scoped = await signIn(app, (await makeUser(db, { roles: [{ role: 'HR_ADMIN', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
+    buraydah = (await jobPost(db)).jobPostCityId;
   });
   afterAll(async () => { await db.$disconnect(); });
 
@@ -160,7 +162,7 @@ describeDb('workforce, employees and contracts', () => {
     const onboardBody = (over: object = {}) => ({
       jobNumber: uniq('OB'), firstName: ' Mona ', middleName: '', lastName: 'Saleh', contactEmail: 'Mona@Example.SA',
       unitId: org.unitA.id, salary: '12500.50', maritalStatus: 'Single',
-      contractStart: today(), contractEnd: addDays(today(), 364), contractTypeCode: 'DIRECT_HOSPITAL', nationalityCode: 'SAU', rankGradeCode: 'N03', specialtyCode: 'NS003', ...over,
+      contractStart: today(), contractEnd: addDays(today(), 364), contractTypeCode: 'DIRECT_HOSPITAL', nationalityCode: 'SAU', rankGradeCode: 'N03', specialtyCode: 'NS003', jobPostRegionCode: 'SA-05', jobPostCityId: buraydah, ...over,
     });
 
     it('rule E6: the server supplies the default position; omitting it at onboarding uses it (P4)', async () => {
@@ -365,6 +367,105 @@ describeDb('workforce, employees and contracts', () => {
       for (const [id, text] of [[ids.surgical, 'Surgical'], [ids.management, 'Management'], [ids.general, 'General']] as const) {
         expect(await db.employee.findUniqueOrThrow({ where: { id }, select: { specialty: true, specialtyCode: true } })).toEqual({ specialty: text, specialtyCode: null });
       }
+    });
+
+    it('Job Post (City) is a Saudi region + one of its cities: required, consistent, active, hidden from supervisors (owner decision 2026-10-03)', async () => {
+      const regions = (await scoped.get('/saudi-regions')).body.items as Array<{ code: string; name: string }>;
+      expect(regions.filter((r) => r.code.startsWith('SA-')).map((r) => r.name)).toEqual([
+        'Riyadh Region', 'Makkah Region', 'Madinah Region', 'Eastern Province', 'Qassim Region', 'Asir Region', 'Tabuk Region',
+        'Hail Region', 'Northern Borders Region', 'Jazan Region', 'Najran Region', 'Al-Baha Region', 'Al-Jouf Region',
+      ]);
+      const qassim = (await scoped.get('/saudi-cities?regionCode=SA-05')).body.items as Array<{ id: number; name: string; regionCode: string }>;
+      // The starting cities in their order (other tests add test towns of their own to the shared database).
+      const start = ['Buraydah', 'Unaizah', 'Ar Rass', 'Al Bukayriyah', 'Al Mithnab', 'Al Badai', 'Riyadh Al Khabra', 'Uyun Al Jawa'];
+      expect(qassim.filter((c) => start.includes(c.name)).map((c) => c.name)).toEqual(start);
+      expect(qassim.every((c) => c.regionCode === 'SA-05')).toBe(true);
+      expect((await scoped.get('/saudi-cities?regionCode=SA-01&q=kharj')).body.items.map((c: { name: string }) => c.name)).toEqual(['Al Kharj']);
+      const jeddah = (await scoped.get('/saudi-cities?regionCode=SA-02&q=jeddah')).body.items[0].id as number;
+
+      const { jobPostRegionCode: _r, jobPostCityId: _c, ...without } = onboardBody();
+      expect(JSON.stringify((await idem(scoped.post('/employees/onboard', without))).body)).toContain('Job Post (City) is required.');
+      expect((await idem(scoped.post('/employees/onboard', onboardBody({ jobPostCityId: jeddah })))).body.error.code).toBe('CITY_NOT_IN_REGION'); // Qassim + Jeddah
+      expect((await idem(scoped.post('/employees/onboard', onboardBody({ jobPostRegionCode: 'SA-99' })))).body.error.code).toBe('REGION_INVALID');
+      expect((await idem(scoped.post('/employees/onboard', onboardBody({ jobPostCityId: 999999 })))).body.error.code).toBe('CITY_INVALID');
+      expect((await idem(scoped.post('/employees/onboard', onboardBody({ jobPostLocation: 'Buraydah' })))).body.error.code).toBe('VALIDATION_FAILED');
+
+      const made = await idem(scoped.post('/employees/onboard', onboardBody()));
+      expect(made.status).toBe(201);
+      const id = made.body.employeeId as number;
+      expect((await scoped.get(`/employees/${id}`)).body).toMatchObject({
+        jobPostRegionCode: 'SA-05', jobPostCityId: buraydah, jobPostRegionName: 'Qassim Region', jobPostCityName: 'Buraydah', jobPostCityNameAr: 'بريدة', jobPostLocation: null,
+      });
+      expect((await scoped.patch(`/employees/${id}`, { jobPostCityId: jeddah })).body.error.code).toBe('JOB_POST_INCOMPLETE');
+      expect((await scoped.patch(`/employees/${id}`, { jobPostRegionCode: 'SA-02', jobPostCityId: jeddah })).body).toMatchObject({ jobPostRegionName: 'Makkah Region', jobPostCityName: 'Jeddah' });
+
+      // A city deactivated later stays on the employee and the record stays editable; new choices cannot take it.
+      const spare = await hr.post('/saudi-cities', { regionCode: 'SA-05', name: `Test town ${uniq('T')}`, sortOrder: 99 });
+      await scoped.patch(`/employees/${id}`, { jobPostRegionCode: 'SA-05', jobPostCityId: spare.body.id });
+      await hr.patch(`/saudi-cities/${spare.body.id}`, { isActive: false });
+      expect((await scoped.patch(`/employees/${id}`, { jobPostRegionCode: 'SA-05', jobPostCityId: spare.body.id, jobTitle: 'Staff Nurse II' })).status).toBe(200);
+      expect((await idem(scoped.post('/employees/onboard', onboardBody({ jobPostCityId: spare.body.id })))).body.error.code).toBe('CITY_INACTIVE');
+      expect((await scoped.get('/saudi-cities?regionCode=SA-05')).body.items.map((c: { id: number }) => c.id)).not.toContain(spare.body.id);
+
+      const sup = await signIn(app, (await makeUser(db, { roles: [{ role: 'SUPERVISOR', scopeType: 'UNIT', scopeIds: [org.unitA.id] }] })).email);
+      const seen = (await sup.get(`/employees/${id}`)).body;
+      expect(seen).not.toHaveProperty('jobPostCityId');
+      expect(seen).not.toHaveProperty('jobPostLocation');
+    });
+
+    it('Saudi location master: regions and cities — add, edit, deactivate, reactivate, safe delete; unique names; audited', async () => {
+      const code = `T-${uniq('').slice(-6).toUpperCase()}`.slice(0, 10);
+      const nurse = await signIn(app, (await makeUser(db)).email);
+      expect((await nurse.post('/saudi-regions', { code, name: 'x' })).status).toBe(403);
+      expect((await scoped.post('/saudi-regions', { code, name: 'Scoped' })).body.error.code).toBe('SCOPE_NOT_COVERED');
+      expect((await hr.post('/saudi-regions', { code, name: 'qassim region' })).body.error.code).toBe('REGION_NAME_EXISTS');
+      expect((await hr.post('/saudi-regions', { code: code.toLowerCase(), name: `Future Region ${code}`, sortOrder: 14 })).body).toMatchObject({ code, isActive: true });
+      expect((await hr.post('/saudi-regions', { code, name: 'Again' })).body.error.code).toBe('REGION_EXISTS');
+
+      const city = await hr.post('/saudi-cities', { regionCode: code, name: 'New City', nameAr: 'مدينة جديدة', sortOrder: 1 });
+      expect(city.status).toBe(201);
+      expect((await hr.post('/saudi-cities', { regionCode: code, name: 'new city' })).body.error.code).toBe('CITY_NAME_EXISTS');
+      expect((await hr.post('/saudi-cities', { regionCode: 'SA-99', name: 'Nowhere' })).body.error.code).toBe('REGION_INVALID');
+      // The same name in another region is fine (it is a different place).
+      const twin = await hr.post('/saudi-cities', { regionCode: 'SA-05', name: `New City ${code}`, sortOrder: 99 });
+      expect(twin.status).toBe(201);
+      await hr.del(`/saudi-cities/${twin.body.id}`);
+
+      // A region with cities cannot be deleted; a city held by an employee cannot be deleted or moved.
+      expect((await hr.del(`/saudi-regions/${code}`)).body.error).toMatchObject({ code: 'REGION_IN_USE', details: { cities: 1, employees: 0 } });
+      const emp = await makeEmployee(db, org.unitA.id);
+      await db.employee.update({ where: { id: emp.id }, data: { jobPostRegionCode: code, jobPostCityId: city.body.id } });
+      expect((await hr.del(`/saudi-cities/${city.body.id}`)).body.error).toMatchObject({ code: 'CITY_IN_USE', details: { employees: 1 } });
+      expect((await hr.patch(`/saudi-cities/${city.body.id}`, { regionCode: 'SA-05' })).body.error.code).toBe('CITY_IN_USE');
+      await hr.patch(`/saudi-cities/${city.body.id}`, { name: 'New City Renamed' });
+      await hr.patch(`/saudi-cities/${city.body.id}`, { isActive: false });
+      await hr.patch(`/saudi-cities/${city.body.id}`, { isActive: true });
+      await hr.patch(`/saudi-regions/${code}`, { isActive: false });
+      expect((await hr.get('/saudi-regions')).body.items.map((r: { code: string }) => r.code)).not.toContain(code);
+      expect((await hr.get(`/saudi-cities?regionCode=${code}`)).body.items).toEqual([]); // cities of an inactive region are hidden
+      await hr.patch(`/saudi-regions/${code}`, { isActive: true });
+
+      await db.employee.update({ where: { id: emp.id }, data: { jobPostRegionCode: 'SA-05', jobPostCityId: buraydah } });
+      expect((await hr.del(`/saudi-cities/${city.body.id}`)).body).toEqual({ id: city.body.id, deleted: true });
+      expect((await hr.del(`/saudi-regions/${code}`)).body).toEqual({ code, deleted: true });
+
+      const cityActions = (await db.auditEntry.findMany({ where: { resource: 'saudi_city', resourceId: String(city.body.id) }, orderBy: { id: 'asc' } })).map((a) => a.action);
+      expect(cityActions).toEqual(['CITY_CREATED', 'CITY_UPDATED', 'CITY_DEACTIVATED', 'CITY_REACTIVATED', 'CITY_DELETED']);
+      const regionActions = (await db.auditEntry.findMany({ where: { resource: 'saudi_region', resourceId: code }, orderBy: { id: 'asc' } })).map((a) => a.action);
+      expect(regionActions).toEqual(['REGION_CREATED', 'REGION_DEACTIVATED', 'REGION_REACTIVATED', 'REGION_DELETED']);
+    });
+
+    it('the migration maps old free-text job post cities to Region + City and keeps what it cannot match', async () => {
+      const sql = readFileSync(resolve(__dirname, '../prisma/migrations/20261020090000_saudi_locations/migration.sql'), 'utf8');
+      const normalise = sql.slice(sql.indexOf('WITH matched'));
+      const make = async (jobPostLocation: string) => (await db.employee.update({ where: { id: (await makeEmployee(db, org.unitA.id)).id }, data: { jobPostLocation, jobPostRegionCode: null, jobPostCityId: null } })).id;
+      const ids = { plain: await make(' buraydah '), pair: await make('Makkah Region - Jeddah'), arabic: await make('عنيزة'), other: await make('Riyadh - Al Iman Hospital') };
+      await db.$executeRawUnsafe(normalise);
+      const loc = async (id: number) => db.employee.findUniqueOrThrow({ where: { id }, select: { jobPostLocation: true, jobPostRegionCode: true, jobPostCity: { select: { name: true } } } });
+      expect(await loc(ids.plain)).toEqual({ jobPostLocation: null, jobPostRegionCode: 'SA-05', jobPostCity: { name: 'Buraydah' } });
+      expect(await loc(ids.pair)).toEqual({ jobPostLocation: null, jobPostRegionCode: 'SA-02', jobPostCity: { name: 'Jeddah' } });
+      expect(await loc(ids.arabic)).toEqual({ jobPostLocation: null, jobPostRegionCode: 'SA-05', jobPostCity: { name: 'Unaizah' } });
+      expect(await loc(ids.other)).toEqual({ jobPostLocation: 'Riyadh - Al Iman Hospital', jobPostRegionCode: null, jobPostCity: null });
     });
 
     it('the migration maps old free-text Rank/Grade to codes and keeps what it cannot match', async () => {

@@ -8,7 +8,7 @@ import request from 'supertest';
 import type { Express } from 'express';
 import { addDays, riyadhDate } from '../src/lib/dates.js';
 import type { Db } from '../src/lib/prisma.js';
-import { makeOrg, makeUser, openDb, ORIGIN, PASSWORD, signIn, TEST_URL, testApp } from './helpers.js';
+import { makeOrg, makeUser, openDb, ORIGIN, PASSWORD, signIn, TEST_URL, testApp, jobPost } from './helpers.js';
 
 const describeDb = TEST_URL ? describe : describe.skip;
 
@@ -38,7 +38,7 @@ describeDb('logs carry no personal data', () => {
     await signIn(app, user.email);
     await hr.post('/employees/onboard', {
       jobNumber: 'LOG-UNIQUE-77', firstName: 'Zainabunique', lastName: 'Qahtaniunique', contactEmail: 'zainab.unique@example.sa',
-      salary: '98765.43', unitId: org.unitA.id, contractStart: riyadhDate(), contractEnd: addDays(riyadhDate(), 100), contractTypeCode: 'DIRECT_HOSPITAL', nationalityCode: 'EGY', rankGradeCode: 'N04', specialtyCode: 'NS004',
+      salary: '98765.43', unitId: org.unitA.id, contractStart: riyadhDate(), contractEnd: addDays(riyadhDate(), 100), contractTypeCode: 'DIRECT_HOSPITAL', nationalityCode: 'EGY', rankGradeCode: 'N04', specialtyCode: 'NS004', ...(await jobPost(db)),
     }).set('Idempotency-Key', randomUUID());
     await hr.get('/employees?q=Zainabunique');
     await hr.post('/employees/onboard', { firstName: 'Zainabunique', salary: 'not-a-number' }).set('Idempotency-Key', randomUUID());

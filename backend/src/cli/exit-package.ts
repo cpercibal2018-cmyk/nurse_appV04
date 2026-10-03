@@ -95,7 +95,7 @@ export async function writeExitPackage(db: Db, { protection, vault }: ExitPackag
   const employees = await db.employee.findMany({ orderBy: { id: 'asc' }, include: { unit: { select: { code: true } } } });
   const empRows = employees.map((e) => ({
     id: e.id, jobNumber: e.jobNumber, firstName: e.firstName, middleName: e.middleName, lastName: e.lastName, fullName: e.fullName,
-    jobTitle: e.jobTitle, fileNo: e.fileNo, rankGradeCode: e.rankGradeCode, rankGrade: e.rankGrade, nationalityCode: e.nationalityCode, nationality: e.nationality, jobPostLocation: e.jobPostLocation,
+    jobTitle: e.jobTitle, fileNo: e.fileNo, rankGradeCode: e.rankGradeCode, rankGrade: e.rankGrade, nationalityCode: e.nationalityCode, nationality: e.nationality, jobPostRegionCode: e.jobPostRegionCode, jobPostCityId: e.jobPostCityId, jobPostLocation: e.jobPostLocation,
     actualWorkPlace: e.actualWorkPlace, specialtyCode: e.specialtyCode, specialty: e.specialty, maritalStatus: e.maritalStatus, salary: e.salary?.toString() ?? null,
     contactEmail: e.contactEmail, primaryPhone: e.primaryPhone, emergencyContactPhone: e.emergencyContactPhone,
     unitCode: e.unit?.code ?? null, positionCode: e.positionCode, status: e.status, hireDate: day(e.hireDate),
