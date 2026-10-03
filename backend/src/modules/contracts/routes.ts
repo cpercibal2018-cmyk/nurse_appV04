@@ -8,13 +8,29 @@ import { authOf, authorize } from '../../middleware/authorize.js';
 import { idempotent } from '../../middleware/idempotency.js';
 import { CreateBody, ListQuery, PickerQuery, RenewBody, TransitionBody, type ContractService } from './service.js';
 import { fileHeaders, LinkBody } from '../documents/access.js';
+import { ContractTypeCreateBody, ContractTypeQuery, ContractTypeUpdateBody, createContractTypeService } from './contract-types.js';
 
 const IdParam = z.object({ id: z.coerce.number().int().positive() });
 const DocParam = z.object({ id: z.coerce.number().int().positive(), docId: z.coerce.number().int().positive() });
+const CodeParam = z.object({ code: z.string().trim().toUpperCase().max(20) });
 
 export function createContractsRouter(db: Db, contracts: ContractService, maxUploadBytes: number) {
   const r = Router();
   const rid = (res: Response) => res.locals.requestId as string;
+  const types = createContractTypeService(db);
+
+  // Employment contract types (owner decision 2026-10-03): read with the contracts, changed by
+  // system-wide contract managers (the service checks the scope). DELETE deactivates a used type.
+  r.get('/contract-types', authorize('contracts.read'), async (req, res) => { res.json(await types.list(ContractTypeQuery.parse(req.query))); });
+  r.post('/contract-types', authorize('contracts.manage'), async (req, res) => {
+    res.status(201).json(await types.create(authOf(res), ContractTypeCreateBody.parse(req.body), rid(res)));
+  });
+  r.patch('/contract-types/:code', authorize('contracts.manage'), async (req, res) => {
+    res.json(await types.update(authOf(res), CodeParam.parse(req.params).code, ContractTypeUpdateBody.parse(req.body), rid(res)));
+  });
+  r.delete('/contract-types/:code', authorize('contracts.manage'), async (req, res) => {
+    res.json(await types.remove(authOf(res), CodeParam.parse(req.params).code, rid(res)));
+  });
 
   r.get('/contracts', authorize('contracts.read'), async (req, res) => { res.json(await contracts.list(authOf(res), ListQuery.parse(req.query))); });
   r.get('/contracts/me', async (_req, res) => { res.json(await contracts.listOwn(authOf(res))); });
