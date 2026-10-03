@@ -38,7 +38,7 @@ describeDb('logs carry no personal data', () => {
     await signIn(app, user.email);
     await hr.post('/employees/onboard', {
       jobNumber: 'LOG-UNIQUE-77', firstName: 'Zainabunique', lastName: 'Qahtaniunique', contactEmail: 'zainab.unique@example.sa',
-      salary: '98765.43', unitId: org.unitA.id, contractStart: riyadhDate(), contractEnd: addDays(riyadhDate(), 100),
+      salary: '98765.43', unitId: org.unitA.id, contractStart: riyadhDate(), contractEnd: addDays(riyadhDate(), 100), contractTypeCode: 'DIRECT_HOSPITAL',
     }).set('Idempotency-Key', randomUUID());
     await hr.get('/employees?q=Zainabunique');
     await hr.post('/employees/onboard', { firstName: 'Zainabunique', salary: 'not-a-number' }).set('Idempotency-Key', randomUUID());

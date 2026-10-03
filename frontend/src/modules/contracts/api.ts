@@ -16,20 +16,24 @@ export const NEEDS_REASON: ContractAction[] = ['return', 'suspend', 'reinstate',
 export interface ContractRow {
   id: number; employeeId: number; jobNumber: string; employeeName: string; positionCode: string; unitCode: string | null;
   status: ContractStatus; startDate: string; endDate: string; startDateHijri: string | null; endDateHijri: string | null;
+  contractTypeCode: string | null; contractTypeName: string | null; contractTypeNameAr: string | null;
   view: 'FULL' | 'REDUCED';
   createdById?: number | null; submittedById?: number | null; approvedById?: number | null; approvedAt?: string | null;
 }
 export interface ContractDoc { id: number; version: number; fileName: string; sizeBytes: number; scanStatus: string; uploadedAt: string }
 export interface Renewable {
   employeeId: number; jobNumber: string; fullName: string;
-  prior: { id: number; status: ContractStatus; startDate: string; endDate: string; startDateHijri: string | null; endDateHijri: string | null };
+  prior: { id: number; status: ContractStatus; contractTypeCode: string | null; startDate: string; endDate: string; startDateHijri: string | null; endDateHijri: string | null };
   prefill: { start: string; end: string };
 }
 
-export const useContracts = (f: { status?: ContractStatus; page: number }, staff: boolean) => useQuery({
+/** Employment contract types (owner decision 2026-10-03): a list HR maintains; contractCount = contracts using the type. */
+export interface ContractType { code: string; name: string; nameAr: string | null; isActive: boolean; displayOrder: number; contractCount: number }
+
+export const useContracts = (f: { status?: ContractStatus; contractTypeCode?: string; page: number }, staff: boolean) => useQuery({
   queryKey: ['contracts', staff, f], placeholderData: keepPreviousData,
   queryFn: () => (staff
-    ? http.get<Paged<ContractRow>>(`/contracts?page=${f.page}&pageSize=50${f.status ? `&status=${f.status}` : ''}`)
+    ? http.get<Paged<ContractRow>>(`/contracts?page=${f.page}&pageSize=50${f.status ? `&status=${f.status}` : ''}${f.contractTypeCode ? `&contractTypeCode=${encodeURIComponent(f.contractTypeCode)}` : ''}`)
     : http.get<Paged<ContractRow>>('/contracts/me')),
 });
 /** Employee pickers search on the server (job number or name); `total` counts every match, `items` is the first page. */
@@ -42,11 +46,33 @@ export const useRenewable = (enabled: boolean, q: string) => useQuery({
   queryKey: ['contracts', 'renewable', q], enabled, placeholderData: keepPreviousData,
   queryFn: () => http.get<Paged<Renewable>>(pickerPath('/contracts/renewable', q)),
 });
+/** Active types for the form; includeInactive for the manager and the filter. */
+export const useContractTypes = (includeInactive: boolean, enabled = true) => useQuery({
+  queryKey: ['contract-types', includeInactive], enabled,
+  queryFn: () => http.get<{ items: ContractType[] }>(`/contract-types${includeInactive ? '?includeInactive=true' : ''}`),
+});
+type TypeAction =
+  | { kind: 'create'; body: { code: string; name: string; nameAr?: string; displayOrder: number } }
+  | { kind: 'update'; code: string; body: { name?: string; nameAr?: string | null; isActive?: boolean; displayOrder?: number } }
+  | { kind: 'remove'; code: string };
+export function useContractTypeAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (a: TypeAction): Promise<unknown> => {
+      switch (a.kind) {
+        case 'create': return http.post('/contract-types', a.body);
+        case 'update': return http.patch(`/contract-types/${encodeURIComponent(a.code)}`, a.body);
+        case 'remove': return http.delete<{ code: string; outcome: 'DELETED' | 'DEACTIVATED'; contractCount: number }>(`/contract-types/${encodeURIComponent(a.code)}`);
+      }
+    },
+    onSuccess: () => Promise.all(['contract-types', 'contracts'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+  });
+}
 export const useContractDocs = (id: number | null) => useQuery({ queryKey: ['contracts', 'docs', id], enabled: id !== null, queryFn: () => http.get<Paged<ContractDoc>>(`/contracts/${id}/documents`) });
 
 type Action =
-  | { kind: 'create'; body: { employeeId: number; startDate: string; endDate: string }; key: string }
-  | { kind: 'renew'; priorId: number; body: { startDate: string; endDate: string }; key: string }
+  | { kind: 'create'; body: { employeeId: number; startDate: string; endDate: string; contractTypeCode: string }; key: string }
+  | { kind: 'renew'; priorId: number; body: { startDate: string; endDate: string; contractTypeCode: string }; key: string }
   | { kind: 'transition'; id: number; action: ContractAction; reason?: string }
   | { kind: 'upload'; id: number; file: File };
 

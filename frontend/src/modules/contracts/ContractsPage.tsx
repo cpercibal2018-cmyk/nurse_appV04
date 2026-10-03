@@ -13,9 +13,10 @@ import { toHijriShort } from '../../lib/hijri';
 import { http } from '../../services/http';
 import { GuideHelp } from '../guidelines/GuideHelp';
 import {
-  CONTRACT_STATUSES, NEEDS_REASON, TRANSITIONS, useContractAction, useContractDocs, useContracts, useCreatable, useRenewable,
+  CONTRACT_STATUSES, NEEDS_REASON, TRANSITIONS, useContractAction, useContractDocs, useContracts, useContractTypes, useCreatable, useRenewable,
   type ContractAction, type ContractRow, type ContractStatus, type Renewable,
 } from './api';
+import { ContractTypesDrawer } from './ContractTypesDrawer';
 
 const COLOR: Record<ContractStatus, string> = {
   Draft: 'default', PendingApproval: 'orange', Approved: 'blue', Active: 'green', Expired: 'red', Suspended: 'volcano', Terminated: 'magenta', Superseded: 'purple',
@@ -23,13 +24,19 @@ const COLOR: Record<ContractStatus, string> = {
 const covers = (s: ContractStatus) => s === 'Approved' || s === 'Active'; // C1, C3
 
 export default function ContractsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const ar = i18n.language === 'ar';
   const { message } = App.useApp();
   const { hasRole } = usePermissions();
   const staff = hasRole('HR_ADMIN', 'SYSTEM_ADMIN', 'SUPERVISOR');
   const hr = hasRole('HR_ADMIN', 'SYSTEM_ADMIN');
-  const [filter, setFilter] = useState<{ status?: ContractStatus; page: number }>({ page: 1 });
+  const [filter, setFilter] = useState<{ status?: ContractStatus; contractTypeCode?: string; page: number }>({ page: 1 });
   const contracts = useContracts(filter, staff);
+  // Every type for the filter (old contracts may carry an inactive one); only active ones for a new contract.
+  const allTypes = useContractTypes(true, staff);
+  const activeTypes = (allTypes.data?.items ?? []).filter((x) => x.isActive);
+  const typeLabel = (x: { name: string; nameAr: string | null }) => (ar && x.nameAr ? x.nameAr : x.name);
+  const [managingTypes, setManagingTypes] = useState(false);
   const action = useContractAction();
   const [creating, setCreating] = useState<{ mode: 'new' | 'renew'; key: string } | null>(null);
   const [pending, setPending] = useState<{ row: ContractRow; action: ContractAction } | null>(null);
@@ -51,7 +58,7 @@ export default function ContractsPage() {
   // The chosen employee stays selectable (and labelled) even when a later search no longer returns them.
   const options = chosenOption && !pickerOptions.some((o) => o.value === chosenOption.value) ? [chosenOption, ...pickerOptions] : pickerOptions;
   const docs = useContractDocs(docsFor?.id ?? null);
-  const [form] = Form.useForm<{ employeeId: number; start: Dayjs; end: Dayjs }>();
+  const [form] = Form.useForm<{ employeeId: number; contractTypeCode: string; start: Dayjs; end: Dayjs }>();
   const start = Form.useWatch('start', form);
   const end = Form.useWatch('end', form);
 
@@ -73,15 +80,20 @@ export default function ContractsPage() {
   const actionsFor = (r: ContractRow) => (Object.keys(TRANSITIONS) as ContractAction[]).filter((a) => TRANSITIONS[a].includes(r.status));
 
   return (
-    <Card title={<>{t('contracts')} <GuideHelp section="contracts" /></>} extra={hr && (
-      <Space>
+    <Card title={<>{t('contracts')} <GuideHelp section="contracts" /></>} styles={{ title: { minWidth: 110 }, extra: { flexShrink: 1, minWidth: 0, paddingBlock: 8 } }} extra={hr && (
+      <Space wrap>
         <Button type="primary" onClick={() => openPicker('new')}>{t('newContract')}</Button>
         <Button onClick={() => openPicker('renew')}>{t('renewContract')}</Button>
+        <Button onClick={() => setManagingTypes(true)}>{t('contractTypes')}</Button>
       </Space>
     )}>
       {staff && (
-        <Select allowClear placeholder={t('status')} style={{ width: 220, marginBottom: 12 }} onChange={(v) => setFilter({ status: v ?? undefined, page: 1 })}
-          options={CONTRACT_STATUSES.map((s) => ({ value: s, label: t(`contract_${s}`) }))} />
+        <Flex gap={8} wrap style={{ marginBottom: 12 }}>
+          <Select allowClear placeholder={t('status')} style={{ width: 220 }} onChange={(v) => setFilter({ ...filter, status: v ?? undefined, page: 1 })}
+            options={CONTRACT_STATUSES.map((s) => ({ value: s, label: t(`contract_${s}`) }))} />
+          <Select allowClear placeholder={t('contractType')} style={{ width: 280 }} onChange={(v) => setFilter({ ...filter, contractTypeCode: v ?? undefined, page: 1 })}
+            options={(allTypes.data?.items ?? []).map((x) => ({ value: x.code, label: x.isActive ? typeLabel(x) : `${typeLabel(x)} (${t('inactive')})` }))} />
+        </Flex>
       )}
       <Table<ContractRow>
         rowKey="id" loading={contracts.isLoading} dataSource={contracts.data?.items} scroll={{ x: true }}
@@ -90,6 +102,7 @@ export default function ContractsPage() {
           { title: '#', dataIndex: 'id', width: 64 },
           { title: t('employee'), render: (_, r) => `${r.jobNumber} — ${r.employeeName}` },
           { title: t('unit'), render: (_, r) => r.unitCode ?? t('unassigned') },
+          { title: t('contractType'), render: (_, r) => (r.contractTypeName ? typeLabel({ name: r.contractTypeName, nameAr: r.contractTypeNameAr }) : <Tag>{t('contractTypeNone')}</Tag>) },
           { title: t('period'), render: (_, r) => <>{r.startDate} → {r.endDate}<div style={{ opacity: 0.65, fontSize: 12 }}>{r.startDateHijri} → {r.endDateHijri} AH</div></> },
           { title: t('status'), render: (_, r) => <><Tag color={COLOR[r.status]}>{t(`contract_${r.status}`)}</Tag>{!covers(r.status) && <Tag>{t('noCoverage')}</Tag>}</> },
           {
@@ -112,7 +125,7 @@ export default function ContractsPage() {
         <Alert type="info" showIcon title={t('contractDraftHint')} style={{ marginBottom: 12 }} />
         <Form form={form} layout="vertical" onFinish={async (v) => {
           if (!creating) return;
-          const body = { startDate: v.start.format('YYYY-MM-DD'), endDate: v.end.format('YYYY-MM-DD') };
+          const body = { startDate: v.start.format('YYYY-MM-DD'), endDate: v.end.format('YYYY-MM-DD'), contractTypeCode: v.contractTypeCode };
           const out = creating.mode === 'new'
             ? await run({ kind: 'create', body: { employeeId: v.employeeId, ...body }, key: creating.key }, t('saved'))
             : await run({ kind: 'renew', priorId: chosenRenewal!.prior.id, body, key: creating.key }, t('saved'));
@@ -127,7 +140,11 @@ export default function ContractsPage() {
                 setChosenOption(options.find((o) => o.value === id) ?? null);
                 const r = renewable.data?.items.find((x) => x.employeeId === id) ?? (chosenRenewal?.employeeId === id ? chosenRenewal : undefined);
                 setChosenRenewal(creating?.mode === 'renew' ? r ?? null : null);
-                if (creating?.mode === 'renew' && r) form.setFieldsValue({ start: dayjs(r.prefill.start), end: dayjs(r.prefill.end) }); // C8
+                if (creating?.mode === 'renew' && r) {
+                  // C8 dates; the previous contract's type, if it is still in use (it can be changed).
+                  const prevType = activeTypes.some((x) => x.code === r.prior.contractTypeCode) ? r.prior.contractTypeCode! : undefined;
+                  form.setFieldsValue({ start: dayjs(r.prefill.start), end: dayjs(r.prefill.end), contractTypeCode: prevType });
+                }
               }} />
           </Form.Item>
           {creating?.mode === 'renew' && chosenRenewal && (
@@ -136,6 +153,10 @@ export default function ContractsPage() {
               hstart: chosenRenewal.prior.startDateHijri ?? '', hend: chosenRenewal.prior.endDateHijri ?? '',
             })} />
           )}
+          <Form.Item name="contractTypeCode" label={t('contractType')} rules={[{ required: true, message: t('contractTypeRequired') }]}>
+            <Select placeholder={t('contractTypeSelect')} loading={allTypes.isLoading}
+              options={activeTypes.map((x) => ({ value: x.code, label: typeLabel(x) }))} />
+          </Form.Item>
           <Flex gap={8}>
             <Form.Item name="start" label={t('contractStart')} extra={start ? toHijriShort(start) : undefined} rules={[{ required: true }]} style={{ flex: 1 }}><DatePicker style={{ width: '100%' }} /></Form.Item>
             <Form.Item name="end" label={t('contractEnd')} extra={end ? toHijriShort(end) : undefined} rules={[{ required: true }]} style={{ flex: 1 }}><DatePicker style={{ width: '100%' }} /></Form.Item>
@@ -168,6 +189,7 @@ export default function ContractsPage() {
             },
           ]} />
       </Drawer>
+      {hr && <ContractTypesDrawer open={managingTypes} onClose={() => setManagingTypes(false)} />}
     </Card>
   );
 }

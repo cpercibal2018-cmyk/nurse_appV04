@@ -22,6 +22,13 @@
 // credential reasons count: the contract-coverage reason is ignored, or an
 // expired contract could never be renewed. Grace, waivers and transition
 // warnings pass, as they do for eligibility. A first contract is not gated.
+//
+// Employment contract type (owner decision 2026-10-03): every new contract and
+// renewal names an active type from the hospital's list (contract-types.ts). A
+// renewal keeps the previous contract's type unless another is chosen. There is
+// no editing afterwards: the approver approves the type with the contract.
+// Contracts from before the field stay unclassified (null). Information only —
+// eligibility, renewal and approval rules do not read it.
 
 import { z } from 'zod';
 import type { Contract, ContractStatus } from '../../generated/prisma/client.js';
@@ -36,12 +43,13 @@ import type { DocumentAccess } from '../documents/access.js';
 import { evaluateFor, refreshEligibility } from '../eligibility/state.service.js';
 import { HR_ROLES, inScope, viewerOf, type Viewer } from '../credentials/access.js';
 import { unitScope, type AuthContext } from '../users/access.js';
+import { assertActiveContractType, ContractTypeCode as TypeCode } from './contract-types.js';
 
 const IsoDate = z.string().refine(isIsoDate, 'YYYY-MM-DD');
 const Reason = z.string().trim().min(5, 'A reason of at least 5 characters is required').max(500);
 
-export const CreateBody = z.strictObject({ employeeId: z.number().int().positive(), startDate: IsoDate, endDate: IsoDate });
-export const RenewBody = z.strictObject({ startDate: IsoDate.optional(), endDate: IsoDate.optional() });
+export const CreateBody = z.strictObject({ employeeId: z.number().int().positive(), startDate: IsoDate, endDate: IsoDate, contractTypeCode: TypeCode });
+export const RenewBody = z.strictObject({ startDate: IsoDate.optional(), endDate: IsoDate.optional(), contractTypeCode: TypeCode.optional() });
 export const TransitionBody = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('submit') }),
   z.strictObject({ action: z.literal('approve') }),
@@ -63,6 +71,7 @@ const pickerMatch = (q: string | undefined) =>
 export const ListQuery = z.object({
   employeeId: z.coerce.number().int().positive().optional(),
   status: z.enum(STATUSES).optional(),
+  contractTypeCode: z.string().trim().min(1).max(20).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });
@@ -92,8 +101,12 @@ export function renewalPeriodAfter(prior: { startDate: string; endDate: string }
   return { start, end: addDays(start, daysBetween(prior.startDate, prior.endDate)) };
 }
 
-type WithRefs = Contract & { employee: { fullName: string; unitId: number | null; positionCode: string; unit: { code: string } | null } };
-const INCLUDE = { employee: { select: { fullName: true, unitId: true, positionCode: true, unit: { select: { code: true } } } } } as const;
+type TypeRef = { code: string; name: string; nameAr: string | null } | null;
+type WithRefs = Contract & { employee: { fullName: string; unitId: number | null; positionCode: string; unit: { code: string } | null }; contractType: TypeRef };
+const INCLUDE = {
+  employee: { select: { fullName: true, unitId: true, positionCode: true, unit: { select: { code: true } } } },
+  contractType: { select: { code: true, name: true, nameAr: true } },
+} as const;
 
 function dates(c: Contract) {
   return { startDate: dbDate(c.startDate), endDate: dbDate(c.endDate), startDateHijri: c.startDateHijri, endDateHijri: c.endDateHijri };
@@ -103,7 +116,9 @@ function dates(c: Contract) {
 function reducedView(c: WithRefs) {
   return {
     id: c.id, employeeId: c.employeeId, jobNumber: c.jobNumber, employeeName: c.employee.fullName,
-    positionCode: c.employee.positionCode, unitCode: c.employee.unit?.code ?? null, status: c.status, ...dates(c), view: 'REDUCED' as const,
+    positionCode: c.employee.positionCode, unitCode: c.employee.unit?.code ?? null, status: c.status, ...dates(c),
+    contractTypeCode: c.contractTypeCode, contractTypeName: c.contractType?.name ?? null, contractTypeNameAr: c.contractType?.nameAr ?? null,
+    view: 'REDUCED' as const,
   };
 }
 function fullView(c: WithRefs) {
@@ -155,15 +170,15 @@ export function createContractService(db: Db, documents: DocumentAccess, scanner
     }
   }
 
-  async function createDraft(tx: DbClient, auth: AuthContext, emp: { id: number; jobNumber: string }, start: string, end: string, event: string, extra: Record<string, unknown>, requestId?: string) {
+  async function createDraft(tx: DbClient, auth: AuthContext, emp: { id: number; jobNumber: string }, start: string, end: string, contractTypeCode: string, event: string, extra: Record<string, unknown>, requestId?: string) {
     if (end <= start) throw unprocessable('CONTRACT_DATES_INVALID', 'The contract end must be after its start (C5)');
     const c = await tx.contract.create({
       data: {
-        employeeId: emp.id, jobNumber: emp.jobNumber, status: 'Draft', createdById: auth.user.id,
+        employeeId: emp.id, jobNumber: emp.jobNumber, status: 'Draft', createdById: auth.user.id, contractTypeCode,
         startDate: toDbDate(start), endDate: toDbDate(end), startDateHijri: toHijriIso(start), endDateHijri: toHijriIso(end),
       },
     });
-    await appendAudit(tx, { actorUserId: auth.user.id, action: event, resource: 'contract', resourceId: c.id, changes: { employeeId: emp.id, startDate: start, endDate: end, status: 'Draft', ...extra }, requestId });
+    await appendAudit(tx, { actorUserId: auth.user.id, action: event, resource: 'contract', resourceId: c.id, changes: { employeeId: emp.id, startDate: start, endDate: end, contractTypeCode, status: 'Draft', ...extra }, requestId });
     return c;
   }
 
@@ -178,6 +193,7 @@ export function createContractService(db: Db, documents: DocumentAccess, scanner
           { employee: { deletedAt: null } },
           ...(q.employeeId ? [{ employeeId: q.employeeId }] : []),
           ...(q.status ? [{ status: q.status }] : []),
+          ...(q.contractTypeCode ? [{ contractTypeCode: q.contractTypeCode }] : []),
         ],
       };
       const [rows, total] = await Promise.all([
@@ -225,7 +241,7 @@ export function createContractService(db: Db, documents: DocumentAccess, scanner
       const items = rows.map((e) => {
         const prior = e.contracts[0]!;
         const p = { startDate: dbDate(prior.startDate), endDate: dbDate(prior.endDate) };
-        return { employeeId: e.id, jobNumber: e.jobNumber, fullName: e.fullName, prior: { id: prior.id, status: prior.status, ...dates(prior) }, prefill: renewalPeriodAfter(p) };
+        return { employeeId: e.id, jobNumber: e.jobNumber, fullName: e.fullName, prior: { id: prior.id, status: prior.status, contractTypeCode: prior.contractTypeCode, ...dates(prior) }, prefill: renewalPeriodAfter(p) };
       });
       return { items, total };
     },
@@ -237,13 +253,14 @@ export function createContractService(db: Db, documents: DocumentAccess, scanner
         if (await tx.contract.findFirst({ where: { employeeId: emp.id, status: { in: [...COVERING] } }, select: { id: true } })) {
           throw conflict('EMPLOYEE_HAS_CONTRACT', 'This employee already has an approved or active contract — use renewal for the next period (C10)');
         }
+        const type = await assertActiveContractType(tx, body.contractTypeCode);
         await assertCredentialsAllowRenewal(tx, emp.id);
-        const c = await createDraft(tx, auth, emp, body.startDate, body.endDate, 'CONTRACT_CREATED', {}, requestId);
+        const c = await createDraft(tx, auth, emp, body.startDate, body.endDate, type, 'CONTRACT_CREATED', {}, requestId);
         return { id: c.id };
       });
     },
 
-    /** C8 prefill from the prior contract; dates stay editable. The approval overlap check (C4) still applies. */
+    /** C8 prefill from the prior contract; dates and type stay editable. The approval overlap check (C4) still applies. */
     async renew(auth: AuthContext, priorId: number, body: z.infer<typeof RenewBody>, requestId?: string) {
       return db.$transaction(async (tx) => {
         const prior = await tx.contract.findUnique({ where: { id: priorId } });
@@ -251,9 +268,13 @@ export function createContractService(db: Db, documents: DocumentAccess, scanner
         const emp = await assertEmployee(tx, auth, prior.employeeId);
         const latest = await tx.contract.findFirst({ where: { employeeId: prior.employeeId }, orderBy: { endDate: 'desc' }, select: { id: true } });
         if (latest?.id !== prior.id) throw unprocessable('NOT_LATEST_CONTRACT', 'Renew from the employee\'s latest contract');
+        // The previous contract's type carries over; one from before the field existed has none, so it must be chosen.
+        const code = body.contractTypeCode ?? prior.contractTypeCode;
+        if (!code) throw unprocessable('CONTRACT_TYPE_REQUIRED', 'Employment Contract Type is required.');
+        const type = await assertActiveContractType(tx, code);
         await assertCredentialsAllowRenewal(tx, emp.id);
         const pre = renewalPeriodAfter({ startDate: dbDate(prior.startDate), endDate: dbDate(prior.endDate) });
-        const c = await createDraft(tx, auth, emp, body.startDate ?? pre.start, body.endDate ?? pre.end, 'CONTRACT_RENEWAL_CREATED', { renewedFromId: prior.id }, requestId);
+        const c = await createDraft(tx, auth, emp, body.startDate ?? pre.start, body.endDate ?? pre.end, type, 'CONTRACT_RENEWAL_CREATED', { renewedFromId: prior.id }, requestId);
         return { id: c.id };
       });
     },

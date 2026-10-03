@@ -391,13 +391,13 @@ The staff master record: one row per employee with job number, name, unit, posit
 
 **Before you start.**
 
-- Name, job number, contact e-mail; contract start and end dates.
+- Name, job number, contact e-mail; the employment contract type and the contract start and end dates.
 - Unit and position if known — the defaults are Unassigned and SN.
 
 **Steps.**
 
 1. Open Nurses and click Onboard employee.
-2. Fill in the details. The Hijri date is shown under each contract date.
+2. Fill in the details and choose the Employment Contract Type. The Hijri date is shown under each contract date.
 3. Choose the unit (or leave Unassigned) and the position.
 4. Click Submit.
 
@@ -545,6 +545,8 @@ Employment contracts. A nurse is covered — and can be eligible — only on dat
 
 > **Note:** Two Approved/Active periods of one nurse may never overlap. Every contract change re-evaluates the nurse's eligibility at once.
 
+> **Note:** Every new contract and renewal names an Employment Contract Type from the hospital's list (Contract types). It is information only: it does not change eligibility, the renewal rule or approval. Contracts created before the field existed show "Not classified".
+
 > **Important:** A renewal needs valid credentials. For a nurse who has had a contract before, a contract is neither created nor approved while a required credential of their unit and position is missing, expired, not yet verified, suspended or revoked. The ended contract itself does not count, so an expired contract can always be renewed once the credentials are in order. A nurse's first contract is not checked.
 
 ![Contract approval](generated/flows/contract-lifecycle.svg)
@@ -588,15 +590,16 @@ Employment contracts. A nurse is covered — and can be eligible — only on dat
 
 **Before you start.**
 
-- Start and end dates.
+- The employment contract type, start and end dates.
 - The signed contract as a PDF.
 
 **Steps.**
 
 1. Open Contracts and click New contract.
 2. Search the employee by job number or name (only nurses with no Approved/Active contract are offered).
-3. Choose the start and end dates (the Hijri dates are shown).
-4. Click Submit — the contract is saved as Draft.
+3. Choose the Employment Contract Type (required; only active types are offered).
+4. Choose the start and end dates (the Hijri dates are shown).
+5. Click Submit — the contract is saved as Draft.
 
 **System result.** A Draft contract. It gives no coverage yet.
 
@@ -607,6 +610,7 @@ Employment contracts. A nurse is covered — and can be eligible — only on dat
 **Common problems.**
 
 - *The employee is not offered* — They already have an Approved or Active contract: use Renew contract.
+- *"Employment Contract Type is required."* — Choose a type. If the right one is missing, a system-wide HR Admin or System Admin adds it under Contract types.
 - *"Renew or verify these credentials before renewing the contract"* — The nurse had a contract before, so this counts as a renewal: the credentials listed must be valid first (see Renew a contract).
 
 **Related.** [Nurses](#5-nurses) · [Eligibility](#8-eligibility)
@@ -631,8 +635,8 @@ Employment contracts. A nurse is covered — and can be eligible — only on dat
 **Steps.**
 
 1. Open Contracts and click Renew contract.
-2. Choose the employee: the current contract is shown and the dates are pre-filled (the day after the current end, same length).
-3. Adjust the dates if needed and Submit.
+2. Choose the employee: the current contract is shown, and the dates (the day after the current end, same length) and the Employment Contract Type are pre-filled from it.
+3. Adjust the dates or the type if needed and Submit. A contract from before the type existed has none: choose one.
 
 **System result.** A new Draft contract for the next period. Refused with the list of credentials to renew or verify first if any required credential is not valid — checked again when the contract is approved.
 
@@ -652,7 +656,37 @@ Employment contracts. A nurse is covered — and can be eligible — only on dat
 
 *The creator and the submitter can never approve. Only Approved and Active contracts cover a date. A renewal needs valid credentials (the ended contract itself does not count); a first contract is not checked.*
 
-### 6.3 Upload the signed contract copy
+### 6.3 Manage employment contract types
+
+**Status:** Implemented  
+**Roles:** HR Admin, System Admin
+
+**Purpose.** Keep the list of employment contract types that HR chooses from on a new contract, a renewal or an onboarding.
+
+**Who can perform it.** HR Admin or System Admin with system-wide scope (a unit-scoped HR Admin can only choose from the list).
+
+**Steps.**
+
+1. Open Contracts and click Contract types.
+2. Add contract type: a code (A–Z, digits and _, at most 20 — it cannot be changed later), the English name, the Arabic name and the display order.
+3. Edit: change the names or the order, or switch a type Active again.
+4. Delete: confirm. A type that no contract uses is deleted; a type that contracts already use is deactivated instead.
+
+**System result.** The list changes at once and every change is in the audit log. A deactivated type disappears from new contracts but stays on the contracts that use it, so old records keep their meaning.
+
+**Approval.** None — the type is information only and changes no rule.
+
+**Next step.** None.
+
+**Common problems.**
+
+- *"Only system-wide administrators can change the employment contract types"* — Your HR role covers some units only. Ask a system-wide HR Admin or a System Admin.
+- *Delete only deactivated the type* — Contracts use it (see the Contracts column). That is intended: the old contracts keep showing it.
+- *A contract type code is refused as existing* — Codes are unique, including deactivated types. Edit the existing type and switch it Active instead.
+
+**Related.** [Nursing Administration](#14-nursing-administration)
+
+### 6.4 Upload the signed contract copy
 
 **Status:** Implemented  
 **Roles:** HR Admin, System Admin
@@ -679,7 +713,7 @@ Employment contracts. A nurse is covered — and can be eligible — only on dat
 
 **Related.** [Credentials](#7-credentials)
 
-### 6.4 Submit and approve a contract
+### 6.5 Submit and approve a contract
 
 **Status:** Implemented  
 **Roles:** HR Admin, System Admin
@@ -712,7 +746,7 @@ Employment contracts. A nurse is covered — and can be eligible — only on dat
 
 *The creator and the submitter can never approve. Only Approved and Active contracts cover a date. A renewal needs valid credentials (the ended contract itself does not count); a first contract is not checked.*
 
-### 6.5 Suspend, reinstate or terminate a contract
+### 6.6 Suspend, reinstate or terminate a contract
 
 **Status:** Implemented  
 **Roles:** HR Admin, System Admin

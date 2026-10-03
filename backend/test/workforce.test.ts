@@ -158,7 +158,7 @@ describeDb('workforce, employees and contracts', () => {
     const onboardBody = (over: object = {}) => ({
       jobNumber: uniq('OB'), firstName: ' Mona ', middleName: '', lastName: 'Saleh', contactEmail: 'Mona@Example.SA',
       unitId: org.unitA.id, salary: '12500.50', maritalStatus: 'Single',
-      contractStart: today(), contractEnd: addDays(today(), 364), ...over,
+      contractStart: today(), contractEnd: addDays(today(), 364), contractTypeCode: 'DIRECT_HOSPITAL', ...over,
     });
 
     it('rule E6: the server supplies the default position; omitting it at onboarding uses it (P4)', async () => {
@@ -185,6 +185,7 @@ describeDb('workforce, employees and contracts', () => {
       expect(emp).toMatchObject({ fullName: 'Mona Saleh', positionCode: 'SN', contactEmail: 'mona@example.sa' });
       const contract = await db.contract.findUniqueOrThrow({ where: { id: res.body.contractId } });
       expect(contract.status).toBe('Draft');
+      expect(contract.contractTypeCode).toBe('DIRECT_HOSPITAL');
       expect(contract.startDateHijri).toMatch(/^14\d\d-\d\d-\d\d$/);
       const state = await db.eligibilityState.findUniqueOrThrow({ where: { employeeId: emp.id } });
       expect(JSON.stringify(state.reasons)).toContain('NO_CONTRACT_COVERAGE');
@@ -299,9 +300,10 @@ describeDb('workforce, employees and contracts', () => {
   });
 
   describe('contracts (C1–C11, D-29, D-30)', () => {
+    const TYPE = 'DIRECT_HOSPITAL'; // one of the types the migration adds (owner decision 2026-10-03)
     async function draftFor(creator: Client, start = today(), end = addDays(today(), 364)) {
       const emp = await makeEmployee(db, org.unitA.id);
-      const made = await idem(creator.post('/contracts', { employeeId: emp.id, startDate: start, endDate: end }));
+      const made = await idem(creator.post('/contracts', { employeeId: emp.id, startDate: start, endDate: end, contractTypeCode: TYPE }));
       expect(made.status).toBe(201);
       return { emp, id: made.body.id as number };
     }
@@ -332,7 +334,7 @@ describeDb('workforce, employees and contracts', () => {
       await hr.upload(`/contracts/${id}/documents`, FILES.pdf, 'application/pdf');
       await act(hr, id, 'submit');
       await act(hr2, id, 'approve');
-      expect((await idem(hr.post('/contracts', { employeeId: emp.id, startDate: today(), endDate: addDays(today(), 10) }))).body.error.code).toBe('EMPLOYEE_HAS_CONTRACT');
+      expect((await idem(hr.post('/contracts', { employeeId: emp.id, startDate: today(), endDate: addDays(today(), 10), contractTypeCode: TYPE }))).body.error.code).toBe('EMPLOYEE_HAS_CONTRACT');
 
       // The picker lists at most 500 employees; read it through HR scoped to a unit of its own so the shared test database cannot push this one out.
       const own = await db.unit.create({ data: { code: uniq('RN').toUpperCase().slice(0, 20), name: 'Renewal unit', departmentId: org.dept.id } });
@@ -360,21 +362,21 @@ describeDb('workforce, employees and contracts', () => {
 
       // A first contract is not gated, whatever the credentials.
       const newcomer = await makeEmployee(db, own.id);
-      expect((await idem(hr.post('/contracts', { employeeId: newcomer.id, startDate: today(), endDate: addDays(today(), 30) }))).status).toBe(201);
+      expect((await idem(hr.post('/contracts', { employeeId: newcomer.id, startDate: today(), endDate: addDays(today(), 30), contractTypeCode: TYPE }))).status).toBe(201);
 
       // The old contract has ended, so the nurse is INELIGIBLE for the contract too — that reason must not stop the renewal.
       const emp = await makeEmployee(db, own.id);
       const old = await db.contract.create({ data: { employeeId: emp.id, jobNumber: emp.jobNumber, status: 'Expired', startDate: toDbDate(addDays(today(), -400)), endDate: toDbDate(addDays(today(), -35)) } });
-      const refused = await idem(hr.post(`/contracts/${old.id}/renew`, {}));
+      const refused = await idem(hr.post(`/contracts/${old.id}/renew`, { contractTypeCode: TYPE }));
       expect(refused.status).toBe(422);
       expect(refused.body.error.code).toBe('CREDENTIALS_BLOCK_RENEWAL');
       expect(refused.body.error.details.reasons).toEqual([expect.objectContaining({ code: 'CREDENTIAL_MISSING', templateCode: tpl.code })]);
       expect(JSON.stringify(refused.body.error.details.reasons)).not.toContain('NO_CONTRACT_COVERAGE');
       // A "new" contract after the old one ended is a renewal too.
-      expect((await idem(hr.post('/contracts', { employeeId: emp.id, startDate: today(), endDate: addDays(today(), 30) }))).body.error.code).toBe('CREDENTIALS_BLOCK_RENEWAL');
+      expect((await idem(hr.post('/contracts', { employeeId: emp.id, startDate: today(), endDate: addDays(today(), 30), contractTypeCode: TYPE }))).body.error.code).toBe('CREDENTIALS_BLOCK_RENEWAL');
 
       const cred = await db.credential.create({ data: { employeeId: emp.id, templateId: tpl.id, status: 'Valid', trackingData: {}, expiryDate: toDbDate(addDays(today(), 200)) } });
-      const next = await idem(hr.post(`/contracts/${old.id}/renew`, {}));
+      const next = await idem(hr.post(`/contracts/${old.id}/renew`, { contractTypeCode: TYPE }));
       expect(next.status).toBe(201);
       await hr.upload(`/contracts/${next.body.id}/documents`, FILES.pdf, 'application/pdf');
       await act(hr, next.body.id, 'submit');
@@ -390,9 +392,71 @@ describeDb('workforce, employees and contracts', () => {
       expect((await act(hr2, next.body.id, 'approve')).body).toMatchObject({ status: 'Active', eligibility: 'ELIGIBLE' });
     });
 
+    it('an employment contract type is required, must be on the active list, carries over on renewal and is returned by name (owner decision 2026-10-03)', async () => {
+      const emp = await makeEmployee(db, org.unitA.id);
+      const body = { employeeId: emp.id, startDate: today(), endDate: addDays(today(), 364) };
+      const missing = await idem(hr.post('/contracts', body));
+      expect(missing.body.error.code).toBe('VALIDATION_FAILED');
+      expect(JSON.stringify(missing.body)).toContain('Employment Contract Type is required.');
+      expect((await idem(hr.post('/contracts', { ...body, contractTypeCode: 'NOT_A_TYPE' }))).body.error.code).toBe('CONTRACT_TYPE_INVALID');
+      const retired = await hr.post('/contract-types', { code: uniq('RT').toUpperCase().slice(0, 20), name: 'Retired type' });
+      await hr.patch(`/contract-types/${retired.body.code}`, { isActive: false });
+      expect((await idem(hr.post('/contracts', { ...body, contractTypeCode: retired.body.code }))).body.error.code).toBe('CONTRACT_TYPE_INACTIVE');
+
+      const made = await idem(hr.post('/contracts', { ...body, contractTypeCode: 'AGENCY' }));
+      expect(made.status).toBe(201);
+      expect((await hr.get(`/contracts/${made.body.id}`)).body).toMatchObject({ contractTypeCode: 'AGENCY', contractTypeName: 'Agency Contract', contractTypeNameAr: expect.any(String) });
+      const listed = await hr.get(`/contracts?employeeId=${emp.id}&contractTypeCode=AGENCY`);
+      expect(listed.body.items.map((c: { id: number }) => c.id)).toEqual([made.body.id]);
+      expect((await hr.get(`/contracts?employeeId=${emp.id}&contractTypeCode=SOP`)).body.items).toEqual([]);
+      const audit = await db.auditEntry.findFirstOrThrow({ where: { action: 'CONTRACT_CREATED', resourceId: String(made.body.id) } });
+      expect(audit.changes).toMatchObject({ contractTypeCode: 'AGENCY' });
+
+      // A renewal keeps the type unless another is chosen.
+      const kept = await idem(hr.post(`/contracts/${made.body.id}/renew`, {}));
+      expect((await db.contract.findUniqueOrThrow({ where: { id: kept.body.id } })).contractTypeCode).toBe('AGENCY');
+      const changed = await idem(hr.post(`/contracts/${kept.body.id}/renew`, { contractTypeCode: 'TEMPORARY' }));
+      expect((await db.contract.findUniqueOrThrow({ where: { id: changed.body.id } })).contractTypeCode).toBe('TEMPORARY');
+
+      // A contract from before the field stays unclassified; renewing it needs a type.
+      const legacy = await makeEmployee(db, org.unitA.id);
+      const old = await db.contract.create({ data: { employeeId: legacy.id, jobNumber: legacy.jobNumber, status: 'Expired', startDate: toDbDate(addDays(today(), -400)), endDate: toDbDate(addDays(today(), -35)) } });
+      expect((await hr.get(`/contracts/${old.id}`)).body).toMatchObject({ contractTypeCode: null, contractTypeName: null });
+      expect((await idem(hr.post(`/contracts/${old.id}/renew`, {}))).body.error.code).toBe('CONTRACT_TYPE_REQUIRED');
+      expect((await idem(hr.post(`/contracts/${old.id}/renew`, { contractTypeCode: 'SOP' }))).status).toBe(201);
+    });
+
+    it('contract types: system-wide HR adds and edits them; delete removes an unused type and deactivates a used one', async () => {
+      const code = uniq('CT').toUpperCase().slice(0, 20);
+      expect((await scoped.post('/contract-types', { code, name: 'Scoped try' })).body.error.code).toBe('SCOPE_NOT_COVERED');
+      expect((await hr.post('/contract-types', { code: 'bad code!', name: 'x' })).body.error.code).toBe('VALIDATION_FAILED');
+      const made = await hr.post('/contract-types', { code, name: 'Locum Contract', nameAr: 'عقد بديل', displayOrder: 9 });
+      expect(made.status).toBe(201);
+      expect((await hr.post('/contract-types', { code, name: 'Again' })).body.error.code).toBe('CONTRACT_TYPE_EXISTS');
+      expect((await hr.patch(`/contract-types/${code}`, { name: 'Locum / Relief Contract' })).body.name).toBe('Locum / Relief Contract');
+      expect((await scoped.get('/contract-types')).body.items.map((t: { code: string }) => t.code)).toEqual(expect.arrayContaining(['DIRECT_HOSPITAL', 'SOP', code]));
+
+      // Unused: really deleted.
+      const spare = uniq('CS').toUpperCase().slice(0, 20);
+      await hr.post('/contract-types', { code: spare, name: 'Spare' });
+      expect((await hr.del(`/contract-types/${spare}`)).body).toMatchObject({ outcome: 'DELETED', contractCount: 0 });
+      expect(await db.contractType.findUnique({ where: { code: spare } })).toBeNull();
+
+      // Used: deactivated — gone from the form list, kept on the contract and in the full list.
+      const emp = await makeEmployee(db, org.unitA.id);
+      const c = await idem(hr.post('/contracts', { employeeId: emp.id, startDate: today(), endDate: addDays(today(), 30), contractTypeCode: code }));
+      expect(c.status).toBe(201);
+      expect((await hr.del(`/contract-types/${code}`)).body).toMatchObject({ outcome: 'DEACTIVATED', contractCount: 1 });
+      expect((await hr.get('/contract-types')).body.items.map((t: { code: string }) => t.code)).not.toContain(code);
+      const all = (await hr.get('/contract-types?includeInactive=true')).body.items.find((t: { code: string }) => t.code === code);
+      expect(all).toMatchObject({ isActive: false, contractCount: 1 });
+      expect((await hr.get(`/contracts/${c.body.id}`)).body.contractTypeName).toBe('Locum / Relief Contract');
+      expect(await db.auditEntry.count({ where: { resource: 'contract_type', resourceId: { in: [code, spare] } } })).toBe(5);
+    });
+
     it('scope, own-contract and view rules', async () => {
       const { emp, id } = await draftFor(hr);
-      expect((await idem(scoped.post('/contracts', { employeeId: (await makeEmployee(db, org.unitC.id)).id, startDate: today(), endDate: addDays(today(), 30) }))).body.error.code).toBe('SCOPE_NOT_COVERED');
+      expect((await idem(scoped.post('/contracts', { employeeId: (await makeEmployee(db, org.unitC.id)).id, startDate: today(), endDate: addDays(today(), 30), contractTypeCode: TYPE }))).body.error.code).toBe('SCOPE_NOT_COVERED');
 
       // An HR Admin who is also a nurse cannot manage their own contract.
       const selfHr = await makeUser(db, { employeeId: emp.id, roles: [{ role: 'HR_ADMIN', scopeType: 'SYSTEM' }] });

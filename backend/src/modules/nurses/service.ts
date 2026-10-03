@@ -19,6 +19,7 @@ import { Prisma, type Db, type DbClient } from '../../lib/prisma.js';
 import { refreshEligibility } from '../eligibility/state.service.js';
 import { HR_ROLES, inScope, viewerOf, type Viewer } from '../credentials/access.js';
 import { unitScope, type AuthContext } from '../users/access.js';
+import { assertActiveContractType, ContractTypeCode } from '../contracts/contract-types.js';
 
 const Text = (max: number) => z.string().trim().max(max);
 const Req = (max: number) => z.string().trim().min(1).max(max);
@@ -72,6 +73,7 @@ export const OnboardBody = z.strictObject({
   positionCode: z.string().min(1).max(20).optional(), // omitted → rule E6 default, when that position exists
   contractStart: IsoDate,
   contractEnd: IsoDate,
+  contractTypeCode: ContractTypeCode, // owner decision 2026-10-03: the Draft contract's employment contract type
 });
 // Written out without defaults so a partial update never overwrites omitted fields.
 export const UpdateBody = z.strictObject({
@@ -248,21 +250,22 @@ export function createNurseService(db: Db) {
         await assertPlaceable(tx, auth, body.unitId);
         await assertPosition(tx, body.positionCode);
         await assertJobNumberFree(tx, body.jobNumber);
-        const { contractStart, contractEnd, hireDate, ...fields } = body;
+        const { contractStart, contractEnd, contractTypeCode, hireDate, ...fields } = body;
+        await assertActiveContractType(tx, contractTypeCode);
         const emp = await tx.employee.create({
           // full_name is composed by the database trigger (E3); the placeholder never survives the insert.
           data: { ...fields, fullName: '', hireDate: hireDate ? toDbDate(hireDate) : null },
         });
         const contract = await tx.contract.create({
           data: {
-            employeeId: emp.id, jobNumber: emp.jobNumber, status: 'Draft', createdById: auth.user.id,
+            employeeId: emp.id, jobNumber: emp.jobNumber, status: 'Draft', createdById: auth.user.id, contractTypeCode,
             startDate: toDbDate(contractStart), endDate: toDbDate(contractEnd),
             startDateHijri: toHijriIso(contractStart), endDateHijri: toHijriIso(contractEnd),
           },
         });
         await appendAudit(tx, {
           actorUserId: auth.user.id, action: 'EMPLOYEE_ONBOARDED', resource: 'employee', resourceId: emp.id,
-          changes: { jobNumber: emp.jobNumber, unitId: emp.unitId, positionCode: emp.positionCode, contractId: contract.id, contractStart, contractEnd, contractStatus: 'Draft' },
+          changes: { jobNumber: emp.jobNumber, unitId: emp.unitId, positionCode: emp.positionCode, contractId: contract.id, contractStart, contractEnd, contractTypeCode, contractStatus: 'Draft' },
           requestId, priority: 'HIGH',
         });
         await refreshEligibility(tx, emp.id, 'EMPLOYEE_ONBOARDED', { actorUserId: auth.user.id, requestId });

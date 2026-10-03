@@ -402,6 +402,9 @@ model Contract {
   startDateHijri String?        @map("start_date_hijri") @db.VarChar(10)
   endDateHijri   String?        @map("end_date_hijri") @db.VarChar(10)
   status         ContractStatus @default(Draft)
+  /// Employment contract type (owner decision 2026-10-03). Required on new contracts and renewals;
+  /// contracts created before the field existed stay NULL ("not classified").
+  contractTypeCode String?      @map("contract_type_code") @db.VarChar(20)
   /// Who created and who submitted it: neither may approve it (owner decision D-30).
   createdById    Int?           @map("created_by_id")
   submittedById  Int?           @map("submitted_by_id")
@@ -410,12 +413,31 @@ model Contract {
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz
 
-  employee  Employee          @relation(fields: [employeeId], references: [id])
-  documents DocumentVersion[]
+  employee     Employee          @relation(fields: [employeeId], references: [id])
+  contractType ContractType?     @relation(fields: [contractTypeCode], references: [code], onDelete: Restrict)
+  documents    DocumentVersion[]
 
   @@index([employeeId, status])
   @@index([endDate])
+  @@index([contractTypeCode])
   @@map("contracts")
+}
+
+/// Employment contract types (owner decision 2026-10-03): a hospital-wide list that HR and System
+/// Admins maintain on screen. A type no contract uses can be deleted; a used one is deactivated —
+/// hidden from new contracts, still shown on the old ones. Information only: no eligibility rule reads it.
+model ContractType {
+  code         String   @id @db.VarChar(20)
+  name         String   @db.VarChar(120)
+  nameAr       String?  @map("name_ar") @db.VarChar(120)
+  isActive     Boolean  @default(true) @map("is_active")
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  contracts Contract[]
+
+  @@map("contract_types")
 }
 
 // ════════════════════════════════════════════════════════════════════════════

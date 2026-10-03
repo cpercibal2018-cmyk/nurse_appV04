@@ -14,6 +14,7 @@ import { toHijriShort } from '../../lib/hijri';
 import { phoneRule } from '../../lib/phone';
 import { useUnits } from '../administration/api';
 import { usePositions } from '../workforce/api';
+import { useContractTypes } from '../contracts/api';
 import { useEmployee, useEmployeeAction, useEmployees, useInvitations, useInviteEmployee, useOnboardingDefaults, type EmployeeRow } from './api';
 
 import { GuideHelp } from '../guidelines/GuideHelp';
@@ -33,7 +34,8 @@ function toBody(v: Record<string, unknown>) {
 
 /** Fields 4–15 in the order of spec §3.1, plus placement. */
 function EmployeeFields({ units, positions, onboarding }: { units: Array<{ value: number | null; label: string }>; positions: Array<{ value: string; label: string }>; onboarding: boolean }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const types = useContractTypes(false, onboarding); // owner decision 2026-10-03: the Draft contract's type
   const start = Form.useWatch('contractStart');
   const end = Form.useWatch('contractEnd');
   return (
@@ -51,6 +53,12 @@ function EmployeeFields({ units, positions, onboarding }: { units: Array<{ value
       <Form.Item name="jobPostLocation" label={t('jobPostLocation')}><Input maxLength={120} /></Form.Item>
       <Form.Item name="actualWorkPlace" label={t('actualWorkPlace')}><Input maxLength={120} /></Form.Item>
       <Form.Item name="specialty" label={t('specialty')}><Input maxLength={120} /></Form.Item>
+      {onboarding && (
+        <Form.Item name="contractTypeCode" label={t('contractType')} rules={[{ required: true, message: t('contractTypeRequired') }]}>
+          <Select placeholder={t('contractTypeSelect')} loading={types.isLoading}
+            options={(types.data?.items ?? []).map((x) => ({ value: x.code, label: i18n.language === 'ar' && x.nameAr ? x.nameAr : x.name }))} />
+        </Form.Item>
+      )}
       {onboarding && (
         <Flex gap={8}>
           <Form.Item name="contractStart" label={t('contractStart')} extra={start ? toHijriShort(start) : undefined} rules={[{ required: true }]} style={{ flex: 1 }}><DatePicker style={{ width: '100%' }} /></Form.Item>
